@@ -8,7 +8,7 @@ object Constants {
     const val CHAT_NAME = "chat_name"
     const val MESSAGE_ID = "message_id"
     const val REQUEST_ADD_USERS = 1001
-    const val FCM_SERVER_KEY = "0a0c30df0009e15f52351905816841b7f599cdfc"
+
 
 
 
