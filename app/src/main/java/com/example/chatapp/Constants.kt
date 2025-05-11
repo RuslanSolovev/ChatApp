@@ -16,7 +16,7 @@ object Constants {
 
 
 
-    // region Firebase Database
+    // region Firebase
     object Paths {
         const val USERS = "users"
         const val CHATS = "chats"
