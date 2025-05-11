@@ -1,0 +1,57 @@
+<resources>
+    <string name="app_name">Filosoff</string>
+    <string name="uploading">Uploading…</string>
+    <string name="upload_progress">Uploading: %d%%</string>
+    <string name="change_photo">Change Photo</string>
+    <string name="upload_photo">Upload Photo</string>
+    <string name="image_url_save_error">Failed to save image URL: %s</string>
+    <string name="upload_error">Upload failed: %s</string>
+    <string name="profile_load_error">Failed to load profile: %s</string>
+    <string name="name_required">First and last name are required</string>
+    <string name="saving">Saving…</string>
+    <string name="profile_saved">Profile saved</string>
+    <string name="save_profile">Save Profile</string>
+    <string name="save_error">Save failed: %s</string>
+    <string name="deleting">Deleting…</string>
+    <string name="profile_data_deleted">Profile data deleted</string>
+    <string name="delete_profile_data">Delete Profile Data</string>
+    <string name="delete_error">Delete failed: %s</string>
+
+    <!-- Для SelectUsersActivity -->
+    <string name="title_select_users">Выберите пользователей</string>
+    <string name="no_users_available">Нет доступных пользователей</string>
+    <string name="users_load_error">Ошибка загрузки пользователей: %s</string>
+    <string name="participants_load_error">Ошибка загрузки участников: %s</string>
+    <string name="user_added_to_chat">%s добавлен в чат</string>
+    <string name="user_add_error">Ошибка добавления: %s</string>
+    <string name="user_check_error">Ошибка проверки пользователя: %s</string>
+    <string name="user_already_in_chat">Пользователь уже в чате</string>
+    <string name="search_hint">Поиск пользователей...</string>
+
+    <string name="edited">ред.</string>
+    <string name="message">Сообщение</string>
+
+    <string name="cancel_reply">Отменить ответ</string>
+    <string name="image_preview">Изображение</string>
+
+
+    <string name="message_preview">Message</string>
+    <string name="new_message_from">New message from %s</string>
+    <string name="image_message">Image</string>
+    <string name="unknown_user">Unknown</string>
+
+    <string name="reply">Ответить на сообщение</string>
+    <string name="edit">Редактировать сообщение</string>
+    <string name="delete">Удалить сообщение</string>
+
+    <string name="delete_message_title">Удалить сообщение</string>
+    <string name="delete_message_confirm">Вы уверены, что хотите удалить это сообщение?</string>
+    <string name="edit_message_title">Редактировать сообщение</string>
+    <string name="message_deleted">Сообщение удалено</string>
+    <string name="message_updated">Сообщение обновлено</string>
+    <string name="update_error">Ошибка при обновлении</string>
+    <string name="only_own_messages">Вы можете редактировать только свои сообщения</string>
+    <string name="fcm_server_key">785955583889</string>
+
+
+</resources>
