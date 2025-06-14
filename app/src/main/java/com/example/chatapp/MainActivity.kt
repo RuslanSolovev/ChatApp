@@ -9,7 +9,9 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.chatapp.GuessNumberMenuActivity
 import com.example.chatapp.IgraActivity
+import com.example.chatapp.LocationActivity
 import com.example.chatapp.R
+import com.example.chatapp.StepCounterActivity
 import com.example.chatapp.adapters.ChatAdapter
 import com.example.chatapp.databinding.ActivityMainBinding
 import com.example.chatapp.models.Chat
@@ -27,6 +29,8 @@ class MainActivity : AppCompatActivity() {
     private val chatList = mutableListOf<Chat>()
     private val usersCache = hashMapOf<String, User>()
     private lateinit var igra: Button
+    private lateinit var hagi: Button
+    private lateinit var btnLocation: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -35,28 +39,36 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        // Теперь можно инициализировать кнопку
+        // Инициализация кнопок
         igra = findViewById(R.id.igra)
+        hagi = findViewById(R.id.hagi)
+        btnLocation = findViewById(R.id.btnLocation)
+
+        // Инициализация FirebaseAuth
+        auth = FirebaseAuth.getInstance()
 
         // Проверка аутентификации
-        auth = FirebaseAuth.getInstance()
         if (auth.currentUser == null) {
             startAuthActivity()
             return
         }
 
-
-        // Инициализация Firebase
+        // Инициализация базы данных Firebase
         database = FirebaseDatabase.getInstance().reference
 
         // Настройка RecyclerView и адаптера
         setupRecyclerView()
 
-        // Загрузка данных
+        // Загрузка чатов из базы
         fetchChats()
 
-        // Настройка обработчиков кликов
+        // Настройка обработчиков кликов для кнопок
         setupClickListeners()
+
+        // Обработчик для кнопки перехода в LocationActivity
+        btnLocation.setOnClickListener {
+            startActivity(Intent(this, LocationActivity::class.java))
+        }
     }
 
     private fun startAuthActivity() {
@@ -81,7 +93,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun setupClickListeners() {
-        // Кнопка создания чата
         binding.fabCreateChat.setOnClickListener {
             startActivity(Intent(this, CreateChatActivity::class.java))
         }
@@ -91,15 +102,17 @@ class MainActivity : AppCompatActivity() {
             startActivity(intent)
         }
 
-        // Кнопка выхода
         binding.btnLogout.setOnClickListener {
             auth.signOut()
             startAuthActivity()
         }
 
-        // Кнопка профиля
         binding.btnMyProfile.setOnClickListener {
             startActivity(Intent(this, ProfileActivity::class.java))
+        }
+
+        binding.hagi.setOnClickListener {
+            startActivity(Intent(this, StepCounterActivity::class.java))
         }
     }
 
@@ -167,6 +180,7 @@ class MainActivity : AppCompatActivity() {
                 }
 
                 override fun onCancelled(error: DatabaseError) {
+
                     Log.e("MainActivity", "Ошибка загрузки пользователя", error.toException())
                 }
             })

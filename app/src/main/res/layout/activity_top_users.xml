@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical">
+
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="@color/colorAccent"
+        app:navigationIcon="?attr/homeAsUpIndicator"
+        app:title="Топ пользователей"/>
+
+    <RadioGroup
+        android:id="@+id/periodGroup"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="8dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="8dp">
+
+        <RadioButton
+            android:id="@+id/btn_day"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="День"
+            android:textColor="@color/red"
+            android:buttonTint="@color/colorAccent"
+            android:checked="true"/>
+
+        <RadioButton
+            android:id="@+id/btn_week"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Неделя"
+            android:textColor="@color/red"
+            android:buttonTint="@color/colorAccent"/>
+
+        <RadioButton
+            android:id="@+id/btn_month"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Месяц"
+            android:textColor="@color/red"
+            android:buttonTint="@color/colorAccent"/>
+    </RadioGroup>
+
+    <!-- Добавлен ProgressBar -->
+    <ProgressBar
+        android:id="@+id/progressBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:visibility="gone"
+        android:layout_marginTop="16dp"/>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/recyclerView"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipToPadding="false"
+        android:paddingBottom="8dp"/>
+</LinearLayout>

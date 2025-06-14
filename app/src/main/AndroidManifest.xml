@@ -1,50 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.chatapp">
+    xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Разрешения для FCM -->
+    <!-- Базовые разрешения -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- Разрешения для работы с галереей -->
+    <!-- Разрешения для работы с медиа -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-
-    <!-- Разрешение для использования камеры -->
-
-
-    <!-- Разрешение для записи файлов (если нужно сохранять фото локально) -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
+    <uses-permission android:name="android.permission.BODY_SENSORS" />
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+
+    <!-- Разрешения для шагомера -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <uses-permission android:name="android.permission.BODY_SENSORS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
+    <!-- Для Android 10+ -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"
+        tools:ignore="ProtectedPermissions" />
 
     <application
+        android:name=".StepCounterApp"
         android:allowBackup="true"
         android:icon="@drawable/solovei_png"
         android:label="@string/app_name"
         android:roundIcon="@drawable/solovei_png"
         android:supportsRtl="true"
-        android:theme="@style/Theme.AppCompat.Light.DarkActionBar">
+        android:theme="@style/Theme.AppCompat.Light.DarkActionBar"
+        android:usesCleartextTraffic="true"
+        tools:targetApi="31">
 
-        <!-- Активность аутентификации -->
+        <!-- Активность авторизации -->
         <activity
             android:name=".activities.AuthActivity"
-            android:theme="@style/Theme.AppCompat.Light.NoActionBar"
-            android:exported="true">
+            android:exported="true"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <!-- Основная активность -->
+        <!-- Главная активность -->
         <activity
             android:name=".activities.MainActivity"
-            android:theme="@style/Theme.AppCompat.Light.NoActionBar"
-            android:exported="false" />
+            android:exported="true"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
 
-        <!-- Другие активности -->
+        <!-- Активность шагомера -->
         <activity
-            android:name=".activities.UserProfileActivity"
-            android:theme="@style/Theme.ChatApp.NoActionBar"
-            android:exported="false" />
+            android:name=".StepCounterActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
 
         <activity
             android:name=".IgraActivity">
@@ -54,6 +67,20 @@
         <activity
             android:name="AdditionGameMenuActivity">
         </activity>
+
+        <activity
+            android:name=".TopUsersActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ChatApp.NoActionBar"
+            android:parentActivityName=".StepCounterActivity">
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value=".StepCounterActivity" />
+        </activity>
+
+        <activity
+            android:name=".activities.UserProfileActivity"
+            android:exported="false" />
 
         <activity
             android:name="AdditionGameActivity">
@@ -66,6 +93,10 @@
 
         <activity
             android:name=".GuessNumberGameActivity">
+        </activity>
+
+        <activity android:name="LocationActivity">
+
         </activity>
 
 
@@ -92,7 +123,26 @@
             android:theme="@style/Theme.AppCompat.Light.NoActionBar"
             android:exported="false" />
 
-        <!-- Сервис FCM -->
+        <!-- Сервис шагомера -->
+        <service
+            android:name=".StepCounterService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="health" />
+
+        <!-- Приемник для автозапуска -->
+        <receiver
+            android:name=".receivers.BootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Firebase сервисы -->
         <service
             android:name=".services.MyFirebaseMessagingService"
             android:exported="false">
@@ -101,7 +151,6 @@
             </intent-filter>
         </service>
 
-        <!-- Метаданные Firebase -->
         <meta-data
             android:name="firebase_messaging_auto_init_enabled"
             android:value="true" />
@@ -109,5 +158,4 @@
             android:name="firebase_messaging_client_only"
             android:value="false" />
     </application>
-
 </manifest>

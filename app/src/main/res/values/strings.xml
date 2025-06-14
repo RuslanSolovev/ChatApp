@@ -54,4 +54,16 @@
     <string name="fcm_server_key">785955583889</string>
 
 
+
+        <string name="today_steps">Сегодня: %d шагов</string>
+        <string name="week_steps">За неделю: %d шагов</string>
+        <string name="month_steps">За месяц: %d шагов</string>
+        <string name="year_steps">За год: %d шагов</string>
+        <string name="average_week">Среднее за неделю: %d шагов</string>
+        <string name="max_day_steps">Максимум шагов за последний месяц: %d</string>
+        <string name="notification_title">Step Counter Active</string>
+        <string name="notification_text">Counting your шагов in background</string>
+
+
+
 </resources>
