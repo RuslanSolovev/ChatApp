@@ -1,0 +1,44 @@
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <!-- Инструкция для игрока -->
+    <TextView
+        android:id="@+id/tvFeedback"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Угадайте число от 1 до 100"
+        android:textSize="18sp"
+        android:gravity="center"
+        android:layout_marginBottom="16dp" />
+
+    <!-- Поле для отображения лучшего результата -->
+    <TextView
+        android:id="@+id/tvBestScore"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Лучший результат: -"
+        android:textSize="16sp"
+        android:gravity="center"
+        android:layout_marginBottom="24dp" />
+
+    <!-- Поле для ввода числа -->
+    <EditText
+        android:id="@+id/etUserGuess"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Введите ваше число"
+        android:inputType="number"
+        android:layout_marginBottom="16dp" />
+
+    <!-- Кнопка для отправки ответа -->
+    <Button
+        android:id="@+id/btnSubmit"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Угадать" />
+
+</LinearLayout>

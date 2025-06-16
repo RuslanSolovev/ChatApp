@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <!-- Отображение рекорда для уровня сложности -->
+    <TextView
+        android:id="@+id/tvBestScore"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Лучший результат: 0"
+        android:textSize="18sp"
+        android:layout_marginTop="20dp"
+        android:layout_marginLeft="16dp"/>
+
+
+    <!-- Задача для игрока -->
+    <TextView
+        android:id="@+id/tvProblem"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Задача будет тут"
+        android:textSize="18sp"
+        android:gravity="center"
+        android:layout_marginBottom="24dp" />
+
+    <!-- Поле для ввода ответа -->
+    <EditText
+        android:id="@+id/etUserAnswer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:hint="Введите ваш ответ"
+        android:inputType="number"
+        android:layout_marginBottom="16dp" />
+
+    <!-- Кнопка для отправки ответа -->
+    <Button
+        android:id="@+id/btnSubmit"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Ответить" />
+
+    <!-- Отображение количества ошибок -->
+    <TextView
+        android:id="@+id/tvErrors"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Ошибки: 0/3"
+        android:textSize="16sp"
+        android:layout_marginTop="16dp" />
+
+    <!-- Отображение оставшегося времени -->
+    <TextView
+        android:id="@+id/tvTimer"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Осталось времени: 10 сек"
+        android:textSize="16sp"
+        android:layout_marginTop="16dp" />
+
+    <!-- Отображение правильных ответов -->
+    <TextView
+        android:id="@+id/tvCorrectAnswers"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Правильных ответов: 0"
+        android:textSize="16sp"
+        android:layout_marginTop="16dp" />
+
+    <!-- Отображение обратной связи (правильный/неправильный ответ) -->
+    <TextView
+        android:id="@+id/tvFeedback"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Введите ваш ответ"
+        android:textSize="16sp"
+        android:gravity="center"
+        android:layout_marginTop="16dp" />
+
+</LinearLayout>

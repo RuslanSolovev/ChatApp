@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- В res/values/themes.xml -->
+    <style name="Theme.ChatApp.NoActionBar" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Ваши стили -->
+    </style>
+
+    <style name="CircleImageView" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">50%</item>
+    </style>
+
+
+
+    <style name="RoundedCorners" parent="">
+        <item name="cornerFamily">rounded</item>
+        <item name="cornerSize">8dp</item>
+    </style>
+
+    <style name="Theme.ChatApp2" parent="Theme.MaterialComponents.Light.DarkActionBar">
+        <!-- Базовые цвета -->
+        <item name="colorPrimary">@color/purple_500</item>
+        <item name="colorPrimaryVariant">@color/purple_700</item>
+        <item name="colorOnPrimary">@color/white</item>
+    </style>
+
+</resources>

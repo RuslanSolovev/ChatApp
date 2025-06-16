@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#000000</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="primary">#BDECECF4</color>
+
+    <color name="light_gray">#EEEEEE</color>
+    <color name="red">#FF0000</color>
+    <color name="green_online">#4CAF50</color>
+    <color name="colorPrimary">#6200EE</color>
+
+    <color name="reply_background">#1F000000</color>
+    <color name="bg_message_left">#FFF5F5F5</color>
+    <color name="bg_message_right">#FFE3F2FD</color>
+
+  
+    <color name="colorPrimaryDark">#303F9F</color>
+    <color name="colorAccent">#FF4081</color>
+    
+    <color name="primary_text">#241515</color>
+
+    <color name="secondary_text">#EB0707</color>
+
+    <color name="selected_message">#E3F2FD</color>
+    <color name="purple_500">#4CAF50FF</color>
+
+<color name="purple_700">#4CF264CB</color>
+    <color name="gray">#E0E0E0</color>
+
+</resources>

@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp">
+
+    <!-- Поле ввода названия чата -->
+    <EditText
+        android:id="@+id/etChatName"
+        android:layout_width="378dp"
+        android:layout_height="55dp"
+        android:layout_marginTop="32dp"
+        android:hint="Название чата"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <!-- Кнопка создания чата -->
+    <Button
+        android:id="@+id/btnCreateChat"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Создать чат"
+        app:layout_constraintTop_toBottomOf="@id/etChatName"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginTop="16dp" />
+
+    <!-- Кнопка загрузки изображения -->
+    <Button
+        android:id="@+id/btnUploadImage"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Загрузить изображение"
+        app:layout_constraintTop_toBottomOf="@id/btnCreateChat"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        android:layout_marginTop="16dp" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

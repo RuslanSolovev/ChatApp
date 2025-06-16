@@ -1,0 +1,28 @@
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Выберите игру"
+        android:textSize="24sp"
+        android:gravity="center"
+        android:layout_marginBottom="24dp" />
+
+    <Button
+        android:id="@+id/btn_guess_number"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Угадай число"
+        android:layout_marginBottom="16dp" />
+
+    <Button
+        android:id="@+id/btn_addition_game"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Сложение чисел" />
+</LinearLayout>
