@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
@@ -12,11 +13,13 @@
         android:layout_height="?attr/actionBarSize"
         android:background="?attr/colorPrimary"
         app:navigationIcon="?attr/homeAsUpIndicator"
-        app:title="Профиль"/>
+        app:title="Профиль"
+        app:titleTextColor="@color/white"/>
 
     <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="match_parent">
+        android:layout_height="match_parent"
+        android:fillViewport="true">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -31,6 +34,7 @@
                 android:layout_width="120dp"
                 android:layout_height="120dp"
                 android:layout_marginTop="16dp"
+                android:contentDescription="Аватар пользователя"
                 android:src="@drawable/ic_default_profile"/>
 
             <!-- Основная информация -->
@@ -40,20 +44,54 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="16dp"
                 android:textSize="20sp"
-                android:textStyle="bold"/>
+                android:textStyle="bold"
+                tools:text="Иван Иванов"/>
 
             <TextView
                 android:id="@+id/tvEmail"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"/>
+                android:layout_marginTop="8dp"
+                tools:text="user@example.com"/>
+
+            <!-- Блок с геолокацией -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:layout_marginTop="16dp"
+                android:padding="8dp"
+                android:background="@drawable/bg_profile_section">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Геолокация"
+                    android:textStyle="bold"
+                    android:textSize="16sp"/>
+
+                <TextView
+                    android:id="@+id/tvLocation"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    tools:text="Широта: 55.7558, Долгота: 37.6176"/>
+
+                <Button
+                    android:id="@+id/btnShowOnMap"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="Показать на карте"
+                    style="@style/Widget.AppCompat.Button.Borderless"/>
+            </LinearLayout>
 
             <!-- Детальная информация -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:layout_marginTop="24dp"
+                android:layout_marginTop="16dp"
                 android:padding="8dp"
                 android:background="@drawable/bg_profile_section">
 
@@ -69,21 +107,21 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:hint="Имя"/>
+                    tools:hint="Имя"/>
 
                 <TextView
                     android:id="@+id/tvLastName"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:hint="Фамилия"/>
+                    tools:hint="Фамилия"/>
 
                 <TextView
                     android:id="@+id/tvMiddleName"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:hint="Отчество"/>
+                    tools:hint="Отчество"/>
             </LinearLayout>
 
             <!-- Дополнительная информация -->
@@ -94,7 +132,7 @@
                 android:layout_marginTop="16dp"
                 android:padding="8dp"
                 android:background="@drawable/bg_profile_section"
-                android:hint="Дополнительная информация"/>
+                tools:hint="Дополнительная информация"/>
         </LinearLayout>
     </ScrollView>
 </LinearLayout>

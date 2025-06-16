@@ -1,13 +1,16 @@
 package com.example.chatapp.activities
 
+import android.content.Intent
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.bumptech.glide.Glide
+import com.example.chatapp.LocationActivity
 import com.example.chatapp.R
 import com.example.chatapp.databinding.ActivityUserProfileBinding
 import com.example.chatapp.models.User
+import com.example.chatapp.models.UserLocation
 import com.google.firebase.database.*
 
 class UserProfileActivity : AppCompatActivity() {
@@ -18,17 +21,9 @@ class UserProfileActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Убедитесь, что эта строка идет ПЕРЕД setContentView
         setTheme(R.style.Theme_ChatApp_NoActionBar)
-
         binding = ActivityUserProfileBinding.inflate(layoutInflater)
         setContentView(binding.root)
-
-        // Настройка Toolbar
-        setSupportActionBar(binding.toolbar)
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "Профиль"
 
         // Получаем ID пользователя из Intent
         userId = intent.getStringExtra("USER_ID") ?: run {
@@ -36,16 +31,28 @@ class UserProfileActivity : AppCompatActivity() {
             return
         }
 
-        // Инициализация Firebase
-        database = FirebaseDatabase.getInstance().reference
-
-        // Настройка Toolbar
-        setSupportActionBar(binding.toolbar)
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "Профиль"
-
-        // Загрузка данных
+        setupToolbar()
+        initFirebase()
         loadUserProfile()
+        setupClickListeners()
+    }
+
+    private fun setupToolbar() {
+        setSupportActionBar(binding.toolbar)
+        supportActionBar?.apply {
+            setDisplayHomeAsUpEnabled(true)
+            title = "Профиль"
+        }
+    }
+
+    private fun initFirebase() {
+        database = FirebaseDatabase.getInstance().reference
+    }
+
+    private fun setupClickListeners() {
+        binding.btnShowOnMap.setOnClickListener {
+            showUserOnMap()
+        }
     }
 
     private fun loadUserProfile() {
@@ -54,24 +61,17 @@ class UserProfileActivity : AppCompatActivity() {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     try {
                         val user = snapshot.getValue(User::class.java)?.apply {
-                            // Убедимся, что uid установлен
                             uid = userId
                         }
-
-                        user?.let { displayProfile(it) } ?: run {
-                            Toast.makeText(this@UserProfileActivity, "Профиль не найден", Toast.LENGTH_SHORT).show()
-                            finish()
-                        }
+                        user?.let { displayProfile(it) } ?: showProfileNotFound()
                     } catch (e: Exception) {
                         Log.e("UserProfile", "Error parsing user data", e)
-                        Toast.makeText(this@UserProfileActivity, "Ошибка загрузки профиля", Toast.LENGTH_SHORT).show()
-                        finish()
+                        showError("Ошибка загрузки профиля")
                     }
                 }
 
                 override fun onCancelled(error: DatabaseError) {
-                    Toast.makeText(this@UserProfileActivity, "Ошибка загрузки", Toast.LENGTH_SHORT).show()
-                    finish()
+                    showError("Ошибка загрузки: ${error.message}")
                 }
             })
     }
@@ -81,6 +81,15 @@ class UserProfileActivity : AppCompatActivity() {
             // Основная информация
             tvName.text = user.name ?: "Без имени"
             tvEmail.text = user.email ?: "Нет email"
+
+            // Геолокация
+            user.lastLocation?.let { location ->
+                tvLocation.text = "Широта: ${location.lat}, Долгота: ${location.lng}"
+                btnShowOnMap.visibility = android.view.View.VISIBLE
+            } ?: run {
+                tvLocation.text = "Локация не доступна"
+                btnShowOnMap.visibility = android.view.View.GONE
+            }
 
             // Детальная информация
             tvFirstName.text = user.firstName?.takeIf { it.isNotBlank() } ?: "Не указано"
@@ -97,9 +106,38 @@ class UserProfileActivity : AppCompatActivity() {
                     .load(url)
                     .circleCrop()
                     .placeholder(R.drawable.ic_default_profile)
+                    .error(R.drawable.ic_default_profile)
                     .into(ivProfile)
             }
         }
+    }
+
+    private fun showUserOnMap() {
+        database.child("user_locations").child(userId)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                val location = snapshot.getValue(UserLocation::class.java)
+                if (location != null) {
+                    val intent = Intent(this, LocationActivity::class.java).apply {
+                        putExtra("TARGET_LAT", location.lat)
+                        putExtra("TARGET_LNG", location.lng)
+                        putExtra("TARGET_USER_ID", userId)
+                    }
+                    startActivity(intent)
+                } else {
+                    Toast.makeText(this, "Локация пользователя не найдена", Toast.LENGTH_SHORT).show()
+                }
+            }
+    }
+
+    private fun showProfileNotFound() {
+        Toast.makeText(this, "Профиль не найден", Toast.LENGTH_SHORT).show()
+        finish()
+    }
+
+    private fun showError(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+        finish()
     }
 
     override fun onSupportNavigateUp(): Boolean {

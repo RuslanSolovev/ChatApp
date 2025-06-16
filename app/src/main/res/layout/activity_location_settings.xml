@@ -1,0 +1,72 @@
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <Switch
+            android:id="@+id/switchLocationSharing"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Поделиться моей геопозицией"/>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Кто может видеть меня:"
+            android:layout_marginTop="16dp"/>
+
+        <RadioGroup
+            android:id="@+id/radioGroupVisibility"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <RadioButton
+                android:id="@+id/radioEveryone"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Все пользователи"/>
+
+            <RadioButton
+                android:id="@+id/radioFriends"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Только друзья"
+                android:checked="true"/>
+
+            <RadioButton
+                android:id="@+id/radioNone"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Никто"/>
+        </RadioGroup>
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Частота обновления:"
+            android:layout_marginTop="16dp"/>
+
+        <com.google.android.material.slider.Slider
+            android:id="@+id/sliderUpdateInterval"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:valueFrom="1"
+            android:valueTo="60"
+            android:stepSize="1"
+            android:value="5"/>
+
+        <Button
+            android:id="@+id/btnSave"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Сохранить"
+            android:layout_marginTop="24dp"/>
+    </LinearLayout>
+</ScrollView>

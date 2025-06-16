@@ -24,4 +24,7 @@
     <color name="selected_message">#E3F2FD</color>
     <color name="purple_500">#4CAF50FF</color>
 
+<color name="purple_700">#4CF264CB</color>
+    <color name="gray">#E0E0E0</color>
+
 </resources>

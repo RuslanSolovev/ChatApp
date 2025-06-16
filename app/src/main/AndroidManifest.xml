@@ -20,6 +20,10 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- Разрешения для локации -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
 
     <!-- Для Android 10+ -->
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"
@@ -99,7 +103,9 @@
 
         </activity>
 
-
+        <activity
+            android:name=".LocationSettingsActivity"
+            android:exported="false"/>
 
         <activity
             android:name=".activities.CreateChatActivity"
@@ -157,5 +163,11 @@
         <meta-data
             android:name="firebase_messaging_client_only"
             android:value="false" />
+
+
+        <meta-data
+            android:name="com.yandex.maps.mobile.apikey"
+            android:value="6b7f7e6b-d322-42b2-8471-d8aecc6570d1" />
+
     </application>
 </manifest>

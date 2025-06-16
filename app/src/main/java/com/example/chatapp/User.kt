@@ -22,7 +22,10 @@ data class User(
     var stepsData: Map<String, Int> = emptyMap(), // Формат: "yyyy-MM-dd" to steps
     val maxDailySteps: Int = 0,
     val lastStepsUpdate: Long = 0,
-    var totalSteps: Int = 0
+    var totalSteps: Int = 0,
+
+    val locationSettings: LocationSettings? = null,
+    val lastLocation: UserLocation? = null
 ){
     // Функция для получения полного имени
     fun getTodaySteps(): Int {

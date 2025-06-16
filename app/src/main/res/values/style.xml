@@ -18,6 +18,11 @@
         <item name="cornerSize">8dp</item>
     </style>
 
-
+    <style name="Theme.ChatApp2" parent="Theme.MaterialComponents.Light.DarkActionBar">
+        <!-- Базовые цвета -->
+        <item name="colorPrimary">@color/purple_500</item>
+        <item name="colorPrimaryVariant">@color/purple_700</item>
+        <item name="colorOnPrimary">@color/white</item>
+    </style>
 
 </resources>

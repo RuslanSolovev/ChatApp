@@ -63,6 +63,12 @@ android {
 dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0") // Последняя стабильная версия
 
+    implementation ("com.google.android.gms:play-services-maps:18.2.0")
+    implementation ("com.google.android.gms:play-services-location:21.0.1")
+    implementation ("com.google.maps.android:android-maps-utils:3.8.0")
+
+    implementation ("com.google.android.material:material:1.9.0")
+
     // Core (фиксированные версии)
     implementation("androidx.core:core-ktx:1.13.0")
     implementation("androidx.appcompat:appcompat:1.6.1")
@@ -112,4 +118,5 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     implementation ("de.hdodenhof:circleimageview:3.1.0")
+    implementation ("com.yandex.android:maps.mobile:4.5.1-full")
 }
