@@ -54,16 +54,23 @@
     <string name="fcm_server_key">785955583889</string>
 
 
-
-        <string name="today_steps">Сегодня: %d шагов</string>
-        <string name="week_steps">За неделю: %d шагов</string>
-        <string name="month_steps">За месяц: %d шагов</string>
-        <string name="year_steps">За год: %d шагов</string>
-        <string name="average_week">Среднее за неделю: %d шагов</string>
-        <string name="max_day_steps">Максимум шагов за последний месяц: %d</string>
-        <string name="notification_title">Step Counter Active</string>
-        <string name="notification_text">Counting your шагов in background</string>
-
+    <string name="today_steps">Сегодня: %d шагов</string>
+    <string name="week_steps">За неделю: %d шагов</string>
+    <string name="month_steps">За месяц: %d шагов</string>
+    <string name="year_steps">За год: %d шагов</string>
+    <string name="average_week">Среднее за неделю: %d шагов</string>
+    <string name="max_day_steps">Максимум шагов за последний месяц: %d</string>
+    <string name="notification_title">Step Counter Active</string>
+    <string name="notification_text">Counting your шагов in background</string>
+    <string name="title_activity_login">LoginActivity</string>
+    <string name="prompt_email">Email</string>
+    <string name="prompt_password">Password</string>
+    <string name="action_sign_in">Sign in or register</string>
+    <string name="action_sign_in_short">Sign in</string>
+    <string name="welcome">"Welcome !"</string>
+    <string name="invalid_username">Not a valid username</string>
+    <string name="invalid_password">Password must be >5 characters</string>
+    <string name="login_failed">"Login failed"</string>
 
 
 </resources>

@@ -18,26 +18,34 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Однозначные числа"
-        android:layout_marginBottom="16dp" />
+        android:layout_marginBottom="16dp"
+        android:textColor="@color/green_online"
+        android:textSize="20dp"/>
 
     <Button
         android:id="@+id/btn_two_digit"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Двузначные числа"
-        android:layout_marginBottom="16dp" />
+        android:layout_marginBottom="16dp"
+        android:textColor="@color/colorPrimary"
+        android:textSize="20dp"/>
 
     <Button
         android:id="@+id/btn_three_digit"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Трехзначные числа"
-        android:layout_marginBottom="16dp" />
+        android:layout_marginBottom="16dp"
+        android:textColor="#F09B63"
+        android:textSize="20dp"/>
 
     <Button
         android:id="@+id/btn_four_digit"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Четырехзначные числа" />
+        android:text="Четырехзначные числа"
+        android:textColor="@color/red"
+        android:textSize="20dp"/>
 
 </LinearLayout>

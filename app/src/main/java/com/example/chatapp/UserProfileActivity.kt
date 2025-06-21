@@ -92,7 +92,7 @@ class UserProfileActivity : AppCompatActivity() {
             }
 
             // Детальная информация
-            tvFirstName.text = user.firstName?.takeIf { it.isNotBlank() } ?: "Не указано"
+            tvFirstName.text = user.name?.takeIf { it.isNotBlank() } ?: "Не указано"
             tvLastName.text = user.lastName?.takeIf { it.isNotBlank() } ?: "Не указано"
             tvMiddleName.text = user.middleName?.takeIf { it.isNotBlank() } ?: "Не указано"
 

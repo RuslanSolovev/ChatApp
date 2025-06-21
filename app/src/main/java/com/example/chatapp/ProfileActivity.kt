@@ -33,7 +33,7 @@ class ProfileActivity : AppCompatActivity() {
     private lateinit var ivProfilePicture: ImageView
     private lateinit var btnUploadPhoto: Button
     private lateinit var etEmail: EditText
-    private lateinit var etFirstName: EditText
+    private lateinit var etName: EditText // Переименовано с etFirstName
     private lateinit var etLastName: EditText
     private lateinit var etMiddleName: EditText
     private lateinit var etAdditionalInfo: EditText
@@ -64,7 +64,7 @@ class ProfileActivity : AppCompatActivity() {
         ivProfilePicture = findViewById(R.id.ivProfilePicture)
         btnUploadPhoto = findViewById(R.id.btnUploadPhoto)
         etEmail = findViewById(R.id.etEmail)
-        etFirstName = findViewById(R.id.etFirstName)
+        etName = findViewById(R.id.etFirstName) // Используем существующий ID
         etLastName = findViewById(R.id.etLastName)
         etMiddleName = findViewById(R.id.etMiddleName)
         etAdditionalInfo = findViewById(R.id.etAdditionalInfo)
@@ -250,7 +250,7 @@ class ProfileActivity : AppCompatActivity() {
 
     private fun updateUI() {
         etEmail.setText(currentUser.email)
-        etFirstName.setText(currentUser.firstName)
+        etName.setText(currentUser.name) // Используем name вместо firstName
         etLastName.setText(currentUser.lastName)
         etMiddleName.setText(currentUser.middleName)
         etAdditionalInfo.setText(currentUser.additionalInfo)
@@ -263,13 +263,13 @@ class ProfileActivity : AppCompatActivity() {
 
     private fun saveProfileData() {
         currentUser.apply {
-            firstName = etFirstName.text.toString().trim()
+            name = etName.text.toString().trim() // Сохраняем в name
             lastName = etLastName.text.toString().trim()
             middleName = etMiddleName.text.toString().trim()
             additionalInfo = etAdditionalInfo.text.toString().trim()
         }
 
-        if (currentUser.firstName.isEmpty() || currentUser.lastName.isEmpty()) {
+        if (currentUser.name.isEmpty() || currentUser.lastName.isEmpty()) {
             Toast.makeText(this, R.string.name_required, Toast.LENGTH_SHORT).show()
             return
         }
@@ -300,9 +300,9 @@ class ProfileActivity : AppCompatActivity() {
         btnDeleteProfile.isEnabled = false
         btnDeleteProfile.text = getString(R.string.deleting)
 
-        // Удаляем данные профиля (оставляем только важные поля)
+        // Удаляем данные профиля
         val updates = hashMapOf<String, Any?>(
-            "firstName" to null,
+            "name" to null, // Ключевое изменение: name вместо firstName
             "lastName" to null,
             "middleName" to null,
             "additionalInfo" to null,
@@ -311,7 +311,7 @@ class ProfileActivity : AppCompatActivity() {
 
         database.reference.child("users").child(userId).updateChildren(updates)
             .addOnSuccessListener {
-                // Удаляем изображение профиля с сервера, если оно существует
+                // Удаляем изображение профиля с сервера
                 currentUser.profileImageUrl?.let { url ->
                     deleteImageFromServer(url)
                 }
@@ -334,7 +334,7 @@ class ProfileActivity : AppCompatActivity() {
     private fun deleteImageFromServer(imageUrl: String) {
         val client = OkHttpClient()
         val request = Request.Builder()
-            .url("https://auspicious-cosmic-can.glitch.me/delete") // Замените на URL вашего сервера для удаления
+            .url("https://auspicious-cosmic-can.glitch.me/delete")
             .delete()
             .build()
 
@@ -352,7 +352,7 @@ class ProfileActivity : AppCompatActivity() {
     }
 
     private fun resetProfileUI() {
-        etFirstName.text.clear()
+        etName.text.clear()
         etLastName.text.clear()
         etMiddleName.text.clear()
         etAdditionalInfo.text.clear()

@@ -1,32 +1,50 @@
-
 package com.example.chatapp
 
 import android.Manifest
+import android.animation.ValueAnimator
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageManager
+import android.graphics.Color
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.View
+import android.view.animation.DecelerateInterpolator
 import android.widget.Button
+import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.cardview.widget.CardView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
 import java.text.SimpleDateFormat
 import java.util.*
 
 class StepCounterActivity : AppCompatActivity() {
+
     private lateinit var tvToday: TextView
     private lateinit var tvWeek: TextView
     private lateinit var tvMonth: TextView
     private lateinit var tvYear: TextView
     private lateinit var tvAverage: TextView
     private lateinit var tvMaxDay: TextView
+    private lateinit var progressSteps: ProgressBar
+    private lateinit var cardToday: CardView
+    private lateinit var cardWeek: CardView
+    private lateinit var cardMonth: CardView
+    private lateinit var cardYear: CardView
+    private lateinit var cardAverage: CardView
+    private lateinit var cardMax: CardView
 
     private val prefs by lazy {
         getSharedPreferences("step_prefs", Context.MODE_PRIVATE)
@@ -48,15 +66,29 @@ class StepCounterActivity : AppCompatActivity() {
         }
     }
 
+    private lateinit var database: FirebaseDatabase
+    private lateinit var userId: String
+    private var dailyGoal = 10000 // Цель по шагам
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_step_counter)
 
+        // Получаем ID текущего пользователя
+        userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
+        database = FirebaseDatabase.getInstance()
+
         initViews()
+        setupAnimations()
         checkPermissions()
         setupButton()
+        setupFirebaseListeners()
 
-        // Регистрация BroadcastReceiver с учетом версии Android
+        // Установка цели по шагам из настроек
+        dailyGoal = prefs.getInt("daily_goal", 10000)
+        progressSteps.max = dailyGoal
+
+        // Регистрация BroadcastReceiver
         val receiverFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             ContextCompat.RECEIVER_NOT_EXPORTED
         } else {
@@ -88,18 +120,78 @@ class StepCounterActivity : AppCompatActivity() {
         tvYear = findViewById(R.id.tv_year)
         tvAverage = findViewById(R.id.tv_average)
         tvMaxDay = findViewById(R.id.tv_max_day)
+        progressSteps = findViewById(R.id.progress_steps)
+
+        cardToday = findViewById(R.id.card_today)
+        cardWeek = findViewById(R.id.card_week)
+        cardMonth = findViewById(R.id.card_month)
+        cardYear = findViewById(R.id.card_year)
+        cardAverage = findViewById(R.id.card_average)
+        cardMax = findViewById(R.id.card_max)
+    }
+
+    private fun setupAnimations() {
+        val cards = listOf(cardToday, cardWeek, cardMonth, cardYear, cardAverage, cardMax)
+        cards.forEachIndexed { index, card ->
+            card.alpha = 0f
+            card.translationY = 50f
+            card.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setStartDelay(200L * index)
+                .setDuration(500)
+                .start()
+        }
     }
 
     private fun setupButton() {
         findViewById<Button>(R.id.btn_show_top).setOnClickListener {
             startActivity(Intent(this, TopUsersActivity::class.java))
         }
+
+
+    }
+
+    private fun setupFirebaseListeners() {
+        // Слушатель для обновления данных в реальном времени
+        val stepsRef = database.reference.child("users").child(userId).child("stepsData")
+        stepsRef.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                loadAndShowStats()
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                Toast.makeText(
+                    this@StepCounterActivity,
+                    "Ошибка синхронизации: ${error.message}",
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        })
+
+        // Слушатель для цели по шагам
+        val goalRef = database.reference.child("users").child(userId).child("dailyGoal")
+        goalRef.addValueEventListener(object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                dailyGoal = snapshot.getValue(Int::class.java) ?: 10000
+                progressSteps.max = dailyGoal
+                prefs.edit().putInt("daily_goal", dailyGoal).apply()
+                loadAndShowStats()
+            }
+
+            override fun onCancelled(error: DatabaseError) {
+                // Используем значение по умолчанию
+            }
+        })
     }
 
     private fun checkPermissions() {
         val permissions = mutableListOf<String>().apply {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 add(Manifest.permission.ACTIVITY_RECOGNITION)
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                add(Manifest.permission.POST_NOTIFICATIONS)
             }
             add(Manifest.permission.BODY_SENSORS)
         }.filter {
@@ -124,12 +216,52 @@ class StepCounterActivity : AppCompatActivity() {
         val avgWeek = if (stepsWeek > 0) stepsWeek / 7 else 0
         val maxDay = prefs.getInt("max_steps_30days", 0)
 
-        tvToday.text = getString(R.string.today_steps, stepsToday)
-        tvWeek.text = getString(R.string.week_steps, stepsWeek)
-        tvMonth.text = getString(R.string.month_steps, stepsMonth)
-        tvYear.text = getString(R.string.year_steps, stepsYear)
-        tvAverage.text = getString(R.string.average_week, avgWeek)
-        tvMaxDay.text = getString(R.string.max_day_steps, maxDay)
+        // Анимированное обновление значений
+        animateValueChange(tvToday, stepsToday, "Сегодня: %d шагов")
+        animateValueChange(tvWeek, stepsWeek, "Неделя: %d шагов")
+        animateValueChange(tvMonth, stepsMonth, "Месяц: %d шагов")
+        animateValueChange(tvYear, stepsYear, "Год: %d шагов")
+        animateValueChange(tvAverage, avgWeek, "Среднее: %d шагов/день")
+        animateValueChange(tvMaxDay, maxDay, "Рекорд: %d шагов")
+
+        // Анимация прогресса
+        animateProgress(stepsToday)
+
+        // Изменение цвета при достижении цели
+        if (stepsToday >= dailyGoal) {
+            cardToday.setCardBackgroundColor(Color.parseColor("#E8F5E9")) // Светло-зеленый
+            progressSteps.progressTintList = ContextCompat.getColorStateList(this, R.color.goal_achieved)
+        } else {
+            cardToday.setCardBackgroundColor(Color.WHITE)
+            progressSteps.progressTintList = ContextCompat.getColorStateList(this, R.color.colorPrimary)
+        }
+    }
+
+    private fun animateValueChange(textView: TextView, newValue: Int, format: String) {
+        val oldValue = textView.text
+            .replace(Regex("[^\\d]"), "")
+            .toIntOrNull() ?: 0
+
+        if (oldValue != newValue) {
+            val animator = ValueAnimator.ofInt(oldValue, newValue)
+            animator.duration = 1000
+            animator.interpolator = DecelerateInterpolator()
+            animator.addUpdateListener { animation ->
+                val animatedValue = animation.animatedValue as Int
+                textView.text = String.format(format, animatedValue)
+            }
+            animator.start()
+        }
+    }
+
+    private fun animateProgress(newProgress: Int) {
+        val animator = ValueAnimator.ofInt(progressSteps.progress, newProgress)
+        animator.duration = 1000
+        animator.interpolator = DecelerateInterpolator()
+        animator.addUpdateListener { animation ->
+            progressSteps.progress = animation.animatedValue as Int
+        }
+        animator.start()
     }
 
     private fun calculateWeeklySteps(): Int {
@@ -184,18 +316,3 @@ class StepCounterActivity : AppCompatActivity() {
         }
     }
 }
-/*
- * Главный экран приложения с отображением статистики шагов.
- * Функционал:
- *  - Запрашивает необходимые разрешения
- *  - Запускает фоновый сервис StepCounterService
- *  - Регистрирует BroadcastReceiver для обновления UI
- *  - Отображает статистику за разные периоды (день, неделя, месяц, год)
- *  - Рассчитывает среднее значение и максимальное количество шагов
- *  - Обновляет данные каждые 5 секунд и при получении новых шагов
- *  - Переход к топу пользователей через кнопку
- * 
- * Улучшения:
- *  - Исправлен расчет недели (теперь учитывается понедельник как начало недели)
- *  - Оптимизирована регистрация BroadcastReceiver для новых версий Android
- */

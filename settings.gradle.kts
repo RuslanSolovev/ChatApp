@@ -5,15 +5,17 @@ pluginManagement {
         mavenCentral()
     }
     plugins {
-        kotlin("jvm") version "2.0.0"
-        id("androidx.navigation.safeargs.kotlin") version "2.7.7"
-        id("org.jetbrains.kotlin.plugin.compose") version "2.0.0"
+        kotlin("jvm") version "1.9.23"
+        id("com.android.application") version "8.6.0-beta02" // Синхронизировано
+
     }
 }
 
 plugins {
     id("org.gradle.toolchains.foojay-resolver-convention") version "0.8.0"
 }
+
+
 
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.PREFER_SETTINGS)

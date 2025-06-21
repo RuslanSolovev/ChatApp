@@ -13,13 +13,17 @@
             android:id="@+id/switchLocationSharing"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Поделиться моей геопозицией"/>
+            android:text="Поделиться моей геопозицией"
+            android:textSize="25sp"
+            android:textColor="@color/red"/>
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Кто может видеть меня:"
-            android:layout_marginTop="16dp"/>
+            android:layout_marginTop="16dp"
+            android:textSize="20sp"
+            android:textColor="@color/colorPrimary"/>
 
         <RadioGroup
             android:id="@+id/radioGroupVisibility"
@@ -31,27 +35,26 @@
                 android:id="@+id/radioEveryone"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Все пользователи"/>
+                android:text="Все пользователи"
+                android:textColor="@color/colorPrimary"/>
 
-            <RadioButton
-                android:id="@+id/radioFriends"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Только друзья"
-                android:checked="true"/>
+
 
             <RadioButton
                 android:id="@+id/radioNone"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Никто"/>
+                android:text="Никто"
+                android:textColor="@color/colorPrimary"/>
         </RadioGroup>
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Частота обновления:"
-            android:layout_marginTop="16dp"/>
+            android:layout_marginTop="16dp"
+            android:textSize="25sp"
+            android:textColor="@color/colorPrimary"/>
 
         <com.google.android.material.slider.Slider
             android:id="@+id/sliderUpdateInterval"
@@ -66,7 +69,9 @@
             android:id="@+id/btnSave"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="30dp"
             android:text="Сохранить"
-            android:layout_marginTop="24dp"/>
+            android:textSize="30dp"
+            android:textColor="@color/green_online"/>
     </LinearLayout>
 </ScrollView>
