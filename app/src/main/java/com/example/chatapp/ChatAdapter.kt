@@ -15,9 +15,9 @@ import java.util.Date
 import java.util.Locale
 
 class ChatAdapter(
-    private val chatList: List<Chat>,
+    private var chatList: List<Chat>,
     private val usersCache: Map<String, User>,
-    private val onChatClick: (String) -> Unit,
+    private val onChatClick: (Chat) -> Unit,
     private val onUserClick: (String) -> Unit,
     private val onDeleteClick: (String) -> Unit
 ) : RecyclerView.Adapter<ChatAdapter.ChatViewHolder>() {
@@ -28,6 +28,12 @@ class ChatAdapter(
         val tvLastMessage: TextView = itemView.findViewById(R.id.tvLastMessage)
         val tvMessageTime: TextView = itemView.findViewById(R.id.tvMessageTime)
         val vOnlineStatus: View = itemView.findViewById(R.id.vOnlineStatus)
+    }
+
+    // В класс ChatAdapter добавьте этот метод
+    fun updateList(newList: List<Chat>) {
+        this.chatList = newList
+        notifyDataSetChanged()
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ChatViewHolder {
@@ -53,10 +59,10 @@ class ChatAdapter(
             vOnlineStatus.visibility = if (user?.isOnline == true) View.VISIBLE else View.GONE
 
             // Обработчики кликов
-            itemView.setOnClickListener { onChatClick(chat.id) }
+            itemView.setOnClickListener { onChatClick(chat) }  // Передаем весь объект
             ivUserAvatar.setOnClickListener { onUserClick(chat.creatorId) }
             itemView.setOnLongClickListener {
-                onDeleteClick(chat.id)
+                onDeleteClick(chat.chatId)
                 true
             }
         }

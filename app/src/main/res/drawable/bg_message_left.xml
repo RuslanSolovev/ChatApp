@@ -1,5 +1,5 @@
 <shape xmlns:android="http://schemas.android.com/apk/res/android">
-    <solid android:color="@color/bg_message_left"/>
+    <solid android:color="@android:color/darker_gray"/>
     <corners android:topLeftRadius="0dp"
         android:topRightRadius="8dp"
         android:bottomLeftRadius="8dp"

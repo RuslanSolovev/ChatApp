@@ -7,6 +7,7 @@ import android.widget.Button
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.chatapp.ChatSpisok
 import com.example.chatapp.GuessNumberMenuActivity
 import com.example.chatapp.IgraActivity
 import com.example.chatapp.LocationActivity
@@ -25,12 +26,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var auth: FirebaseAuth
     private lateinit var database: DatabaseReference
-    private lateinit var chatAdapter: ChatAdapter
-    private val chatList = mutableListOf<Chat>()
-    private val usersCache = hashMapOf<String, User>()
     private lateinit var igra: Button
     private lateinit var hagi: Button
     private lateinit var btnLocation: Button
+    private lateinit var textView: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -43,6 +42,7 @@ class MainActivity : AppCompatActivity() {
         igra = findViewById(R.id.igra)
         hagi = findViewById(R.id.hagi)
         btnLocation = findViewById(R.id.btnLocation)
+        textView = findViewById(R.id.textView)
 
         // Инициализация FirebaseAuth
         auth = FirebaseAuth.getInstance()
@@ -56,11 +56,6 @@ class MainActivity : AppCompatActivity() {
         // Инициализация базы данных Firebase
         database = FirebaseDatabase.getInstance().reference
 
-        // Настройка RecyclerView и адаптера
-        setupRecyclerView()
-
-        // Загрузка чатов из базы
-        fetchChats()
 
         // Настройка обработчиков кликов для кнопок
         setupClickListeners()
@@ -69,6 +64,10 @@ class MainActivity : AppCompatActivity() {
         btnLocation.setOnClickListener {
             startActivity(Intent(this, LocationActivity::class.java))
         }
+
+        textView.setOnClickListener {
+            startActivity(Intent(this, ChatSpisok::class.java))
+        }
     }
 
     private fun startAuthActivity() {
@@ -76,26 +75,12 @@ class MainActivity : AppCompatActivity() {
         finish()
     }
 
-    private fun setupRecyclerView() {
-        chatAdapter = ChatAdapter(
-            chatList = chatList,
-            usersCache = usersCache,
-            onChatClick = { chatId -> openChatDetail(chatId) },
-            onUserClick = { userId -> openUserProfile(userId) },
-            onDeleteClick = { chatId -> deleteChat(chatId) }
-        )
 
-        binding.rvChats.apply {
-            layoutManager = LinearLayoutManager(this@MainActivity)
-            adapter = chatAdapter
-            setHasFixedSize(true)
-        }
-    }
+
+
 
     private fun setupClickListeners() {
-        binding.fabCreateChat.setOnClickListener {
-            startActivity(Intent(this, CreateChatActivity::class.java))
-        }
+
 
         binding.igra.setOnClickListener {
             val intent = Intent(this, IgraActivity::class.java)
@@ -116,86 +101,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun openChatDetail(chatId: String) {
-        Intent(this, ChatDetailActivity::class.java).apply {
-            putExtra(Constants.CHAT_ID, chatId)
-            startActivity(this)
-        }
-    }
 
-    private fun openUserProfile(userId: String) {
-        Intent(this, UserProfileActivity::class.java).apply {
-            putExtra(Constants.USER_ID, userId)
-            startActivity(this)
-        }
-    }
 
-    private fun fetchChats() {
-        val userId = auth.currentUser?.uid ?: return
 
-        database.child("chats")
-            .orderByChild("participants/$userId")
-            .equalTo(true)
-            .addValueEventListener(object : ValueEventListener {
-                override fun onDataChange(snapshot: DataSnapshot) {
-                    chatList.clear()
-                    snapshot.children.forEach { ds ->
-                        ds.getValue(Chat::class.java)?.let { chat ->
-                            chatList.add(chat)
-                            loadUserData(chat.creatorId)
-                        }
-                    }
-                    chatAdapter.notifyDataSetChanged()
 
-                    if (chatList.isEmpty()) {
-                        Toast.makeText(
-                            this@MainActivity,
-                            "У вас пока нет чатов",
-                            Toast.LENGTH_SHORT
-                        ).show()
-                    }
-                }
-
-                override fun onCancelled(error: DatabaseError) {
-                    Toast.makeText(
-                        this@MainActivity,
-                        "Ошибка загрузки чатов: ${error.message}",
-                        Toast.LENGTH_SHORT
-                    ).show()
-                    Log.e("MainActivity", "DatabaseError: ${error.message}")
-                }
-            })
-    }
-
-    private fun loadUserData(userId: String) {
-        if (usersCache.containsKey(userId)) return
-
-        database.child("users").child(userId)
-            .addListenerForSingleValueEvent(object : ValueEventListener {
-                override fun onDataChange(snapshot: DataSnapshot) {
-                    snapshot.getValue(User::class.java)?.let { user ->
-                        usersCache[userId] = user
-                        chatAdapter.notifyDataSetChanged()
-                    }
-                }
-
-                override fun onCancelled(error: DatabaseError) {
-
-                    Log.e("MainActivity", "Ошибка загрузки пользователя", error.toException())
-                }
-            })
-    }
-
-    private fun deleteChat(chatId: String) {
-        database.child("chats").child(chatId).removeValue()
-            .addOnSuccessListener {
-                Toast.makeText(this, "Чат удалён", Toast.LENGTH_SHORT).show()
-            }
-            .addOnFailureListener { e ->
-                Toast.makeText(this, "Ошибка удаления: ${e.message}", Toast.LENGTH_SHORT).show()
-                Log.e("MainActivity", "Ошибка удаления чата", e)
-            }
-    }
 
     override fun onStart() {
         super.onStart()
@@ -203,4 +112,5 @@ class MainActivity : AppCompatActivity() {
             startAuthActivity()
         }
     }
+
 }

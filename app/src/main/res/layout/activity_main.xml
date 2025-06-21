@@ -1,105 +1,115 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout
+<LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="16dp">
+    android:orientation="vertical"
+    android:background="@color/gray_600"
+    android:padding="8dp">
 
     <!-- Заголовок списка чатов -->
-    <TextView
+    <Button
         android:id="@+id/textView"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:paddingLeft="10dp"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:text="Список чатов"
         android:textSize="25sp"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintBottom_toBottomOf="@+id/fabCreateChat"
-        app:layout_constraintEnd_toStartOf="@+id/fabCreateChat"
-        app:layout_constraintVertical_bias="0.5" />
+        android:background="@android:color/transparent"
+        android:foreground="?attr/selectableItemBackground"
+        android:textColor="@android:color/white"
+        android:paddingLeft="10dp"/>
 
-    <!-- Плавающая кнопка для создания чата -->
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/fabCreateChat"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
-        android:contentDescription="Создать чат"
-        app:layout_constraintTop_toTopOf="@+id/textView"
-        app:layout_constraintBottom_toBottomOf="@+id/textView"
-        app:layout_constraintStart_toEndOf="@+id/textView"
-        app:srcCompat="@android:drawable/ic_input_add" />
+    <!-- Разделительная полоса -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@android:color/darker_gray"/>
 
-    <!-- Кнопка "Мой профиль" -->
+    <!-- Мой профиль -->
     <Button
         android:id="@+id/btnMyProfile"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="16dp"
-        android:text="Мой профиль"
-        android:textSize="15sp"
-        app:layout_constraintTop_toTopOf="@+id/textView"
-        app:layout_constraintBottom_toBottomOf="@+id/textView"
-        app:layout_constraintStart_toEndOf="@+id/fabCreateChat"
-        app:layout_constraintEnd_toEndOf="parent" />
-
-    <!-- RecyclerView для списка чатов -->
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rvChats"
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_marginTop="16dp"
-        app:layout_constraintTop_toBottomOf="@id/textView"
-        app:layout_constraintBottom_toTopOf="@id/igra"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
+        android:layout_weight="1"
+        android:text="Мой профиль"
+        android:textSize="25sp"
+        android:background="@android:color/transparent"
+        android:foreground="?attr/selectableItemBackground"
+        android:textColor="@android:color/white"/>
 
-    <!-- Три кнопки внизу экрана -->
-    <Button
-        android:id="@+id/btnLocation"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="ЛОКАЦИЯ"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toEndOf="@+id/hagi"
-        app:layout_constraintEnd_toStartOf="@+id/btnLogout"
-        app:layout_constraintWidth_percent="0.25" />
-
-    <!-- ИГРЫ -->
+    <!-- Разделительная полоса -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@android:color/darker_gray"/>
+    <!-- Игры -->
     <Button
         android:id="@+id/igra"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:textSize="25sp"
+        android:background="@android:color/transparent"
+        android:foreground="?attr/selectableItemBackground"
         android:text="ИГРЫ"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toStartOf="@+id/hagi"
-        app:layout_constraintWidth_percent="0.25" />
+        android:textColor="@android:color/white" />
 
-    <!-- ШАГИ -->
+
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@android:color/darker_gray"/>
+
+    <!-- Локация -->
+    <Button
+        android:id="@+id/btnLocation"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:textSize="25sp"
+        android:text="ЛОКАЦИЯ"
+        android:background="@android:color/transparent"
+        android:foreground="?attr/selectableItemBackground"
+        android:textColor="@android:color/white"/>
+
+    <!-- Разделительная полоса -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@android:color/darker_gray"/>
+
+    <!-- Шаги -->
     <Button
         android:id="@+id/hagi"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:textSize="25sp"
         android:text="ШАГИ"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toEndOf="@+id/igra"
-        app:layout_constraintEnd_toStartOf="@+id/btnLocation"
-        app:layout_constraintWidth_percent="0.25" />
+        android:background="@android:color/transparent"
+        android:foreground="?attr/selectableItemBackground"
+        android:textColor="@android:color/white"/>
 
-    <!-- ВЫЙТИ -->
+    <!-- Разделительная полоса -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@android:color/darker_gray"/>
+
+    <!-- Выйти -->
+
+    <!-- Разделительная полоса -->
     <Button
         android:id="@+id/btnLogout"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:textSize="25sp"
+        android:layout_weight="1"
+        android:background="@android:color/transparent"
+        android:foreground="?attr/selectableItemBackground"
         android:text="ВЫЙТИ"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toEndOf="@+id/btnLocation"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintWidth_percent="0.25" />
-
-
-</androidx.constraintlayout.widget.ConstraintLayout>
+        android:textColor="@android:color/white" />
+</LinearLayout>

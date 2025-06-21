@@ -1,4 +1,3 @@
-
 package com.example.chatapp
 
 import android.app.Notification
@@ -20,8 +19,14 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 
 class StepCounterService : Service(), SensorEventListener {
+
+    private val database = FirebaseDatabase.getInstance().reference
+
     private lateinit var sensorManager: SensorManager
     private var stepCounterSensor: Sensor? = null
     private lateinit var notificationManager: NotificationManager
@@ -29,11 +34,14 @@ class StepCounterService : Service(), SensorEventListener {
     private var lastSensorTimestamp = 0L
     private var initialSteps = 0f
     private var lastTotalSteps = 0f
+    private var lastSyncedTime = 0L
+    private var syncExecutor: ScheduledExecutorService? = null
 
     companion object {
         private const val NOTIFICATION_ID = 12345
         private const val CHANNEL_ID = "step_counter_channel"
         const val ACTION_STEPS_UPDATED = "com.example.chatapp.ACTION_STEPS_UPDATED"
+        private const val SYNC_INTERVAL = 15L // минуты
 
         fun startService(context: Context) {
             val intent = Intent(context, StepCounterService::class.java)
@@ -49,6 +57,7 @@ class StepCounterService : Service(), SensorEventListener {
 
     override fun onCreate() {
         super.onCreate()
+        Log.d("StepCounter", "Service created")
         prefs = getSharedPreferences("step_prefs", Context.MODE_PRIVATE)
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         createNotificationChannel()
@@ -68,17 +77,23 @@ class StepCounterService : Service(), SensorEventListener {
         // Загрузка сохраненных значений
         initialSteps = prefs.getFloat("initial_step_count", 0f)
         lastTotalSteps = prefs.getFloat("last_total_steps", 0f)
+        lastSyncedTime = prefs.getLong("last_sync_time", 0)
+
+        // Периодическая синхронизация данных
+        startPeriodicSync()
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Step Counter",
+                "Счетчик шагов",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Counting your steps"
+                description = "Подсчет ваших шагов"
                 setShowBadge(false)
+                enableVibration(false)
+                setSound(null, null)
             }
             notificationManager.createNotificationChannel(channel)
         }
@@ -86,13 +101,15 @@ class StepCounterService : Service(), SensorEventListener {
 
     private fun createNotification(): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Step Counter")
-            .setContentText("Counting your steps")
+            .setContentTitle("Счетчик шагов")
+            .setContentText("Идет подсчет ваших шагов...")
             .setSmallIcon(R.drawable.ic_walk)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
             .setShowWhen(false)
             .setOnlyAlertOnce(true)
+            .setCategory(Notification.CATEGORY_SERVICE)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
     }
 
@@ -115,7 +132,7 @@ class StepCounterService : Service(), SensorEventListener {
 
         // Сброс при первом запуске или после перезагрузки
         if (initialSteps == 0f || bootTime > lastBoot) {
-            Log.d("StepCounter", "Initializing step counter: $totalSteps")
+            Log.d("StepCounter", "Инициализация счетчика шагов: $totalSteps")
             initialSteps = totalSteps
             lastTotalSteps = totalSteps
 
@@ -131,6 +148,7 @@ class StepCounterService : Service(), SensorEventListener {
         // Нормальное обновление шагов
         val diff = totalSteps - lastTotalSteps
         if (diff > 0) {
+            Log.d("StepCounter", "Обнаружены новые шаги: $diff")
             addStepsToStats(diff.toInt())
             lastTotalSteps = totalSteps
             prefs.edit().putFloat("last_total_steps", totalSteps).apply()
@@ -158,45 +176,112 @@ class StepCounterService : Service(), SensorEventListener {
 
     private fun syncWithFirebase(date: String, steps: Int) {
         FirebaseAuth.getInstance().currentUser?.let { user ->
+            // Сохраняем только число шагов вместо HashMap
             FirebaseDatabase.getInstance().reference
                 .child("users")
                 .child(user.uid)
                 .child("stepsData")
                 .child(date)
-                .setValue(steps)
+                .setValue(steps) // Просто число!
                 .addOnSuccessListener {
-                    Log.d("StepCounter", "Steps synced: $steps on $date")
+                    Log.d("StepCounter", "Шаги синхронизированы: $steps за $date")
+                    lastSyncedTime = System.currentTimeMillis()
+                    prefs.edit().putLong("last_sync_time", lastSyncedTime).apply()
+                    updateNotification(steps)
+                }
+                .addOnFailureListener { e ->
+                    Log.e("StepCounter", "Ошибка синхронизации: ${e.message}")
                 }
         }
     }
 
-    private fun notifyUiUpdate(date: String, steps: Int) {
-        sendBroadcast(Intent(ACTION_STEPS_UPDATED).apply {
-            putExtra("date", date)
-            putExtra("steps", steps)
-        })
+    private fun updateNotification(steps: Int) {
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Счетчик шагов")
+            .setContentText("Сегодня: $steps шагов")
+            .setSmallIcon(R.drawable.ic_walk)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .setShowWhen(false)
+            .setOnlyAlertOnce(true)
+            .setCategory(Notification.CATEGORY_SERVICE)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+
+        notificationManager.notify(NOTIFICATION_ID, notification)
     }
 
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
+    private fun notifyUiUpdate(date: String, steps: Int) {
+        val intent = Intent(ACTION_STEPS_UPDATED).apply {
+            putExtra("date", date)
+            putExtra("steps", steps)
+        }
+        sendBroadcast(intent)
+    }
+
+    private fun startPeriodicSync() {
+        syncExecutor = Executors.newSingleThreadScheduledExecutor()
+        syncExecutor?.scheduleWithFixedDelay({
+            Log.d("StepCounter", "Периодическая проверка синхронизации")
+            forceSyncAllData()
+        }, SYNC_INTERVAL, SYNC_INTERVAL, TimeUnit.MINUTES)
+    }
+
+    private fun forceSyncAllData() {
+        Log.d("StepCounter", "Принудительная синхронизация всех данных")
+        val todayKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        val todaySteps = prefs.getInt(todayKey, 0)
+
+        if (todaySteps > 0) {
+            syncWithFirebase(todayKey, todaySteps)
+        }
+
+        // Синхронизация исторических данных
+        syncHistoricalData()
+    }
+
+    private fun syncHistoricalData() {
+        val allEntries = prefs.all
+        FirebaseAuth.getInstance().currentUser?.let { user ->
+            allEntries.forEach { entry ->
+                if (entry.key is String && (entry.key as String).matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
+                    val date = entry.key as String
+                    val steps = entry.value as? Int ?: 0
+
+                    FirebaseDatabase.getInstance().reference // Используем полный путь
+                        .child("users")
+                        .child(user.uid)
+                        .child("stepsData")
+                        .child(date)
+                        .get()
+                        .addOnSuccessListener { snapshot ->
+                            if (!snapshot.exists()) {
+                                // Используем database, которую объявили в классе
+                                database.child("users")
+                                    .child(user.uid)
+                                    .child("stepsData")
+                                    .child(date)
+                                    .setValue(steps)
+                            }
+                        }
+                }
+            }
+        }
+    }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
+        // Не требуется
+    }
 
     override fun onDestroy() {
         super.onDestroy()
         sensorManager.unregisterListener(this)
-        Log.d("StepCounter", "Service destroyed")
+        syncExecutor?.shutdown()
+        Log.d("StepCounter", "Сервис остановлен")
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        // Перезапускаем сервис при убийстве системы
+        return START_STICKY
     }
 }
-/*
- * Фоновый сервис для подсчета шагов.
- * Функционал:
- *  - Работает как Foreground Service с постоянным уведомлением
- *  - Регистрирует датчик шагов для получения данных
- *  - Обрабатывает сброс счетчика после перезагрузки
- *  - Сохраняет данные в SharedPreferences
- *  - Синхронизирует шаги с Firebase в реальном времени
- *  - Отправляет Broadcast для обновления UI
- * 
- * Улучшения:
- *  - Корректная обработка перезагрузки устройства
- *  - Оптимизировано обновление данных (не чаще 1 раза в секунду)
- *  - Логирование ключевых событий
- */

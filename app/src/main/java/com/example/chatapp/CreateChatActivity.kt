@@ -53,7 +53,7 @@ class CreateChatActivity : AppCompatActivity() {
             }
 
         val chat = Chat(
-            id = chatId,
+            chatId = chatId,
             name = chatName,
             lastMessage = "Чат создан",
             participants = mapOf(currentUserId to true),

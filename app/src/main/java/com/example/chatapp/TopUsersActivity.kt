@@ -1,15 +1,16 @@
-
 package com.example.chatapp
 
 import android.content.Context
 import android.content.SharedPreferences
 import android.os.Bundle
+import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.chatapp.adapters.TopUsersAdapter
 import com.example.chatapp.databinding.ActivityTopUsersBinding
 import com.example.chatapp.models.User
+import com.google.android.material.tabs.TabLayout
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.DataSnapshot
 import com.google.firebase.database.DatabaseError
@@ -33,6 +34,7 @@ class TopUsersActivity : AppCompatActivity() {
         const val PERIOD_DAY = 0
         const val PERIOD_WEEK = 1
         const val PERIOD_MONTH = 2
+        private const val TAG = "TopUsersActivity"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -43,7 +45,7 @@ class TopUsersActivity : AppCompatActivity() {
 
         setupToolbar()
         setupRecyclerView()
-        setupPeriodButtons()
+        setupPeriodTabs()
         syncLocalStepsWithFirebase()
     }
 
@@ -71,17 +73,21 @@ class TopUsersActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupPeriodButtons() {
-        binding.periodGroup.check(R.id.btn_day)
-        binding.periodGroup.setOnCheckedChangeListener { _, checkedId ->
-            currentPeriod = when (checkedId) {
-                R.id.btn_day -> PERIOD_DAY
-                R.id.btn_week -> PERIOD_WEEK
-                R.id.btn_month -> PERIOD_MONTH
-                else -> PERIOD_DAY
+    private fun setupPeriodTabs() {
+        binding.periodTabs.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
+            override fun onTabSelected(tab: TabLayout.Tab?) {
+                currentPeriod = when (tab?.position) {
+                    0 -> PERIOD_DAY    // День
+                    1 -> PERIOD_WEEK   // Неделя
+                    2 -> PERIOD_MONTH // Месяц
+                    else -> PERIOD_DAY
+                }
+                updateUsersList()
             }
-            updateUsersList()
-        }
+
+            override fun onTabUnselected(tab: TabLayout.Tab?) {}
+            override fun onTabReselected(tab: TabLayout.Tab?) {}
+        })
     }
 
     private fun setupFirebaseListener() {
@@ -91,11 +97,15 @@ class TopUsersActivity : AppCompatActivity() {
             override fun onDataChange(snapshot: DataSnapshot) {
                 usersList.clear()
                 for (userSnapshot in snapshot.children) {
-                    val user = userSnapshot.getValue(User::class.java)
-                    user?.let {
-                        // Пересчет шагов для текущего периода
-                        it.totalSteps = calculateStepsForPeriod(it, currentPeriod)
-                        usersList.add(it)
+                    try {
+                        val user = userSnapshot.getValue(User::class.java)
+                        user?.let {
+                            // Пересчет шагов для текущего периода
+                            it.totalSteps = calculateStepsForPeriod(it, currentPeriod)
+                            usersList.add(it)
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Ошибка при разборе пользователя ${userSnapshot.key}", e)
                     }
                 }
                 updateUsersList()
@@ -142,15 +152,21 @@ class TopUsersActivity : AppCompatActivity() {
 
     private fun calculateStepsForPeriod(user: User, period: Int): Int {
         return when (period) {
-            PERIOD_DAY -> user.stepsData?.get(getCurrentDateKey()) ?: 0
-            PERIOD_WEEK -> calculateWeeklySteps(user.stepsData)
-            PERIOD_MONTH -> calculateMonthlySteps(user.stepsData)
+            PERIOD_DAY -> getStepsForDate(user, getCurrentDateKey())
+            PERIOD_WEEK -> calculateWeeklySteps(user)
+            PERIOD_MONTH -> calculateMonthlySteps(user)
             else -> 0
         }
     }
 
-    private fun calculateWeeklySteps(stepsData: Map<String, Int>?): Int {
-        if (stepsData == null) return 0
+    private fun getStepsForDate(user: User, dateKey: String): Int {
+        val stepsData = user.stepsData ?: return 0
+        val value = stepsData[dateKey] ?: return 0
+        return convertToSteps(value)
+    }
+
+    private fun calculateWeeklySteps(user: User): Int {
+        val stepsData = user.stepsData ?: return 0
 
         val calendar = Calendar.getInstance().apply {
             firstDayOfWeek = Calendar.MONDAY
@@ -170,16 +186,30 @@ class TopUsersActivity : AppCompatActivity() {
                     false
                 }
             }
-            .sumOf { it.value }
+            .sumOf { (_, value) ->
+                convertToSteps(value)
+            }
     }
 
-    private fun calculateMonthlySteps(stepsData: Map<String, Int>?): Int {
-        if (stepsData == null) return 0
+    private fun calculateMonthlySteps(user: User): Int {
+        val stepsData = user.stepsData ?: return 0
 
         val currentMonth = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date())
         return stepsData.entries
             .filter { (key, _) -> key.startsWith(currentMonth) }
-            .sumOf { it.value }
+            .sumOf { (_, value) ->
+                convertToSteps(value)
+            }
+    }
+
+    // Универсальная функция преобразования в число шагов
+    private fun convertToSteps(value: Any?): Int {
+        return when (value) {
+            is Int -> value
+            is Long -> value.toInt()
+            is Map<*, *> -> (value["steps"] as? Int) ?: 0
+            else -> 0
+        }
     }
 
     private fun getCurrentDateKey(): String {
@@ -191,16 +221,3 @@ class TopUsersActivity : AppCompatActivity() {
         return true
     }
 }
-/*
- * Экран с рейтингом пользователей по количеству шагов.
- * Функционал:
- *  - Отображает топ пользователей за разные периоды (день, неделя, месяц)
- *  - Синхронизирует локальные шаги с Firebase
- *  - Реализует слушатель Firebase для обновления в реальном времени
- *  - Пересчитывает статистику при смене периода
- * 
- * Улучшения:
- *  - Исправлен расчет недели (единообразие с главным экраном)
- *  - Оптимизирована работа с Firebase (корректное удаление слушателя)
- *  - Автоматическое обновление списка при изменении данных
- */

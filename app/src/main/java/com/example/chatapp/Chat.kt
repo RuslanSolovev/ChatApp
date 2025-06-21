@@ -1,9 +1,8 @@
-
-
 package com.example.chatapp.models
 
 data class Chat(
-    val id: String = "",
+    val chatId: String = "",
+    val lastMessageTimestamp: Long? = null,
     val name: String = "",
     val lastMessage: String = "",
     val participants: Map<String, Boolean> = hashMapOf(),
@@ -15,5 +14,4 @@ data class Chat(
     val replyToMessageId: String? = null,  // ID сообщения, на которое отвечаем
     val replyToMessageText: String? = null, // Текст сообщения, на которое отвечаем
     val replyToSenderName: String? = null   // Имя отправителя исходного сообщения
-
 )
