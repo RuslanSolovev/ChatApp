@@ -1,44 +1,83 @@
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="16dp"
+    android:background="@drawable/bg_gradient">
 
-    <!-- Инструкция для игрока -->
-    <TextView
-        android:id="@+id/tvFeedback"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Угадайте число от 1 до 100"
-        android:textSize="18sp"
-        android:gravity="center"
-        android:layout_marginBottom="16dp" />
+        android:orientation="vertical">
 
-    <!-- Поле для отображения лучшего результата -->
-    <TextView
-        android:id="@+id/tvBestScore"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Лучший результат: -"
-        android:textSize="16sp"
-        android:gravity="center"
-        android:layout_marginBottom="24dp" />
+        <!-- Инструкция для игрока -->
+        <TextView
+            android:id="@+id/tvFeedback"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Угадайте число от 1 до 100"
+            android:textSize="24sp"
+            android:textColor="@color/white"
+            android:gravity="center"
+            android:textStyle="bold"
+            android:layout_marginBottom="16dp" />
 
-    <!-- Поле для ввода числа -->
-    <EditText
-        android:id="@+id/etUserGuess"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="Введите ваше число"
-        android:inputType="number"
-        android:layout_marginBottom="16dp" />
+        <!-- Поле для отображения лучшего результата -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="4dp"
+            app:cardBackgroundColor="@color/white"
+            android:layout_marginBottom="24dp">
 
-    <!-- Кнопка для отправки ответа -->
-    <Button
-        android:id="@+id/btnSubmit"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Угадать" />
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="16dp"
+                android:gravity="center_vertical">
 
-</LinearLayout>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="🏆"
+                    android:textSize="24sp"
+                    android:paddingEnd="16dp" />
+
+                <TextView
+                    android:id="@+id/tvBestScore"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Лучший результат: -"
+                    android:textSize="18sp"
+                    android:textColor="@color/black" />
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- Поле для ввода числа -->
+        <EditText
+            android:id="@+id/etUserGuess"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:hint="Введите ваше число"
+            android:inputType="number"
+            android:backgroundTint="@color/white"
+            android:textColorHint="@color/gray_light"
+            android:textColor="@color/white"
+            android:padding="12dp"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Кнопка для отправки ответа -->
+        <Button
+            android:id="@+id/btnSubmit"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Угадать"
+            android:textSize="18sp"
+            android:textColor="@color/white"
+            android:backgroundTint="@color/colorPrimary"
+            android:paddingVertical="12dp" />
+    </LinearLayout>
+</ScrollView>

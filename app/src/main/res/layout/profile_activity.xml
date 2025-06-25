@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="16dp">
+    android:padding="16dp"
+    android:background="@drawable/bg_gradient">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -12,17 +12,25 @@
         android:orientation="vertical"
         android:gravity="center_horizontal">
 
+        <!-- Заголовок -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Профиль"
+            android:textSize="24sp"
+            android:textColor="@color/white"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:paddingBottom="16dp"/>
+
         <!-- Фото профиля -->
         <ImageView
             android:id="@+id/ivProfilePicture"
             android:layout_width="150dp"
             android:layout_height="150dp"
             android:scaleType="centerCrop"
-
+            android:src="@drawable/ic_profile_placeholder"
             android:contentDescription="Фото профиля"
-            app:layout_constraintTop_toTopOf="parent"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintEnd_toEndOf="parent"
             android:layout_marginBottom="16dp"/>
 
         <!-- Кнопка загрузки фото -->
@@ -31,54 +39,180 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Загрузить фото"
+            android:drawableStart="@drawable/ic_upload_photo"
+            android:drawableTint="@color/white"
+            android:backgroundTint="@color/colorPrimary"
+            android:textColor="@color/white"
+            android:paddingVertical="8dp"
+            android:paddingHorizontal="16dp"
             android:layout_marginBottom="24dp"/>
 
         <!-- Email -->
-        <EditText
-            android:id="@+id/etEmail"
+        <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Email"
-            android:inputType="textEmailAddress"
-            android:enabled="false"
-            android:layout_marginBottom="8dp"/>
+            app:cardCornerRadius="12dp"
+            app:cardElevation="4dp"
+            app:cardBackgroundColor="@color/white"
+            android:layout_marginBottom="8dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="16dp"
+                android:gravity="center_vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="📧"
+                    android:textSize="24sp"
+                    android:paddingEnd="16dp"/>
+                <EditText
+                    android:id="@+id/etEmail"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="Email"
+                    android:inputType="textEmailAddress"
+                    android:enabled="false"
+                    android:textColorHint="@color/black"
+                    android:textColor="@color/black"
+                    android:textSize="16sp"/>
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
 
         <!-- Имя -->
-        <EditText
-            android:id="@+id/etFirstName"
+        <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Имя"
-            android:inputType="textPersonName"
-            android:layout_marginBottom="8dp"/>
+            app:cardCornerRadius="12dp"
+            app:cardElevation="4dp"
+            app:cardBackgroundColor="@color/white"
+            android:layout_marginBottom="8dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="16dp"
+                android:gravity="center_vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="👤"
+                    android:textSize="24sp"
+                    android:paddingEnd="16dp"/>
+                <EditText
+                    android:id="@+id/etFirstName"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="Имя"
+                    android:inputType="textPersonName"
+                    android:textColorHint="@color/black"
+                    android:textColor="@color/black"
+                    android:textSize="16sp"/>
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
 
         <!-- Фамилия -->
-        <EditText
-            android:id="@+id/etLastName"
+        <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Фамилия"
-            android:inputType="textPersonName"
-            android:layout_marginBottom="8dp"/>
+            app:cardCornerRadius="12dp"
+            app:cardElevation="4dp"
+            app:cardBackgroundColor="@color/white"
+            android:layout_marginBottom="8dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="16dp"
+                android:gravity="center_vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="👥"
+                    android:textSize="24sp"
+                    android:paddingEnd="16dp"/>
+                <EditText
+                    android:id="@+id/etLastName"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="Фамилия"
+                    android:inputType="textPersonName"
+                    android:textColorHint="@color/black"
+                    android:textColor="@color/black"
+                    android:textSize="16sp"/>
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
 
         <!-- Отчество -->
-        <EditText
-            android:id="@+id/etMiddleName"
+        <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Отчество"
-            android:inputType="textPersonName"
-            android:layout_marginBottom="8dp"/>
+            app:cardCornerRadius="12dp"
+            app:cardElevation="4dp"
+            app:cardBackgroundColor="@color/white"
+            android:layout_marginBottom="8dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="16dp"
+                android:gravity="center_vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="👨‍👩‍👦"
+                    android:textSize="24sp"
+                    android:paddingEnd="16dp"/>
+                <EditText
+                    android:id="@+id/etMiddleName"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="Отчество"
+                    android:inputType="textPersonName"
+                    android:textColorHint="@color/black"
+                    android:textColor="@color/black"
+                    android:textSize="16sp"/>
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
 
         <!-- Дополнительная информация -->
-        <EditText
-            android:id="@+id/etAdditionalInfo"
+        <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:hint="Дополнительная информация"
-            android:inputType="textMultiLine"
-            android:minLines="3"
-            android:layout_marginBottom="24dp"/>
+            app:cardCornerRadius="12dp"
+            app:cardElevation="4dp"
+            app:cardBackgroundColor="@color/white"
+            android:layout_marginBottom="24dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="16dp"
+                android:gravity="center_vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="📝"
+                    android:textSize="24sp"
+                    android:paddingEnd="16dp"/>
+                <EditText
+                    android:id="@+id/etAdditionalInfo"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="Дополнительная информация"
+                    android:inputType="textMultiLine"
+                    android:minLines="3"
+                    android:textColorHint="@color/black"
+                    android:textColor="@color/black"
+                    android:textSize="16sp"/>
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
 
         <!-- Кнопка сохранения -->
         <Button
@@ -86,6 +220,11 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Сохранить профиль"
+            android:drawableStart="@drawable/ic_save"
+            android:drawableTint="@color/white"
+            android:backgroundTint="@color/colorPrimary"
+            android:textColor="@color/white"
+            android:paddingVertical="12dp"
             android:layout_marginBottom="8dp"/>
 
         <!-- Кнопка удаления -->
@@ -94,7 +233,10 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Удалить данные профиля"
+            android:drawableStart="@drawable/ic_delete"
+            android:drawableTint="@color/white"
             android:backgroundTint="@color/red"
-            android:textColor="@color/white"/>
+            android:textColor="@color/white"
+            android:paddingVertical="12dp"/>
     </LinearLayout>
 </ScrollView>

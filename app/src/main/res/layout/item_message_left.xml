@@ -1,103 +1,132 @@
-<?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout
+<androidx.cardview.widget.CardView
     xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_margin="8dp">
-
-    <com.google.android.material.imageview.ShapeableImageView
-        android:id="@+id/ivUserAvatar"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
-        android:layout_marginEnd="8dp"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:shapeAppearanceOverlay="@style/CircleImageView"
-        android:src="@drawable/ic_default_profile"/>
+    app:cardCornerRadius="16dp"
+    app:cardElevation="8dp"
+    app:cardBackgroundColor="#F0F6DA"
+    android:layout_marginStart="16dp"
+    android:layout_marginTop="8dp"
+    android:layout_marginBottom="8dp"
+    android:layout_marginEnd="72dp">
 
     <androidx.constraintlayout.widget.ConstraintLayout
         android:id="@+id/messageContainer"
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="8dp"
-        android:layout_marginEnd="100dp"
-        android:background="@drawable/bg_message_left"
-        android:padding="8dp"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toEndOf="@id/ivUserAvatar"
-        app:layout_constraintTop_toTopOf="parent">
+        android:padding="8dp">
 
+        <!-- Аватар пользователя -->
+        <com.google.android.material.imageview.ShapeableImageView
+            android:id="@+id/ivUserAvatar"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:layout_marginEnd="16dp"
+            android:src="@drawable/ic_default_profile"
+            app:shapeAppearanceOverlay="@style/CircleImageView"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"/>
+
+        <!-- Имя отправителя -->
         <TextView
             android:id="@+id/tvSenderName"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:textColor="@color/primary_text"
-            android:textSize="12sp"
+            android:textColor="#2B2C2D"
+            android:textSize="16sp"
             android:textStyle="bold"
-            app:layout_constraintStart_toStartOf="parent"
-            app:layout_constraintTop_toTopOf="parent"/>
+            tools:text="Имя отправителя"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toEndOf="@id/ivUserAvatar"
+            app:layout_constraintEnd_toEndOf="parent"/>
 
-        <!-- Заменяем View на LinearLayout для replyContainer -->
+        <!-- Контейнер ответа -->
         <LinearLayout
             android:id="@+id/replyContainer"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:background="@color/reply_background"
-            android:padding="4dp"
             android:orientation="vertical"
-            app:layout_constraintTop_toBottomOf="@id/tvSenderName">
+            android:background="#E0E0E0"
+            android:padding="8dp"
+            android:visibility="gone"
+            app:layout_constraintTop_toBottomOf="@id/tvSenderName"
+            app:layout_constraintStart_toEndOf="@id/ivUserAvatar"
+            app:layout_constraintEnd_toEndOf="parent">
 
             <TextView
                 android:id="@+id/tvReplySender"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:textColor="@color/primary_text"
-                android:textSize="10sp"
-                android:textStyle="bold"/>
+                android:textColor="#2B2C2D"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                tools:text="Ответ пользователю"/>
 
             <TextView
                 android:id="@+id/tvReplyText"
-                android:layout_width="wrap_content"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:textColor="@color/secondary_text"
-                android:textSize="10sp"
-                android:maxLines="1"
-                android:ellipsize="end"/>
-
-            <com.google.android.material.imageview.ShapeableImageView
-                android:id="@+id/ivReplyImage"
-                android:layout_width="40dp"
-                android:layout_height="40dp"
-                android:visibility="gone"/>
+                android:layout_marginTop="4dp"
+                android:textColor="#21292F"
+                android:textSize="14sp"
+                android:maxLines="2"
+                android:ellipsize="end"
+                tools:text="Текст ответа..."/>
         </LinearLayout>
 
+        <!-- Текст сообщения -->
         <TextView
             android:id="@+id/tvMessageText"
-            android:layout_width="match_parent"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:textColor="@color/primary_text"
-            app:layout_constraintTop_toBottomOf="@id/replyContainer"/>
+            android:layout_marginTop="8dp"
+            android:textColor="#000000"
+            android:textSize="16sp"
+            app:layout_constraintTop_toBottomOf="@id/replyContainer"
+            app:layout_constraintStart_toEndOf="@id/ivUserAvatar"
+            app:layout_constraintEnd_toEndOf="parent"
+            tools:text="Текст сообщения"/>
 
+        <!-- Изображение сообщения -->
         <com.google.android.material.imageview.ShapeableImageView
             android:id="@+id/ivMessageImage"
-            android:layout_width="150dp"
-            android:layout_height="150dp"
-            android:layout_marginTop="4dp"
+            android:layout_width="200dp"
+            android:layout_height="200dp"
+            android:layout_marginTop="8dp"
+            android:scaleType="centerCrop"
             android:visibility="gone"
-            app:layout_constraintTop_toBottomOf="@id/tvMessageText"/>
+            app:layout_constraintTop_toBottomOf="@id/tvMessageText"
+            app:layout_constraintStart_toEndOf="@id/ivUserAvatar"
+            app:shapeAppearanceOverlay="@style/RoundedCorners"/>
 
+        <!-- Время сообщения (справа снизу) -->
         <TextView
             android:id="@+id/tvTime"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:textColor="@color/secondary_text"
-            android:textSize="10sp"
+            android:textColor="#666666"
+            android:textSize="12sp"
+            android:layout_marginEnd="8dp"
+            android:layout_marginBottom="8dp"
+            app:layout_constraintBottom_toBottomOf="parent"
             app:layout_constraintEnd_toEndOf="parent"
-            app:layout_constraintTop_toBottomOf="@id/ivMessageImage"/>
+            tools:text="12:34" />
+
+        <!-- Нижняя панель с отметкой о редактировании -->
+        <TextView
+            android:id="@+id/tvEdited"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:text="@string/edited"
+            android:textColor="#666666"
+            android:textSize="10sp"
+            android:visibility="gone"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="@id/tvTime"
+            app:layout_constraintTop_toTopOf="@id/tvTime"/>
     </androidx.constraintlayout.widget.ConstraintLayout>
-</androidx.constraintlayout.widget.ConstraintLayout>
+</androidx.cardview.widget.CardView>

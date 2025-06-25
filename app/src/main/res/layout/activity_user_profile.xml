@@ -1,81 +1,91 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:background="@drawable/bg_gradient"
     android:padding="16dp">
 
-    <androidx.appcompat.widget.Toolbar
-        android:id="@+id/toolbar"
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
-        android:background="?attr/colorPrimary"
-        app:navigationIcon="?attr/homeAsUpIndicator"
-        app:title="Профиль"
-        app:titleTextColor="@color/white"/>
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
 
-    <ScrollView
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:fillViewport="true">
+        <!-- Toolbar -->
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="@color/colorPrimary"
+            app:navigationIcon="?attr/homeAsUpIndicator"
+            app:title="Профиль"
+            app:titleTextColor="@color/white"
+            android:layout_marginBottom="16dp" />
 
-        <LinearLayout
+        <!-- Аватар -->
+        <ImageView
+            android:id="@+id/ivProfile"
+            android:layout_width="120dp"
+            android:layout_height="120dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="16dp"
+            android:contentDescription="Аватар пользователя"
+            android:src="@drawable/ic_default_profile"
+            android:background="@drawable/avatar_background_circle"
+            android:padding="8dp" />
+
+        <!-- Основная информация -->
+        <TextView
+            android:id="@+id/tvName"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="16dp"
+            android:textSize="24sp"
+            android:textStyle="bold"
+            android:textColor="@color/white"
+            tools:text="Иван Иванов" />
+
+        <TextView
+            android:id="@+id/tvEmail"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="8dp"
+            android:textColor="@color/gray_light"
+            tools:text="user@example.com" />
+
+        <!-- Блок с геолокацией -->
+        <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="center_horizontal"
-            android:padding="16dp">
+            app:cardCornerRadius="12dp"
+            app:cardElevation="4dp"
+            app:cardBackgroundColor="@color/white"
+            android:layout_marginTop="16dp">
 
-            <!-- Аватар -->
-            <ImageView
-                android:id="@+id/ivProfile"
-                android:layout_width="120dp"
-                android:layout_height="120dp"
-                android:layout_marginTop="16dp"
-                android:contentDescription="Аватар пользователя"
-                android:src="@drawable/ic_default_profile"/>
-
-            <!-- Основная информация -->
-            <TextView
-                android:id="@+id/tvName"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:textSize="20sp"
-                android:textStyle="bold"
-                tools:text="Иван Иванов"/>
-
-            <TextView
-                android:id="@+id/tvEmail"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                tools:text="user@example.com"/>
-
-            <!-- Блок с геолокацией -->
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:layout_marginTop="16dp"
-                android:padding="8dp"
-                android:background="@drawable/bg_profile_section">
+                android:padding="16dp">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Геолокация"
+                    android:text="📍 Геолокация"
                     android:textStyle="bold"
-                    android:textSize="16sp"/>
+                    android:textSize="18sp"
+                    android:textColor="@color/black" />
 
                 <TextView
                     android:id="@+id/tvLocation"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    tools:text="Широта: 55.7558, Долгота: 37.6176"/>
+                    android:textColor="@color/black"
+                    tools:text="Широта: 55.7558, Долгота: 37.6176" />
 
                 <Button
                     android:id="@+id/btnShowOnMap"
@@ -83,56 +93,77 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
                     android:text="Показать на карте"
-                    style="@style/Widget.AppCompat.Button.Borderless"/>
+                    android:textColor="@color/colorPrimary"
+                    android:backgroundTint="@color/white"
+                    android:padding="8dp" />
             </LinearLayout>
+        </androidx.cardview.widget.CardView>
 
-            <!-- Детальная информация -->
+        <!-- Детальная информация -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="4dp"
+            app:cardBackgroundColor="@color/white"
+            android:layout_marginTop="16dp">
+
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:layout_marginTop="16dp"
-                android:padding="8dp"
-                android:background="@drawable/bg_profile_section">
+                android:padding="16dp">
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Детальная информация"
+                    android:text="📋 Детальная информация"
                     android:textStyle="bold"
-                    android:textSize="16sp"/>
+                    android:textSize="18sp"
+                    android:textColor="@color/black" />
 
                 <TextView
                     android:id="@+id/tvFirstName"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    tools:hint="Имя"/>
+                    android:textColor="@color/black"
+                    tools:hint="Имя" />
 
                 <TextView
                     android:id="@+id/tvLastName"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    tools:hint="Фамилия"/>
+                    android:textColor="@color/black"
+                    tools:hint="Фамилия" />
 
                 <TextView
                     android:id="@+id/tvMiddleName"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    tools:hint="Отчество"/>
+                    android:textColor="@color/black"
+                    tools:hint="Отчество" />
             </LinearLayout>
+        </androidx.cardview.widget.CardView>
 
-            <!-- Дополнительная информация -->
+        <!-- Дополнительная информация -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="4dp"
+            app:cardBackgroundColor="@color/white"
+            android:layout_marginTop="16dp">
+
             <TextView
                 android:id="@+id/tvAdditionalInfo"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="16dp"
-                android:padding="8dp"
-                android:background="@drawable/bg_profile_section"
-                tools:hint="Дополнительная информация"/>
-        </LinearLayout>
-    </ScrollView>
-</LinearLayout>
+                android:padding="16dp"
+                android:textColor="@color/black"
+                tools:hint="Дополнительная информация" />
+        </androidx.cardview.widget.CardView>
+    </LinearLayout>
+</ScrollView>

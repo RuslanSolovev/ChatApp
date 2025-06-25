@@ -1,95 +1,146 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="16dp"
-    android:background="@color/black">
+    android:background="@drawable/bg_gradient"
+    android:padding="16dp">
 
-    <!-- Отображение рекорда для уровня сложности -->
-
-
-    <!-- Задача для игрока -->
+    <!-- Лучший результат -->
     <TextView
         android:id="@+id/tvBestScore"
-        android:layout_width="309dp"
-        android:layout_height="39dp"
-        android:layout_marginLeft="16dp"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
         android:layout_marginTop="20dp"
-        android:text="Лучший результат: 0"
-        android:textSize="20sp"
-        android:textColor="@color/bg_message_right"/>
-
-    <TextView
-        android:id="@+id/tvProblem"
-        android:layout_width="match_parent"
-        android:layout_height="40dp"
-        android:layout_marginBottom="24dp"
+        android:text="🏆 Лучший результат: 0"
+        android:textSize="24sp"
+        android:textColor="@color/white"
         android:gravity="center"
-        android:text="Задача будет тут"
-        android:textSize="18sp"
-        android:textColor="@color/bg_message_right"/>
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Задача для игрока -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cardProblem"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="4dp"
+        app:cardBackgroundColor="@color/white"
+        android:layout_marginTop="16dp"
+        app:layout_constraintTop_toBottomOf="@id/tvBestScore"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView
+            android:id="@+id/tvProblem"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center"
+            android:text="Задача будет тут"
+            android:textSize="18sp"
+            android:textColor="@color/black"
+            android:padding="16dp" />
+    </androidx.cardview.widget.CardView>
 
     <!-- Поле для ввода ответа -->
     <EditText
         android:id="@+id/etUserAnswer"
-        android:layout_width="382dp"
-        android:layout_height="62dp"
-        android:layout_marginBottom="6dp"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="24dp"
         android:hint="Введите ваш ответ"
         android:inputType="number"
-        android:textSize="26dp"
-        android:textColor="@color/bg_message_right"
-        android:textColorHint="@color/bg_message_right"/>
+        android:textSize="26sp"
+        android:textColor="@color/white"
+        android:textColorHint="@color/gray_light"
+        android:backgroundTint="@color/white"
+        android:padding="12dp"
+        app:layout_constraintTop_toBottomOf="@id/cardProblem"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
     <!-- Кнопка для отправки ответа -->
     <Button
         android:id="@+id/btnSubmit"
-        android:layout_width="383dp"
-        android:layout_height="77dp"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
         android:text="Ответить"
-        android:textSize="25sp"/>
+        android:textSize="20sp"
+        android:textColor="@color/white"
+        android:backgroundTint="@color/colorPrimary"
+        android:padding="12dp"
+        app:layout_constraintTop_toBottomOf="@id/etUserAnswer"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
     <!-- Отображение количества ошибок -->
     <TextView
         android:id="@+id/tvErrors"
-        android:layout_width="383dp"
-        android:layout_height="43dp"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:text="Ошибки: 0/3"
-        android:textSize="26sp"
-        android:textColor="@color/red"/>
+        android:text="❌ Ошибки: 0/3"
+        android:textSize="18sp"
+        android:textColor="@color/red"
+        android:gravity="center"
+        app:layout_constraintTop_toBottomOf="@id/btnSubmit"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
     <!-- Отображение оставшегося времени -->
     <TextView
         android:id="@+id/tvTimer"
-        android:layout_width="377dp"
-        android:layout_height="43dp"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
-        android:text="Осталось времени: 10 сек"
-        android:textSize="26sp"
-        android:textColor="@color/bg_message_right"/>
+        android:text="⏳ Осталось времени: 10 сек"
+        android:textSize="18sp"
+        android:textColor="@color/white"
+        android:gravity="center"
+        app:layout_constraintTop_toBottomOf="@id/tvErrors"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
 
     <!-- Отображение правильных ответов -->
     <TextView
         android:id="@+id/tvCorrectAnswers"
-        android:layout_width="383dp"
-        android:layout_height="46dp"
-        android:layout_marginTop="16dp"
-        android:text="Правильных ответов: 0"
-        android:textSize="26sp"
-        android:textColor="#4BF803"
-        />
-
-    <!-- Отображение обратной связи (правильный/неправильный ответ) -->
-    <TextView
-        android:id="@+id/tvFeedback"
-        android:layout_width="380dp"
-        android:layout_height="72dp"
+        android:layout_width="379dp"
+        android:layout_height="38dp"
         android:layout_marginTop="16dp"
         android:gravity="center"
-        android:text="Введите ваш ответ"
-        android:textSize="26sp"
-        android:textColor="@color/bg_message_right"/>
+        android:text="✅ Правильных ответов: 0"
+        android:textColor="@color/gradientStart"
+        android:textSize="18sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/tvTimer" />
 
-</LinearLayout>
+    <!-- Отображение обратной связи (правильный/неправильный ответ) -->
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cardFeedback"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="4dp"
+        app:cardBackgroundColor="@color/white"
+        android:layout_marginTop="16dp"
+        app:layout_constraintTop_toBottomOf="@id/tvCorrectAnswers"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <TextView
+            android:id="@+id/tvFeedback"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Введите ваш ответ"
+            android:textSize="20sp"
+            android:textColor="@color/black"
+            android:gravity="center"
+            android:padding="12dp" />
+    </androidx.cardview.widget.CardView>
+</androidx.constraintlayout.widget.ConstraintLayout>

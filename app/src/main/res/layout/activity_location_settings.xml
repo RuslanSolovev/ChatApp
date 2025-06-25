@@ -1,7 +1,8 @@
 <ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:background="@color/colorPrimary">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -9,69 +10,138 @@
         android:orientation="vertical"
         android:padding="16dp">
 
-        <Switch
-            android:id="@+id/switchLocationSharing"
+        <!-- Карточка для переключателя геопозиции -->
+        <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Поделиться моей геопозицией"
-            android:textSize="25sp"
-            android:textColor="@color/red"/>
+            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="4dp"
+            android:backgroundTint="@color/light_gray">
 
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Кто может видеть меня:"
-            android:layout_marginTop="16dp"
-            android:textSize="20sp"
-            android:textColor="@color/colorPrimary"/>
-
-        <RadioGroup
-            android:id="@+id/radioGroupVisibility"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical">
-
-            <RadioButton
-                android:id="@+id/radioEveryone"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Все пользователи"
-                android:textColor="@color/colorPrimary"/>
+                android:orientation="horizontal"
+                android:padding="16dp"
+                android:gravity="center_vertical">
 
+                <ImageView
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:src="@drawable/ic_location"
+                    app:tint="@color/colorPrimary"
+                    android:contentDescription="Иконка геопозиции" />
 
+                <Switch
+                    android:id="@+id/switchLocationSharing"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Поделиться моей геопозицией"
+                    android:textSize="18sp"
+                    android:textColor="@color/colorPrimary"
+                    android:layout_marginStart="16dp" />
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
 
-            <RadioButton
-                android:id="@+id/radioNone"
+        <!-- Карточка для выбора видимости -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="4dp"
+            android:backgroundTint="@color/light_gray">
+
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Никто"
-                android:textColor="@color/colorPrimary"/>
-        </RadioGroup>
+                android:orientation="vertical"
+                android:padding="16dp">
 
-        <TextView
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Кто может видеть меня:"
+                    android:textSize="18sp"
+                    android:textColor="@color/colorPrimary"
+                    android:layout_marginBottom="8dp" />
+
+                <RadioGroup
+                    android:id="@+id/radioGroupVisibility"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <RadioButton
+                        android:id="@+id/radioEveryone"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Все пользователи"
+                        android:textColor="@color/colorPrimary"
+                        android:buttonTint="@color/colorPrimary" />
+
+                    <RadioButton
+                        android:id="@+id/radioNone"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Никто"
+                        android:textColor="@color/colorPrimary"
+                        android:buttonTint="@color/colorPrimary" />
+                </RadioGroup>
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- Карточка для слайдера частоты обновления -->
+        <androidx.cardview.widget.CardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Частота обновления:"
-            android:layout_marginTop="16dp"
-            android:textSize="25sp"
-            android:textColor="@color/colorPrimary"/>
+            android:layout_marginBottom="16dp"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="4dp"
+            android:backgroundTint="@color/light_gray">
 
-        <com.google.android.material.slider.Slider
-            android:id="@+id/sliderUpdateInterval"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:valueFrom="1"
-            android:valueTo="60"
-            android:stepSize="1"
-            android:value="5"/>
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="16dp">
 
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Частота обновления:"
+                    android:textSize="18sp"
+                    android:textColor="@color/colorPrimary"
+                    android:layout_marginBottom="8dp" />
+
+                <com.google.android.material.slider.Slider
+                    android:id="@+id/sliderUpdateInterval"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:valueFrom="1"
+                    android:valueTo="60"
+                    android:stepSize="1"
+                    android:value="5" />
+
+
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
+
+        <!-- Кнопка сохранения -->
         <Button
             android:id="@+id/btnSave"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="30dp"
+            android:layout_marginTop="16dp"
             android:text="Сохранить"
-            android:textSize="30dp"
-            android:textColor="@color/green_online"/>
+            android:textSize="20sp"
+            android:textColor="@color/white"
+            android:backgroundTint="@color/green_online"
+            android:padding="16dp"
+            app:cornerRadius="8dp" />
     </LinearLayout>
 </ScrollView>
+
+

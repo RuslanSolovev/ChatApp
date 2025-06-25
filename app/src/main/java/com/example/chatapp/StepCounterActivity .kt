@@ -38,6 +38,7 @@ class StepCounterActivity : AppCompatActivity() {
     private lateinit var tvYear: TextView
     private lateinit var tvAverage: TextView
     private lateinit var tvMaxDay: TextView
+    private lateinit var tvGoal: TextView
     private lateinit var progressSteps: ProgressBar
     private lateinit var cardToday: CardView
     private lateinit var cardWeek: CardView
@@ -74,7 +75,6 @@ class StepCounterActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_step_counter)
 
-        // Получаем ID текущего пользователя
         userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
         database = FirebaseDatabase.getInstance()
 
@@ -84,11 +84,9 @@ class StepCounterActivity : AppCompatActivity() {
         setupButton()
         setupFirebaseListeners()
 
-        // Установка цели по шагам из настроек
         dailyGoal = prefs.getInt("daily_goal", 10000)
         progressSteps.max = dailyGoal
 
-        // Регистрация BroadcastReceiver
         val receiverFlags = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             ContextCompat.RECEIVER_NOT_EXPORTED
         } else {
@@ -120,6 +118,7 @@ class StepCounterActivity : AppCompatActivity() {
         tvYear = findViewById(R.id.tv_year)
         tvAverage = findViewById(R.id.tv_average)
         tvMaxDay = findViewById(R.id.tv_max_day)
+        tvGoal = findViewById(R.id.tv_goal)
         progressSteps = findViewById(R.id.progress_steps)
 
         cardToday = findViewById(R.id.card_today)
@@ -148,12 +147,9 @@ class StepCounterActivity : AppCompatActivity() {
         findViewById<Button>(R.id.btn_show_top).setOnClickListener {
             startActivity(Intent(this, TopUsersActivity::class.java))
         }
-
-
     }
 
     private fun setupFirebaseListeners() {
-        // Слушатель для обновления данных в реальном времени
         val stepsRef = database.reference.child("users").child(userId).child("stepsData")
         stepsRef.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
@@ -169,14 +165,16 @@ class StepCounterActivity : AppCompatActivity() {
             }
         })
 
-        // Слушатель для цели по шагам
         val goalRef = database.reference.child("users").child(userId).child("dailyGoal")
         goalRef.addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 dailyGoal = snapshot.getValue(Int::class.java) ?: 10000
                 progressSteps.max = dailyGoal
                 prefs.edit().putInt("daily_goal", dailyGoal).apply()
-                loadAndShowStats()
+
+                val todayKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                val stepsToday = prefs.getInt(todayKey, 0)
+                updateGoalText(stepsToday, dailyGoal)
             }
 
             override fun onCancelled(error: DatabaseError) {
@@ -207,8 +205,6 @@ class StepCounterActivity : AppCompatActivity() {
 
     private fun loadAndShowStats() {
         val todayKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-        val calendar = Calendar.getInstance()
-
         val stepsToday = prefs.getInt(todayKey, 0)
         val stepsWeek = calculateWeeklySteps()
         val stepsMonth = calculateMonthlySteps()
@@ -216,25 +212,27 @@ class StepCounterActivity : AppCompatActivity() {
         val avgWeek = if (stepsWeek > 0) stepsWeek / 7 else 0
         val maxDay = prefs.getInt("max_steps_30days", 0)
 
-        // Анимированное обновление значений
+        updateGoalText(stepsToday, dailyGoal)
         animateValueChange(tvToday, stepsToday, "Сегодня: %d шагов")
         animateValueChange(tvWeek, stepsWeek, "Неделя: %d шагов")
         animateValueChange(tvMonth, stepsMonth, "Месяц: %d шагов")
         animateValueChange(tvYear, stepsYear, "Год: %d шагов")
         animateValueChange(tvAverage, avgWeek, "Среднее: %d шагов/день")
         animateValueChange(tvMaxDay, maxDay, "Рекорд: %d шагов")
-
-        // Анимация прогресса
         animateProgress(stepsToday)
 
-        // Изменение цвета при достижении цели
         if (stepsToday >= dailyGoal) {
-            cardToday.setCardBackgroundColor(Color.parseColor("#E8F5E9")) // Светло-зеленый
+            cardToday.setCardBackgroundColor(Color.parseColor("#E8F5E9"))
             progressSteps.progressTintList = ContextCompat.getColorStateList(this, R.color.goal_achieved)
         } else {
             cardToday.setCardBackgroundColor(Color.WHITE)
             progressSteps.progressTintList = ContextCompat.getColorStateList(this, R.color.colorPrimary)
         }
+    }
+
+    private fun updateGoalText(currentSteps: Int, goal: Int) {
+        val goalText = "$currentSteps / $goal шагов"
+        tvGoal.text = goalText
     }
 
     private fun animateValueChange(textView: TextView, newValue: Int, format: String) {
@@ -271,7 +269,6 @@ class StepCounterActivity : AppCompatActivity() {
         val currentWeek = calendar.get(Calendar.WEEK_OF_YEAR)
         val currentYear = calendar.get(Calendar.YEAR)
 
-        // Установка на начало недели (понедельник)
         calendar.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
         calendar.set(Calendar.WEEK_OF_YEAR, currentWeek)
         calendar.set(Calendar.YEAR, currentYear)

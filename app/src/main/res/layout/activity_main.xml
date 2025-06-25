@@ -1,115 +1,136 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:tools="http://schemas.android.com/tools"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:background="@color/gray_600"
-    android:padding="8dp">
+    android:padding="16dp"
+    android:background="@drawable/bg_gradient">
 
-    <!-- Заголовок списка чатов -->
-    <Button
-        android:id="@+id/textView"
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:text="Список чатов"
-        android:textSize="25sp"
-        android:background="@android:color/transparent"
-        android:foreground="?attr/selectableItemBackground"
-        android:textColor="@android:color/white"
-        android:paddingLeft="10dp"/>
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
 
-    <!-- Разделительная полоса -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@android:color/darker_gray"/>
+        <!-- Заголовок -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Меню"
+            android:textSize="24sp"
+            android:textColor="@color/white"
+            android:textStyle="bold"
+            android:paddingBottom="16dp"/>
 
-    <!-- Мой профиль -->
-    <Button
-        android:id="@+id/btnMyProfile"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:text="Мой профиль"
-        android:textSize="25sp"
-        android:background="@android:color/transparent"
-        android:foreground="?attr/selectableItemBackground"
-        android:textColor="@android:color/white"/>
+        <!-- Кнопка "Список чатов" -->
+        <Button
+            android:id="@+id/textView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="💬 Список чатов"
+            android:textSize="18sp"
+            android:textColor="@color/black"
+            android:background="@drawable/button_background"
+            android:gravity="start|center_vertical"
+            android:padding="16dp"
+            android:drawablePadding="16dp"
+            android:layout_marginBottom="16dp"/>
 
-    <!-- Разделительная полоса -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@android:color/darker_gray"/>
-    <!-- Игры -->
-    <Button
-        android:id="@+id/igra"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:textSize="25sp"
-        android:background="@android:color/transparent"
-        android:foreground="?attr/selectableItemBackground"
-        android:text="ИГРЫ"
-        android:textColor="@android:color/white" />
+        <!-- Кнопка "Обсудить" -->
+        <Button
+            android:id="@+id/beseda"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🗣️ Обсудить"
+            android:textSize="18sp"
+            android:textColor="@color/black"
+            android:background="@drawable/button_background"
+            android:gravity="start|center_vertical"
+            android:padding="16dp"
+            android:drawablePadding="16dp"
+            android:layout_marginBottom="16dp"
+            android:visibility="gone"/>
 
+        <!-- Кнопка "Мой профиль" -->
+        <Button
+            android:id="@+id/btnMyProfile"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="👤 Мой профиль"
+            android:textSize="18sp"
+            android:textColor="@color/black"
+            android:background="@drawable/button_background"
+            android:gravity="start|center_vertical"
+            android:padding="16dp"
+            android:drawablePadding="16dp"
+            android:layout_marginBottom="16dp"/>
 
+        <!-- Кнопка "Игры" -->
+        <Button
+            android:id="@+id/igra"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🎮 ИГРЫ"
+            android:textSize="18sp"
+            android:textColor="@color/black"
+            android:background="@drawable/button_background"
+            android:gravity="start|center_vertical"
+            android:padding="16dp"
+            android:drawablePadding="16dp"
+            android:layout_marginBottom="16dp"/>
 
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@android:color/darker_gray"/>
+        <!-- Кнопка "Локация" -->
+        <Button
+            android:id="@+id/btnLocation"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="📍 ЛОКАЦИЯ"
+            android:textSize="18sp"
+            android:textColor="@color/black"
+            android:background="@drawable/button_background"
+            android:gravity="start|center_vertical"
+            android:padding="16dp"
+            android:drawablePadding="16dp"
+            android:layout_marginBottom="16dp"/>
 
-    <!-- Локация -->
-    <Button
-        android:id="@+id/btnLocation"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:textSize="25sp"
-        android:text="ЛОКАЦИЯ"
-        android:background="@android:color/transparent"
-        android:foreground="?attr/selectableItemBackground"
-        android:textColor="@android:color/white"/>
+        <!-- Кнопка "Шаги" -->
+        <Button
+            android:id="@+id/hagi"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="👣 ШАГИ"
+            android:textSize="18sp"
+            android:textColor="@color/black"
+            android:background="@drawable/button_background"
+            android:gravity="start|center_vertical"
+            android:padding="16dp"
+            android:drawablePadding="16dp"
+            android:layout_marginBottom="16dp"/>
 
-    <!-- Разделительная полоса -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@android:color/darker_gray"/>
+        <!-- Кнопка "Чат с GigaChat" -->
+        <Button
+            android:id="@+id/btnGigaChat"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="💬 Chat Вася "
+            android:textSize="18sp"
+            android:textColor="@color/black"
+            android:background="@drawable/button_background"
+            android:gravity="start|center_vertical"
+            android:padding="16dp"
+            android:drawablePadding="16dp"
+            android:layout_marginBottom="16dp"/>
 
-    <!-- Шаги -->
-    <Button
-        android:id="@+id/hagi"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:textSize="25sp"
-        android:text="ШАГИ"
-        android:background="@android:color/transparent"
-        android:foreground="?attr/selectableItemBackground"
-        android:textColor="@android:color/white"/>
-
-    <!-- Разделительная полоса -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@android:color/darker_gray"/>
-
-    <!-- Выйти -->
-
-    <!-- Разделительная полоса -->
-    <Button
-        android:id="@+id/btnLogout"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:textSize="25sp"
-        android:layout_weight="1"
-        android:background="@android:color/transparent"
-        android:foreground="?attr/selectableItemBackground"
-        android:text="ВЫЙТИ"
-        android:textColor="@android:color/white" />
-</LinearLayout>
+        <!-- Кнопка "Выйти" -->
+        <Button
+            android:id="@+id/btnLogout"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🚪 ВЫЙТИ"
+            android:textSize="18sp"
+            android:textColor="@color/black"
+            android:background="@drawable/button_background"
+            android:gravity="start|center_vertical"
+            android:padding="16dp"
+            android:drawablePadding="16dp"
+            android:layout_marginBottom="16dp"/>
+    </LinearLayout>
+</ScrollView>

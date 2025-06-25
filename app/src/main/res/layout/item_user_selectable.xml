@@ -3,9 +3,15 @@
     android:id="@+id/tvUserName"
     android:layout_width="match_parent"
     android:layout_height="?android:attr/listPreferredItemHeight"
+    android:background="@drawable/bg_gradient"
     android:checkMark="?android:attr/listChoiceIndicatorMultiple"
+    android:checked="false"
+    android:drawableStart="@drawable/ic_user_avatar"
     android:drawablePadding="16dp"
     android:gravity="center_vertical"
     android:paddingStart="16dp"
     android:paddingEnd="16dp"
-    android:textAppearance="?android:attr/textAppearanceListItem"/>
+    android:text="Имя пользователя"
+    android:textAppearance="?android:attr/textAppearanceListItem"
+    android:textColor="@color/accent_light"
+    android:textSize="16sp" />

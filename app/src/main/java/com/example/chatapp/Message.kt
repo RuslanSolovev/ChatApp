@@ -9,6 +9,9 @@ data class Message(
     val senderId: String = "",
     val senderName: String = "",
     val timestamp: Long = System.currentTimeMillis(),
+
+
+
     val imageUrl: String? = null,
     val replyToMessageId: String? = null,
     val replyToMessageText: String? = null,
