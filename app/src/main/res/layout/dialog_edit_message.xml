@@ -1,17 +1,58 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="wrap_content"
-    android:orientation="vertical"
+    android:layout_height="match_parent"
+    android:background="@drawable/bg_gradient"
     android:padding="16dp">
 
-    <EditText
-        android:id="@+id/etEditMessage"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="Введите текст сообщения"
-        android:inputType="textMultiLine"
-        android:minLines="3"
-        android:maxLines="5"/>
+        android:orientation="vertical">
 
-</LinearLayout>
+        <!-- Заголовок -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Редактирование сообщения"
+            android:textSize="24sp"
+            android:textColor="@color/white"
+            android:gravity="center"
+            android:textStyle="bold"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Поле для ввода текста -->
+        <androidx.cardview.widget.CardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="4dp"
+            app:cardBackgroundColor="@color/white"
+            android:layout_marginBottom="16dp">
+
+            <EditText
+                android:id="@+id/etEditMessage"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Введите текст сообщения"
+                android:inputType="textMultiLine"
+                android:minLines="3"
+                android:maxLines="5"
+                android:padding="16dp"
+                android:textColor="@color/black"
+                android:textColorHint="@color/gray_light" />
+        </androidx.cardview.widget.CardView>
+
+        <!-- Кнопка отправки -->
+        <Button
+            android:id="@+id/btnSubmitMessage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Отправить"
+            android:textSize="18sp"
+            android:textColor="@color/white"
+            android:backgroundTint="@color/colorPrimary"
+            android:paddingVertical="12dp" />
+    </LinearLayout>
+</ScrollView>

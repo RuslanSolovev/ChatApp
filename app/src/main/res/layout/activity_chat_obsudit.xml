@@ -30,12 +30,12 @@
         android:layout_marginTop="8dp"/>
 
     <!-- Кнопка создания новой беседы -->
-    <com.google.android.material.floatingactionbutton.FloatingActionButton
-        android:id="@+id/fabCreateChat"
+    <Button
+        android:id="@+id/fabCreateChatBeseda"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="end|bottom"
         android:layout_margin="16dp"
-        android:src="@drawable/ic_read"
-        android:contentDescription="Создать беседу"/>
+        android:contentDescription="Создать беседу"
+        android:src="@drawable/ic_add_chat" />
 </LinearLayout>

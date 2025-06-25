@@ -24,7 +24,6 @@ import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 
 class AuthActivity : AppCompatActivity() {
-
     private lateinit var binding: ActivityAuthBinding
     private lateinit var auth: FirebaseAuth
     private lateinit var database: DatabaseReference
@@ -33,7 +32,7 @@ class AuthActivity : AppCompatActivity() {
         private const val TAG = "AuthActivity"
         private const val MAX_RETRY_ATTEMPTS = 3
         private const val RETRY_DELAY_MS = 2000L
-        private const val MAX_TIME_OFFSET_MINUTES = 30L // Увеличим допустимое расхождение времени
+        private const val MAX_TIME_OFFSET_MINUTES = 30L
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -105,7 +104,6 @@ class AuthActivity : AppCompatActivity() {
 
     private fun registerUserWithRetry(email: String, password: String, username: String, attemptsLeft: Int) {
         showProgress(true)
-
         auth.createUserWithEmailAndPassword(email, password)
             .addOnCompleteListener { task ->
                 if (task.isSuccessful) {
@@ -143,7 +141,6 @@ class AuthActivity : AppCompatActivity() {
             username = username,
             fcmToken = null
         )
-
         database.child("users").child(uid).setValue(user)
             .addOnSuccessListener {
                 registerFcmTokenWithRetry(uid, MAX_RETRY_ATTEMPTS)
@@ -158,7 +155,6 @@ class AuthActivity : AppCompatActivity() {
 
     private fun loginUserWithRetry(email: String, password: String, attemptsLeft: Int) {
         showProgress(true)
-
         auth.signInWithEmailAndPassword(email, password)
             .addOnCompleteListener { task ->
                 if (task.isSuccessful) {
@@ -202,7 +198,6 @@ class AuthActivity : AppCompatActivity() {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     registerFcmTokenWithRetry(uid, MAX_RETRY_ATTEMPTS)
                 }
-
                 override fun onCancelled(error: DatabaseError) {
                     Log.w(TAG, "Failed to get current token, proceeding anyway", error.toException())
                     registerFcmTokenWithRetry(uid, MAX_RETRY_ATTEMPTS)
@@ -244,7 +239,6 @@ class AuthActivity : AppCompatActivity() {
             "lastActive" to ServerValue.TIMESTAMP,
             "fcmToken" to token
         )
-
         database.child("users").child(uid).updateChildren(updates)
             .addOnCompleteListener { task ->
                 if (task.isSuccessful) {
@@ -260,13 +254,11 @@ class AuthActivity : AppCompatActivity() {
     private fun updateUserStatus(uid: String, token: String?) {
         val updates = hashMapOf<String, Any>(
             "isActive" to true,
-            "lastActive" to ServerValue.TIMESTAMP // Здесь используем ServerValue
+            "lastActive" to ServerValue.TIMESTAMP
         )
-
         token?.let {
             updates["fcmToken"] = it
         }
-
         database.child("users").child(uid).updateChildren(updates)
             .addOnCompleteListener { task ->
                 showProgress(false)
@@ -286,7 +278,6 @@ class AuthActivity : AppCompatActivity() {
                         onFailure()
                     }
                 }
-
                 override fun onCancelled(error: DatabaseError) {
                     Log.e(TAG, "Failed to check server time", error.toException())
                     onFailure()
@@ -307,11 +298,11 @@ class AuthActivity : AppCompatActivity() {
         )
     }
 
+    // --- Добавленный код для управления прогресс-баром ---
     private fun showProgress(show: Boolean) {
         binding.apply {
             progressBar.visibility = if (show) View.VISIBLE else View.GONE
-            btnRegister.isEnabled = !show
-            btnLogin.isEnabled = !show
+            containerMain.visibility = if (show) View.GONE else View.VISIBLE
         }
     }
 

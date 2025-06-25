@@ -1,42 +1,65 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.cardview.widget.CardView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:orientation="horizontal"
-    android:padding="16dp">
-    <ImageView
-        android:id="@+id/ivUserAvatar"
-        android:layout_width="32dp"
-        android:layout_height="32dp"
-        android:src="@drawable/ic_default_profile"/>
-
-    <CheckBox
-        android:id="@+id/cbSelectUser"
-        android:layout_width="37dp"
-        android:layout_height="32dp"
-        android:clickable="false"
-        android:focusable="false" />
-
-
+    xmlns:tools="http://schemas.android.com/tools"
+    app:cardCornerRadius="12dp"
+    app:cardElevation="4dp"
+    app:cardBackgroundColor="@color/white"
+    android:layout_margin="8dp">
 
     <LinearLayout
-        android:layout_width="0dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_weight="1"
-        android:orientation="vertical"
-        android:paddingStart="8dp">
+        android:orientation="horizontal"
+        android:padding="16dp"
+        android:gravity="center_vertical">
 
-        <TextView
-            android:id="@+id/tvUserName"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textSize="16sp"
-            android:textStyle="bold"/>
+        <!-- Аватар пользователя -->
+        <ImageView
+            android:id="@+id/ivUserAvatar"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:src="@drawable/ic_default_profile"
+            android:background="@drawable/avatar_background_circle"
+            android:padding="4dp"
+            android:contentDescription="Аватар пользователя" />
 
-        <TextView
-            android:id="@+id/tvUserEmail"
-            android:layout_width="match_parent"
+        <!-- Чекбокс для выбора пользователя -->
+        <CheckBox
+            android:id="@+id/cbSelectUser"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textSize="14sp"/>
+            android:layout_marginStart="16dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:buttonTint="@color/colorPrimary" />
+
+        <!-- Информация о пользователе -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:paddingStart="16dp">
+
+            <TextView
+                android:id="@+id/tvUserName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@color/black"
+                tools:text="Иван Иванов" />
+
+            <TextView
+                android:id="@+id/tvUserEmail"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textSize="14sp"
+                android:textColor="#8B05F8"
+                tools:text="ivan@example.com" />
+        </LinearLayout>
     </LinearLayout>
-</LinearLayout>
+</androidx.cardview.widget.CardView>

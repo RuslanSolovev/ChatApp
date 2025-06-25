@@ -7,11 +7,13 @@ import android.widget.Button
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.chatapp.ChatObsudit
 import com.example.chatapp.ChatSpisok
 import com.example.chatapp.GuessNumberMenuActivity
 import com.example.chatapp.IgraActivity
 import com.example.chatapp.LocationActivity
 import com.example.chatapp.R
+import com.example.chatapp.SozdanieBeseda
 import com.example.chatapp.StepCounterActivity
 import com.example.chatapp.adapters.ChatAdapter
 import com.example.chatapp.databinding.ActivityMainBinding
@@ -30,6 +32,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var hagi: Button
     private lateinit var btnLocation: Button
     private lateinit var textView: Button
+    private  lateinit var beseda: Button
+    private lateinit var btnGigaChat: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -38,7 +42,9 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        btnGigaChat = findViewById(R.id.btnGigaChat)
         // Инициализация кнопок
+        beseda = findViewById(R.id.beseda)
         igra = findViewById(R.id.igra)
         hagi = findViewById(R.id.hagi)
         btnLocation = findViewById(R.id.btnLocation)
@@ -63,6 +69,11 @@ class MainActivity : AppCompatActivity() {
         // Обработчик для кнопки перехода в LocationActivity
         btnLocation.setOnClickListener {
             startActivity(Intent(this, LocationActivity::class.java))
+        }
+
+        // В методе setupClickListeners()
+        binding.btnGigaChat.setOnClickListener {
+            startActivity(Intent(this, ChatWithGigaActivity::class.java))
         }
 
         textView.setOnClickListener {
@@ -98,6 +109,10 @@ class MainActivity : AppCompatActivity() {
 
         binding.hagi.setOnClickListener {
             startActivity(Intent(this, StepCounterActivity::class.java))
+        }
+
+        binding.beseda.setOnClickListener {
+            startActivity(Intent(this, ChatObsudit::class.java))
         }
     }
 

@@ -1,43 +1,92 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="16dp">
+    android:padding="16dp"
+    android:background="@drawable/bg_gradient">
 
-    <!-- Поле ввода названия чата -->
-    <EditText
-        android:id="@+id/etChatName"
-        android:layout_width="378dp"
-        android:layout_height="55dp"
-        android:layout_marginTop="32dp"
-        android:hint="Название чата"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+    <LinearLayout
+        android:orientation="vertical"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
 
-    <!-- Кнопка создания чата -->
-    <Button
-        android:id="@+id/btnCreateChat"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="Создать чат"
-        app:layout_constraintTop_toBottomOf="@id/etChatName"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="16dp" />
+        <!-- Заголовок -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:paddingBottom="16dp">
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Создание чата"
+                android:textSize="24sp"
+                android:textColor="@color/white"
+                android:textStyle="bold"/>
+        </LinearLayout>
 
-    <!-- Кнопка загрузки изображения -->
-    <Button
-        android:id="@+id/btnUploadImage"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:text="Загрузить изображение"
-        app:layout_constraintTop_toBottomOf="@id/btnCreateChat"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent"
-        android:layout_marginTop="16dp" />
+        <!-- Карточка для поля ввода названия чата -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/card_chat_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="4dp"
+            app:cardBackgroundColor="@color/white"
+            android:layout_marginBottom="16dp">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:padding="16dp"
+                android:gravity="center_vertical">
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="📝"
+                    android:textSize="24sp"
+                    android:paddingEnd="16dp"/>
+                <EditText
+                    android:id="@+id/etChatName"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="Название чата"
+                    android:textColorHint="@color/black"
+                    android:textColor="@color/black"
+                    android:textSize="16sp"
+                    android:inputType="text"/>
+            </LinearLayout>
+        </androidx.cardview.widget.CardView>
 
-</androidx.constraintlayout.widget.ConstraintLayout>
+        <!-- Кнопка создания чата -->
+        <Button
+            android:id="@+id/btnCreateChat"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Создать чат"
+            android:textSize="18sp"
+            android:textColor="@color/white"
+            android:drawableStart="@drawable/ic_create"
+            android:drawableTint="@color/white"
+            android:backgroundTint="@color/colorPrimary"
+            android:paddingVertical="12dp"
+            android:layout_marginBottom="16dp"/>
+
+        <!-- Кнопка загрузки изображения -->
+        <Button
+            android:id="@+id/btnUploadImage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Загрузить изображение"
+            android:textSize="18sp"
+            android:textColor="@color/white"
+            android:drawableStart="@drawable/ic_upload"
+            android:drawableTint="@color/white"
+            android:backgroundTint="@color/colorPrimary"
+            android:paddingVertical="12dp"/>
+    </LinearLayout>
+</ScrollView>

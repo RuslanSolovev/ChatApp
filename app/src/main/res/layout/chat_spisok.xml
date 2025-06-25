@@ -21,8 +21,7 @@
             app:titleTextColor="@android:color/white"
             app:navigationIcon="@drawable/ic_account_circle"
             app:backgroundTint="#FF4CAF50"
-            app:menu="@menu/search_menu"/>
-
+            />
     </com.google.android.material.appbar.AppBarLayout>
 
     <ProgressBar
@@ -38,10 +37,10 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:paddingTop="?attr/actionBarSize"
-    android:paddingBottom="72dp"
-    android:clipToPadding="false"
-    android:scrollbars="vertical"
-    app:layout_behavior="@string/appbar_scrolling_view_behavior"/>
+        android:paddingBottom="72dp"
+        android:clipToPadding="false"
+        android:scrollbars="vertical"
+        app:layout_behavior="@string/appbar_scrolling_view_behavior"/>
 
     <com.google.android.material.floatingactionbutton.FloatingActionButton
         android:id="@+id/fabCreateChat"

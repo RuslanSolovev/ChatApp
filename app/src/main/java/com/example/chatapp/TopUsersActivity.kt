@@ -1,62 +1,50 @@
 package com.example.chatapp
 
-import android.content.Context
-import android.content.SharedPreferences
+import android.content.*
+import android.graphics.Color
 import android.os.Bundle
 import android.util.Log
-import android.widget.Toast
+import android.view.animation.DecelerateInterpolator
+import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
+import androidx.cardview.widget.CardView
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.bumptech.glide.Glide
 import com.example.chatapp.adapters.TopUsersAdapter
 import com.example.chatapp.databinding.ActivityTopUsersBinding
 import com.example.chatapp.models.User
 import com.google.android.material.tabs.TabLayout
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.database.DataSnapshot
-import com.google.firebase.database.DatabaseError
-import com.google.firebase.database.FirebaseDatabase
-import com.google.firebase.database.ValueEventListener
+import com.google.firebase.database.*
 import java.text.SimpleDateFormat
 import java.util.*
-import kotlin.collections.ArrayList
 
 class TopUsersActivity : AppCompatActivity() {
+
     private lateinit var binding: ActivityTopUsersBinding
     private lateinit var topUsersAdapter: TopUsersAdapter
     private val database = FirebaseDatabase.getInstance().reference
     private var currentPeriod = PERIOD_DAY
-    private lateinit var prefs: SharedPreferences
     private val auth = FirebaseAuth.getInstance()
-    private var usersList = ArrayList<User>()
+    private val usersList = ArrayList<User>()
     private var valueEventListener: ValueEventListener? = null
 
     companion object {
         const val PERIOD_DAY = 0
         const val PERIOD_WEEK = 1
         const val PERIOD_MONTH = 2
-        private const val TAG = "TopUsersActivity"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityTopUsersBinding.inflate(layoutInflater)
         setContentView(binding.root)
-        prefs = getSharedPreferences("step_prefs", Context.MODE_PRIVATE)
 
         setupToolbar()
         setupRecyclerView()
         setupPeriodTabs()
+        initCurrentUserCard()
         syncLocalStepsWithFirebase()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        setupFirebaseListener()
-    }
-
-    override fun onPause() {
-        super.onPause()
-        removeFirebaseListener()
     }
 
     private fun setupToolbar() {
@@ -77,35 +65,37 @@ class TopUsersActivity : AppCompatActivity() {
         binding.periodTabs.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab?) {
                 currentPeriod = when (tab?.position) {
-                    0 -> PERIOD_DAY    // День
-                    1 -> PERIOD_WEEK   // Неделя
-                    2 -> PERIOD_MONTH // Месяц
+                    0 -> PERIOD_DAY
+                    1 -> PERIOD_WEEK
+                    2 -> PERIOD_MONTH
                     else -> PERIOD_DAY
                 }
                 updateUsersList()
             }
-
             override fun onTabUnselected(tab: TabLayout.Tab?) {}
             override fun onTabReselected(tab: TabLayout.Tab?) {}
         })
     }
 
+    private fun initCurrentUserCard() {
+        // Инициализация карточки текущего пользователя через View Binding
+        with(binding) {
+            tvUserPosition.text = "-"
+            tvUserName.text = "Вы"
+            tvUserSteps.text = "Нет данных"
+            ivUserAvatar.setImageResource(R.drawable.ic_default_profile)
+        }
+    }
+
     private fun setupFirebaseListener() {
         removeFirebaseListener()
-
         valueEventListener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 usersList.clear()
                 for (userSnapshot in snapshot.children) {
-                    try {
-                        val user = userSnapshot.getValue(User::class.java)
-                        user?.let {
-                            // Пересчет шагов для текущего периода
-                            it.totalSteps = calculateStepsForPeriod(it, currentPeriod)
-                            usersList.add(it)
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Ошибка при разборе пользователя ${userSnapshot.key}", e)
+                    userSnapshot.getValue(User::class.java)?.let { user ->
+                        user.totalSteps = calculateStepsForPeriod(user, currentPeriod)
+                        usersList.add(user)
                     }
                 }
                 updateUsersList()
@@ -122,31 +112,56 @@ class TopUsersActivity : AppCompatActivity() {
         database.child("users").addValueEventListener(valueEventListener!!)
     }
 
-    private fun removeFirebaseListener() {
-        valueEventListener?.let {
-            database.child("users").removeEventListener(it)
-            valueEventListener = null
-        }
-    }
-
     private fun updateUsersList() {
-        // Сортировка по убыванию шагов
         val sortedUsers = usersList.sortedByDescending { it.totalSteps }
         topUsersAdapter.updatePeriod(currentPeriod)
         topUsersAdapter.submitList(sortedUsers)
+        updateCurrentUserCard(sortedUsers)
+    }
+
+    private fun updateCurrentUserCard(sortedUsers: List<User>) {
+        val currentUser = auth.currentUser ?: return
+        val currentUserId = currentUser.uid
+        val currentUserData = usersList.find { it.uid == currentUserId }
+
+        if (currentUserData != null) {
+            val position = sortedUsers.indexOfFirst { it.uid == currentUserId } + 1
+            with(binding) {
+                tvUserPosition.text = position.toString()
+                tvUserName.text = currentUserData.name ?: "Без имени"
+                tvUserSteps.text = when (currentPeriod) {
+                    PERIOD_DAY -> "${currentUserData.totalSteps} шагов сегодня"
+                    PERIOD_WEEK -> "${currentUserData.totalSteps} шагов за неделю"
+                    PERIOD_MONTH -> "${currentUserData.totalSteps} шагов за месяц"
+                    else -> "${currentUserData.totalSteps} шагов"
+                }
+                Glide.with(this@TopUsersActivity)
+                    .load(currentUserData.profileImageUrl)
+                    .circleCrop()
+                    .placeholder(R.drawable.ic_default_profile)
+                    .into(ivUserAvatar)
+            }
+        } else {
+            with(binding) {
+                tvUserPosition.text = "-"
+                tvUserName.text = currentUser.displayName ?: "Вы"
+                tvUserSteps.text = "Нет данных"
+                ivUserAvatar.setImageResource(R.drawable.ic_default_profile)
+            }
+        }
     }
 
     private fun syncLocalStepsWithFirebase() {
         val currentUser = auth.currentUser ?: return
         val userId = currentUser.uid
         val todayKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-        val todaySteps = prefs.getInt(todayKey, 0)
+        val todaySteps = getSharedPreferences("step_prefs", Context.MODE_PRIVATE)
+            .getInt(todayKey, 0)
 
-        // Обновление данных в Firebase
         database.child("users").child(userId).child("stepsData").child(todayKey)
             .setValue(todaySteps)
-            .addOnFailureListener { e ->
-                Toast.makeText(this, "Ошибка синхронизации: ${e.message}", Toast.LENGTH_SHORT).show()
+            .addOnFailureListener {
+                Toast.makeText(this, "Ошибка синхронизации: ${it.message}", Toast.LENGTH_SHORT).show()
             }
     }
 
@@ -160,14 +175,11 @@ class TopUsersActivity : AppCompatActivity() {
     }
 
     private fun getStepsForDate(user: User, dateKey: String): Int {
-        val stepsData = user.stepsData ?: return 0
-        val value = stepsData[dateKey] ?: return 0
-        return convertToSteps(value)
+        return user.stepsData?.get(dateKey)?.let { convertToSteps(it) } ?: 0
     }
 
     private fun calculateWeeklySteps(user: User): Int {
         val stepsData = user.stepsData ?: return 0
-
         val calendar = Calendar.getInstance().apply {
             firstDayOfWeek = Calendar.MONDAY
         }
@@ -186,23 +198,18 @@ class TopUsersActivity : AppCompatActivity() {
                     false
                 }
             }
-            .sumOf { (_, value) ->
-                convertToSteps(value)
-            }
+            .sumOf { (_, value) -> convertToSteps(value) }
     }
 
     private fun calculateMonthlySteps(user: User): Int {
         val stepsData = user.stepsData ?: return 0
-
         val currentMonth = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date())
+
         return stepsData.entries
             .filter { (key, _) -> key.startsWith(currentMonth) }
-            .sumOf { (_, value) ->
-                convertToSteps(value)
-            }
+            .sumOf { (_, value) -> convertToSteps(value) }
     }
 
-    // Универсальная функция преобразования в число шагов
     private fun convertToSteps(value: Any?): Int {
         return when (value) {
             is Int -> value
@@ -214,6 +221,23 @@ class TopUsersActivity : AppCompatActivity() {
 
     private fun getCurrentDateKey(): String {
         return SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+    }
+
+    override fun onResume() {
+        super.onResume()
+        setupFirebaseListener()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        removeFirebaseListener()
+    }
+
+    private fun removeFirebaseListener() {
+        valueEventListener?.let {
+            database.child("users").removeEventListener(it)
+            valueEventListener = null
+        }
     }
 
     override fun onSupportNavigateUp(): Boolean {
