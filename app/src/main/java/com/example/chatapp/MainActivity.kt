@@ -1,39 +1,40 @@
 package com.example.chatapp.activities
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.Intent
+import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
-import android.widget.Button
-import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
-import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.chatapp.ChatObsudit
 import com.example.chatapp.ChatSpisok
-import com.example.chatapp.GuessNumberMenuActivity
+import com.example.chatapp.ChatWithGigaActivity
 import com.example.chatapp.IgraActivity
 import com.example.chatapp.LocationActivity
 import com.example.chatapp.R
-import com.example.chatapp.SozdanieBeseda
 import com.example.chatapp.StepCounterActivity
-import com.example.chatapp.adapters.ChatAdapter
 import com.example.chatapp.databinding.ActivityMainBinding
-import com.example.chatapp.models.Chat
 import com.example.chatapp.models.User
 import com.example.chatapp.utils.Constants
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.database.*
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.DatabaseReference
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
     private lateinit var auth: FirebaseAuth
     private lateinit var database: DatabaseReference
-    private lateinit var igra: Button
-    private lateinit var hagi: Button
-    private lateinit var btnLocation: Button
-    private lateinit var textView: Button
-    private  lateinit var beseda: Button
-    private lateinit var btnGigaChat: Button
+
+    companion object {
+        private const val TAG = "MainActivity"
+        private const val CHANNEL_ID = "chat_messages"
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,16 +43,12 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
-        btnGigaChat = findViewById(R.id.btnGigaChat)
-        // Инициализация кнопок
-        beseda = findViewById(R.id.beseda)
-        igra = findViewById(R.id.igra)
-        hagi = findViewById(R.id.hagi)
-        btnLocation = findViewById(R.id.btnLocation)
-        textView = findViewById(R.id.textView)
+        // Создаем канал уведомлений
+        createNotificationChannel()
 
-        // Инициализация FirebaseAuth
+        // Инициализация Firebase
         auth = FirebaseAuth.getInstance()
+        database = FirebaseDatabase.getInstance().reference
 
         // Проверка аутентификации
         if (auth.currentUser == null) {
@@ -59,52 +56,41 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // Инициализация базы данных Firebase
-        database = FirebaseDatabase.getInstance().reference
-
-
-        // Настройка обработчиков кликов для кнопок
+        // Настройка обработчиков кликов
         setupClickListeners()
 
-        // Обработчик для кнопки перехода в LocationActivity
-        btnLocation.setOnClickListener {
-            startActivity(Intent(this, LocationActivity::class.java))
-        }
+        // Загрузка данных пользователя
 
-        // В методе setupClickListeners()
-        binding.btnGigaChat.setOnClickListener {
-            startActivity(Intent(this, ChatWithGigaActivity::class.java))
-        }
-
-        textView.setOnClickListener {
-            startActivity(Intent(this, ChatSpisok::class.java))
-        }
     }
 
-    private fun startAuthActivity() {
-        startActivity(Intent(this, AuthActivity::class.java))
-        finish()
+    private fun createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                CHANNEL_ID,
+                "Сообщения чата",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Уведомления о новых сообщениях в чате"
+                enableLights(true)
+                lightColor = Color.BLUE
+                enableVibration(true)
+                vibrationPattern = longArrayOf(100, 200, 100, 200)
+            }
+
+            val manager = getSystemService(NotificationManager::class.java)
+            manager.createNotificationChannel(channel)
+            Log.d(TAG, "Канал уведомлений создан: $CHANNEL_ID")
+        } else {
+            Log.d(TAG, "Создание канала не требуется (API < 26)")
+        }
     }
-
-
 
 
 
     private fun setupClickListeners() {
-
-
+        // Навигация по приложению
         binding.igra.setOnClickListener {
-            val intent = Intent(this, IgraActivity::class.java)
-            startActivity(intent)
-        }
-
-        binding.btnLogout.setOnClickListener {
-            auth.signOut()
-            startAuthActivity()
-        }
-
-        binding.btnMyProfile.setOnClickListener {
-            startActivity(Intent(this, ProfileActivity::class.java))
+            startActivity(Intent(this, IgraActivity::class.java))
         }
 
         binding.hagi.setOnClickListener {
@@ -114,18 +100,56 @@ class MainActivity : AppCompatActivity() {
         binding.beseda.setOnClickListener {
             startActivity(Intent(this, ChatObsudit::class.java))
         }
+
+        binding.btnLocation.setOnClickListener {
+            startActivity(Intent(this, LocationActivity::class.java))
+        }
+
+        binding.textView.setOnClickListener {
+            startActivity(Intent(this, ChatSpisok::class.java))
+        }
+
+        binding.btnGigaChat.setOnClickListener {
+            startActivity(Intent(this, ChatWithGigaActivity::class.java))
+        }
+
+        // Действия с аккаунтом
+        binding.btnLogout.setOnClickListener {
+            auth.signOut()
+            startAuthActivity()
+        }
+
+        binding.btnMyProfile.setOnClickListener {
+            startActivity(Intent(this, ProfileActivity::class.java))
+        }
     }
 
-
-
-
-
+    private fun startAuthActivity() {
+        startActivity(Intent(this, AuthActivity::class.java))
+        finish()
+    }
 
     override fun onStart() {
         super.onStart()
+        // Проверка аутентификации при возвращении в приложение
         if (auth.currentUser == null) {
             startAuthActivity()
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        // Обновляем статус активности пользователя
+        auth.currentUser?.uid?.let { uid ->
+            database.child("users").child(uid).child("isActive").setValue(true)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Обновляем статус активности пользователя
+        auth.currentUser?.uid?.let { uid ->
+            database.child("users").child(uid).child("isActive").setValue(false)
+        }
+    }
 }

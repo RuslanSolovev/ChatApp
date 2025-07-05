@@ -8,6 +8,7 @@ object Constants {
     const val CHAT_NAME = "chat_name"
     const val MESSAGE_ID = "message_id"
     const val REQUEST_ADD_USERS = 1001
+    const val ONESIGNAL_APP_ID = "0083de8f-7ca0-4824-ac88-9c037278237e"
 
 
 

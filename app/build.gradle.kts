@@ -10,6 +10,12 @@ android {
     namespace = "com.example.chatapp"
     compileSdk = 35
 
+    packaging {
+        resources {
+            excludes += "META-INF/DEPENDENCIES"
+        }
+    }
+
     defaultConfig {
         applicationId = "com.example.chatapp"
         minSdk = 30
@@ -62,8 +68,16 @@ android {
 dependencies {
 
     implementation ("com.squareup.retrofit2:retrofit:2.9.0")
+
+    // Gson Converter (для преобразования JSON в Kotlin-объекты)
     implementation ("com.squareup.retrofit2:converter-gson:2.9.0")
- 
+
+    // Опционально: OkHttp для логов (удобно при отладке)
+    implementation ("com.squareup.okhttp3:logging-interceptor:4.12.0")
+
+    implementation ("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation ("com.squareup.retrofit2:converter-gson:2.9.0")
+
 
     implementation ("com.squareup.okhttp3:okhttp:4.9.3")
 
@@ -134,4 +148,17 @@ dependencies {
 
     implementation("de.hdodenhof:circleimageview:3.1.0")
     implementation("com.yandex.android:maps.mobile:4.5.1-full")
+
+    implementation ("com.onesignal:OneSignal:[4.8.5, 4.99.99]")
+
+
+    implementation ("com.github.chrisbanes:PhotoView:2.3.0")
+
+
+
+    implementation ("com.amazonaws:aws-android-sdk-s3:2.34.0")
+    implementation ("com.amazonaws:aws-android-sdk-core:2.34.0")
+
+    implementation ("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
 }

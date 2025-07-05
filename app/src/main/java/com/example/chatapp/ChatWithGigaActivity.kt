@@ -1,4 +1,4 @@
-package com.example.chatapp.activities
+package com.example.chatapp
 
 import android.os.Bundle
 import android.util.Log
@@ -12,6 +12,8 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.chatapp.R
 import com.example.chatapp.adapters.GigaMessageAdapter
 import com.example.chatapp.api.AuthRetrofitInstance
+import com.example.chatapp.api.GigaChatRequest
+import com.example.chatapp.api.Message
 import com.example.chatapp.api.RetrofitInstance
 import com.example.chatapp.models.GigaMessage
 import com.example.chatapp.viewmodels.GigaChatViewModel
@@ -143,9 +145,17 @@ class ChatWithGigaActivity : AppCompatActivity() {
     }
 
     private fun sendMessageWithToken(token: String, userMessage: String) {
-        val request = com.example.chatapp.api.GigaChatRequest(
+        // Преобразуем все сообщения из ViewModel в формат API
+        val messagesList = viewModel.messages.map { message ->
+            Message(
+                role = if (message.isUser) "user" else "assistant",
+                content = message.text
+            )
+        }
+
+        val request = GigaChatRequest(
             model = "GigaChat",
-            messages = listOf(com.example.chatapp.api.Message("user", userMessage)),
+            messages = messagesList, // Передаем всю историю
             max_tokens = 5000
         )
 

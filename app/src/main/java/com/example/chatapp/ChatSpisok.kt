@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.util.Log
 import android.view.MenuItem
 import android.view.View
+import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -178,11 +179,27 @@ class ChatSpisok : AppCompatActivity() {
     }
 
     private fun openChatDetail(chatId: String) {
+        if (chatId.isBlank()) {
+            Log.e("openChatDetail", "chatId пустой")
+            Toast.makeText(this, "ID чата не указан", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (!isValidChatId(chatId)) {
+            Log.e("openChatDetail", "Недопустимый chatId: $chatId")
+            Toast.makeText(this, "Недопустимый ID чата", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         Intent(this, ChatDetailActivity::class.java).apply {
             putExtra(Constants.CHAT_ID, chatId)
             startActivity(this)
-            overridePendingTransition(R.anim.slide_in_right, R.anim.slide_out_left)
         }
+    }
+
+    private fun isValidChatId(chatId: String): Boolean {
+        // Разрешены буквы, цифры, подчеркивания и дефисы
+        return Regex("^[a-zA-Z0-9_-]+\$").matches(chatId)
     }
 
     private fun openUserProfile(userId: String) {

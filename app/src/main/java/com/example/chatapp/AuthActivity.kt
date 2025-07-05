@@ -6,33 +6,27 @@ import android.util.Log
 import android.view.View
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.example.chatapp.R
 import com.example.chatapp.databinding.ActivityAuthBinding
 import com.example.chatapp.models.User
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.ktx.auth
-import com.google.firebase.database.DatabaseReference
-import com.google.firebase.database.ktx.database
-import com.google.firebase.ktx.Firebase
+import com.google.firebase.database.*
 import com.google.firebase.messaging.FirebaseMessaging
-import com.google.firebase.database.ServerValue
-import com.google.firebase.database.DataSnapshot
-import com.google.firebase.database.DatabaseError
-import com.google.firebase.database.MutableData
-import com.google.firebase.database.Transaction
-import com.google.firebase.database.ValueEventListener
+import com.onesignal.OneSignal
 import java.util.concurrent.TimeUnit
-import kotlin.math.abs
 
 class AuthActivity : AppCompatActivity() {
+
     private lateinit var binding: ActivityAuthBinding
     private lateinit var auth: FirebaseAuth
     private lateinit var database: DatabaseReference
 
-    private companion object {
+    companion object {
         private const val TAG = "AuthActivity"
         private const val MAX_RETRY_ATTEMPTS = 3
         private const val RETRY_DELAY_MS = 2000L
         private const val MAX_TIME_OFFSET_MINUTES = 30L
+        private const val ONESIGNAL_APP_ID = "0083de8f-7ca0-4824-ac88-9c037278237e" // Замените на реальный App ID
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,14 +34,18 @@ class AuthActivity : AppCompatActivity() {
         binding = ActivityAuthBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        // Инициализация OneSignal
+        OneSignal.initWithContext(this)
+        OneSignal.setAppId(ONESIGNAL_APP_ID)
+
         initFirebase()
         setupClickListeners()
         checkCurrentUser()
     }
 
     private fun initFirebase() {
-        auth = Firebase.auth
-        database = Firebase.database.reference
+        auth = FirebaseAuth.getInstance()
+        database = FirebaseDatabase.getInstance().reference
     }
 
     private fun checkCurrentUser() {
@@ -135,12 +133,7 @@ class AuthActivity : AppCompatActivity() {
     }
 
     private fun saveUserToDatabase(uid: String, email: String, username: String) {
-        val user = createUser(
-            uid = uid,
-            email = email,
-            username = username,
-            fcmToken = null
-        )
+        val user = createUser(uid = uid, email = email, username = username, fcmToken = null)
         database.child("users").child(uid).setValue(user)
             .addOnSuccessListener {
                 registerFcmTokenWithRetry(uid, MAX_RETRY_ATTEMPTS)
@@ -198,6 +191,7 @@ class AuthActivity : AppCompatActivity() {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     registerFcmTokenWithRetry(uid, MAX_RETRY_ATTEMPTS)
                 }
+
                 override fun onCancelled(error: DatabaseError) {
                     Log.w(TAG, "Failed to get current token, proceeding anyway", error.toException())
                     registerFcmTokenWithRetry(uid, MAX_RETRY_ATTEMPTS)
@@ -239,12 +233,15 @@ class AuthActivity : AppCompatActivity() {
             "lastActive" to ServerValue.TIMESTAMP,
             "fcmToken" to token
         )
+
         database.child("users").child(uid).updateChildren(updates)
             .addOnCompleteListener { task ->
                 if (task.isSuccessful) {
+                    saveOneSignalId(uid)
                     navigateToMainActivity()
                 } else {
                     showError("Ошибка обновления токена, но вход выполнен")
+                    saveOneSignalId(uid)
                     navigateToMainActivity()
                 }
                 showProgress(false)
@@ -256,11 +253,11 @@ class AuthActivity : AppCompatActivity() {
             "isActive" to true,
             "lastActive" to ServerValue.TIMESTAMP
         )
-        token?.let {
-            updates["fcmToken"] = it
-        }
+        token?.let { updates["fcmToken"] = it }
+
         database.child("users").child(uid).updateChildren(updates)
             .addOnCompleteListener { task ->
+                saveOneSignalId(uid)
                 showProgress(false)
                 navigateToMainActivity()
             }
@@ -272,12 +269,13 @@ class AuthActivity : AppCompatActivity() {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     try {
                         val offset = snapshot.getValue(Long::class.java) ?: 0
-                        onSuccess(abs(offset) < TimeUnit.MINUTES.toMillis(MAX_TIME_OFFSET_MINUTES))
+                        onSuccess(kotlin.math.abs(offset) < TimeUnit.MINUTES.toMillis(MAX_TIME_OFFSET_MINUTES))
                     } catch (e: Exception) {
                         Log.e(TAG, "Error parsing time offset", e)
                         onFailure()
                     }
                 }
+
                 override fun onCancelled(error: DatabaseError) {
                     Log.e(TAG, "Failed to check server time", error.toException())
                     onFailure()
@@ -298,7 +296,6 @@ class AuthActivity : AppCompatActivity() {
         )
     }
 
-    // --- Добавленный код для управления прогресс-баром ---
     private fun showProgress(show: Boolean) {
         binding.apply {
             progressBar.visibility = if (show) View.VISIBLE else View.GONE
@@ -321,5 +318,24 @@ class AuthActivity : AppCompatActivity() {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         })
         finish()
+    }
+
+    private fun saveOneSignalId(uid: String) {
+        val deviceState = OneSignal.getDeviceState()
+        if (deviceState?.userId != null && deviceState.userId.isNotBlank()) {
+            database.child("users").child(uid).child("oneSignalId")
+                .setValue(deviceState.userId)
+                .addOnSuccessListener {
+                    Log.d(TAG, "OneSignal ID сохранён: ${deviceState.userId}")
+                }
+                .addOnFailureListener { e ->
+                    Log.e(TAG, "Ошибка сохранения OneSignal ID", e)
+                }
+        } else {
+            // Повторная попытка через 2 секунды
+            binding.root.postDelayed({
+                saveOneSignalId(uid)
+            }, 2000)
+        }
     }
 }
