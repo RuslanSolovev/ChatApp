@@ -26,7 +26,7 @@
     <string name="user_add_error">Ошибка добавления: %s</string>
     <string name="user_check_error">Ошибка проверки пользователя: %s</string>
     <string name="user_already_in_chat">Пользователь уже в чате</string>
-    <string name="search_hint">Поиск пользователей...</string>
+    <string name="search_hint">Поиск...</string>
 
     <string name="edited">ред.</string>
     <string name="message">Сообщение</string>
@@ -42,7 +42,7 @@
 
     <string name="reply">Ответить на сообщение</string>
     <string name="edit">Редактировать сообщение</string>
-    <string name="delete">Удалить сообщение</string>
+
 
     <string name="delete_message_title">Удалить сообщение</string>
     <string name="delete_message_confirm">Вы уверены, что хотите удалить это сообщение?</string>
@@ -73,4 +73,63 @@
     <string name="login_failed">"Login failed"</string>
     <string name="edited_label">qqewqeqewqqqeqweqw</string>
     <string name="image">привет</string>
+
+    <!-- Строка для кнопки "Сброс" -->
+    <string name="reset_button">Сброс</string>
+
+    <!-- Строка для кнопки "Прослушать" -->
+    <string name="listen_button">Прослушать</string>
+
+    <!-- Строка для кнопки "Подключиться" -->
+    <string name="connect_button">Подключиться</string>
+
+
+
+
+        <string name="search">Поиск</string>
+        <string name="my_music">Моя музыка</string>
+        <string name="playlists">Плейлист</string>
+        <string name="add_to_playlist">Добавить в плейлист</string>
+        <string name="create_new_playlist">Создать новый плейлист</string>
+        <string name="playlist_name_hint">Название плейлиста</string>
+        <string name="create">Создать</string>
+
+    <string name="location_service_title">Обновление местоположения</string>
+    <string name="location_service_text">Сервис работает в фоновом режиме</string>
+
+
+    <string name="not_playing">Not playing</string>
+<string name="settings">настройки</string>
+<string name="playlist_name">название плейлиста</string>
+
+    <string name="delete_playlist_title">Удалить плейлист</string>
+    <string name="delete_playlist_message">Вы уверены, что хотите удалить плейлист \"%s\"?</string>
+    <string name="delete_track_title">Удалить трек</string>
+    <string name="delete_track_message">Вы уверены, что хотите удалить этот трек из плейлиста?</string>
+    <string name="delete">Удалить</string>
+    <string name="cancel">Отмена</string>
+    <string name="playlist_deleted">Плейлист удален</string>
+    <string name="track_deleted">Трек удален</string>
+    <string name="playlist_cover">Обложка плейлиста</string>
+
+    <string name="alarm_notification_title">Будильник</string>
+    <string name="alarm_notification_text">Сработал будильник</string>
+    <string name="alarm_channel_name">Alarm Notifications</string>
+    <string name="alarm_channel_description">Channel for alarm notifications</string>
+
+    <string name="clear_route_title">Очистка маршрута</string>
+    <string name="clear_route_message">Вы уверены, что хотите очистить отображенный маршрут?</string>
+    <string name="clear">Очистить</string>
+
+    <string name="route_cleared">Маршрут очищен</string>
+    <string name="error_loading_history">Ошибка загрузки истории</string>
+    <string name="not_enough_data_for_route">Недостаточно данных для построения маршрута</string>
+    <string name="start_point">Начало</string>
+    <string name="end_point">Конец</string>
+
+    <string name="huawei_location_service_title">Huawei Location Updates</string>
+    <string name="huawei_location_service_description">Updating your location in background</string>
+    <string name="huawei_location_channel_name">Huawei Location Updates</string>
+    <string name="huawei_location_channel_description">Huawei location service channel</string>
+
 </resources>

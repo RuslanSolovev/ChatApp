@@ -1,10 +1,10 @@
 package com.example.chatapp
 
-
 import android.content.Intent
 import android.os.Bundle
-import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
+import androidx.cardview.widget.CardView
+import android.widget.TextView
 
 class GuessNumberMenuActivity : AppCompatActivity() {
 
@@ -12,17 +12,17 @@ class GuessNumberMenuActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_guess_number_menu)
 
-        // Инициализация кнопок уровней сложности
-        findViewById<Button>(R.id.btn_easy).setOnClickListener {
+        // Инициализация карточек уровней сложности
+        findViewById<CardView>(R.id.card_easy).setOnClickListener {
             startGame(100)
         }
-        findViewById<Button>(R.id.btn_medium).setOnClickListener {
+        findViewById<CardView>(R.id.card_medium).setOnClickListener {
             startGame(1000)
         }
-        findViewById<Button>(R.id.btn_hard).setOnClickListener {
+        findViewById<CardView>(R.id.card_hard).setOnClickListener {
             startGame(10000)
         }
-        findViewById<Button>(R.id.btn_expert).setOnClickListener {
+        findViewById<CardView>(R.id.card_expert).setOnClickListener {
             startGame(100000)
         }
     }

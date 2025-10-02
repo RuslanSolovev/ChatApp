@@ -62,20 +62,6 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- Кнопка создания чата -->
-        <Button
-            android:id="@+id/btnCreateChat"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Создать чат"
-            android:textSize="18sp"
-            android:textColor="@color/white"
-            android:drawableStart="@drawable/ic_create"
-            android:drawableTint="@color/white"
-            android:backgroundTint="@color/colorPrimary"
-            android:paddingVertical="12dp"
-            android:layout_marginBottom="16dp"/>
-
         <!-- Кнопка загрузки изображения -->
         <Button
             android:id="@+id/btnUploadImage"
@@ -87,6 +73,21 @@
             android:drawableStart="@drawable/ic_upload"
             android:drawableTint="@color/white"
             android:backgroundTint="@color/colorPrimary"
+            android:paddingVertical="12dp"
+            android:layout_marginBottom="16dp"/>
+
+        <!-- Кнопка создания чата -->
+        <Button
+            android:id="@+id/btnCreateChat"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Создать чат"
+            android:textSize="18sp"
+            android:textColor="@color/white"
+            android:drawableStart="@drawable/ic_create"
+            android:drawableTint="@color/white"
+            android:backgroundTint="@color/colorPrimary"
             android:paddingVertical="12dp"/>
+
     </LinearLayout>
 </ScrollView>

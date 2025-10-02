@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.cardview.widget.CardView
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    app:cardCornerRadius="12dp"
+    app:cardElevation="4dp"
+    android:layout_marginTop="3dp"
+    app:cardBackgroundColor="@android:color/white"
+    android:clickable="true"
+    android:focusable="true"
+    android:foreground="?attr/selectableItemBackground">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:clickable="false"
+        android:focusable="false">
+
+        <!-- Остальная разметка без изменений -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="12dp"
+            android:gravity="center_vertical"
+            android:clickable="false"
+            android:focusable="false">
+
+            <ImageView
+                android:id="@+id/ivSourceLogo"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:scaleType="centerCrop"
+                android:src="@drawable/id_lenta"
+                android:contentDescription="Логотип источника"
+                android:clickable="false"
+                android:focusable="false" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="12dp"
+                android:orientation="vertical"
+                android:clickable="false"
+                android:focusable="false">
+
+                <TextView
+                    android:id="@+id/tvSource"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Lenta.ru"
+                    android:textStyle="bold"
+                    android:textColor="@color/black"
+                    android:textSize="14sp"
+                    android:clickable="false"
+                    android:focusable="false" />
+
+                <TextView
+                    android:id="@+id/tvTime"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:text="14 июля, 10:00"
+                    android:textColor="@color/grey"
+                    android:textSize="12sp"
+                    android:clickable="false"
+                    android:focusable="false" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/tvTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:text="Заголовок новости с Lenta.ru"
+            android:textColor="@color/black"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:clickable="false"
+            android:focusable="false" />
+
+        <TextView
+            android:id="@+id/tvSummary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="8dp"
+            android:text="Краткое описание новости..."
+            android:textColor="#666666"
+            android:textSize="14sp"
+            android:maxLines="3"
+            android:ellipsize="end"
+            android:clickable="false"
+            android:focusable="false" />
+
+        <ImageView
+            android:id="@+id/ivNewsImage"
+            android:layout_width="match_parent"
+            android:layout_height="200dp"
+            android:scaleType="centerCrop"
+            android:contentDescription="Изображение новости"
+            android:background="@color/gray"
+            android:visibility="gone"
+            android:clickable="false"
+            android:focusable="false"/>
+
+    </LinearLayout>
+
+</androidx.cardview.widget.CardView>

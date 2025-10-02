@@ -18,6 +18,10 @@ annotation = "1.6.0"
 lifecycleLivedataKtx = "2.7.0"
 lifecycleViewmodelKtx = "2.7.0"
 androidbrowserhelper = "2.6.2"
+roomCommonJvm = "2.7.2"
+uiDesktop = "1.7.0"
+firebaseFirestoreKtx = "26.0.0"
+appcrawlerPlatform = "0.0.1-alpha03"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -46,6 +50,10 @@ androidx-annotation = { group = "androidx.annotation", name = "annotation", vers
 androidx-lifecycle-livedata-ktx = { group = "androidx.lifecycle", name = "lifecycle-livedata-ktx", version.ref = "lifecycleLivedataKtx" }
 androidx-lifecycle-viewmodel-ktx = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-ktx", version.ref = "lifecycleViewmodelKtx" }
 androidbrowserhelper = { group = "com.google.androidbrowserhelper", name = "androidbrowserhelper", version.ref = "androidbrowserhelper" }
+androidx-room-common-jvm = { group = "androidx.room", name = "room-common-jvm", version.ref = "roomCommonJvm" }
+androidx-ui-desktop = { group = "androidx.compose.ui", name = "ui-desktop", version.ref = "uiDesktop" }
+firebase-firestore-ktx = { group = "com.google.firebase", name = "firebase-firestore-ktx", version.ref = "firebaseFirestoreKtx" }
+appcrawler-platform = { group = "com.google.android.appcrawler", name = "appcrawler-platform", version.ref = "appcrawlerPlatform" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

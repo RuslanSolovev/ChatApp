@@ -17,7 +17,7 @@
         android:id="@+id/messageContainer"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:padding="16dp">
+        android:padding="8dp">
 
         <!-- Контейнер ответа -->
         <LinearLayout
@@ -65,11 +65,11 @@
 
             <TextView
                 android:id="@+id/tvMessageText"
-                android:layout_width="match_parent"
+                android:layout_width="245dp"
                 android:layout_height="wrap_content"
                 android:textColor="#000000"
-                android:textSize="16sp"
-                tools:text="Ваше сообщение"/>
+                android:textSize="12sp"
+                tools:text="Ваше сообщение" />
         </LinearLayout>
 
         <!-- Контейнер для изображения (полноразмерный) -->
@@ -139,7 +139,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:textColor="#666666"
-                android:textSize="12sp"
+                android:textSize="10sp"
                 tools:text="12:34"/>
 
             <ImageView

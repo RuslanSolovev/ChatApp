@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_settings"
+        android:title="Настройки"
+        android:icon="@drawable/ic_settings"
+        app:showAsAction="ifRoom"/>
+
+    <item
+        android:id="@+id/action_profile"
+        android:title="Профиль"
+        android:icon="@drawable/ic_profile_placeholder"
+        app:showAsAction="ifRoom"/>
+
+    <item
+        android:id="@+id/action_help"
+        android:title="Помощь"
+        android:icon="@drawable/ic_help"
+        app:showAsAction="never"/>
+
+    <item
+        android:id="@+id/action_about"
+        android:title="О приложении"
+        android:icon="@drawable/ic_info"
+        app:showAsAction="never"/>
+
+</menu>

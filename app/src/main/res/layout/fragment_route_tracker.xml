@@ -1,0 +1,153 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <!-- Карта на весь экран -->
+    <FrameLayout
+        android:id="@+id/mapContainer"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent" />
+
+    <!-- Выдвижная шторка снизу -->
+    <LinearLayout
+        android:id="@+id/bottomSheet"
+        android:layout_width="match_parent"
+        android:layout_height="400dp"
+        android:orientation="vertical"
+        android:background="@android:color/white"
+        android:elevation="8dp"
+        app:layout_behavior="com.google.android.material.bottomsheet.BottomSheetBehavior">
+
+        <!-- Ручка для перетаскивания -->
+        <View
+            android:layout_width="40dp"
+            android:layout_height="4dp"
+            android:layout_gravity="center_horizontal"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="8dp"
+            android:background="@drawable/bottom_sheet_drag_handle" />
+
+        <!-- Заголовок шторки -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Статистика маршрута"
+            android:textSize="20sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:padding="8dp" />
+
+        <!-- Контент статистики -->
+        <LinearLayout
+            android:id="@+id/statsContent"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:padding="16dp">
+
+            <!-- Дистанция -->
+            <TextView
+                android:id="@+id/Distance"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:text="🛣️ Пройдено: 0 км"
+                android:textSize="16sp" />
+
+            <!-- Время -->
+            <TextView
+                android:id="@+id/tvTime"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:text="⏱️ Время: 0 мин"
+                android:textSize="16sp" />
+
+            <!-- Средняя скорость -->
+            <TextView
+                android:id="@+id/AvgSpeed"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:text="🚶 Ср. скорость: 0 км/ч"
+                android:textSize="16sp" />
+
+            <!-- Максимальная скорость -->
+            <TextView
+                android:id="@+id/MaxSpeed"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:text="💨 Макс. скорость: 0 км/ч"
+                android:textSize="16sp" />
+
+            <!-- Калории -->
+            <TextView
+                android:id="@+id/Calories"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="12dp"
+                android:text="🔥 Калории: ~0"
+                android:textSize="16sp" />
+
+        </LinearLayout>
+
+        <!-- Кнопки управления -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="16dp"
+            android:gravity="center"
+            android:weightSum="3">
+
+            <Button
+                android:id="@+id/btnStartTracking"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                android:text="Старт"
+                android:backgroundTint="@color/gray_600"
+                android:textColor="@color/white" />
+
+            <Button
+                android:id="@+id/btnStopTracking"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:layout_marginEnd="8dp"
+                android:text="Стоп"
+                android:backgroundTint="@color/red"
+                android:textColor="@color/white" />
+
+            <Button
+                android:id="@+id/btnClear"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                android:text="Очистить"
+                android:backgroundTint="@color/gray"
+                android:textColor="@color/white" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Кнопка для управления шторкой -->
+    <ImageButton
+        android:id="@+id/btnToggleSheet"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="top|end"
+        android:layout_margin="16dp"
+        android:background="@drawable/round_button_bg"
+        android:src="@drawable/ic_stats"
+        android:contentDescription="Показать статистику" />
+
+</androidx.coordinatorlayout.widget.CoordinatorLayout>

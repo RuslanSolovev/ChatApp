@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/menu_profile"
+        android:title="Профиль"/>
+
+    <item
+        android:id="@+id/menu_mozgi"
+        android:title="Мозг Тест" />
+
+    <item
+        android:id="@+id/menu_alarm"
+        android:title="Будильник"
+        android:icon="@drawable/ic_alarm"/>
+
+    <item
+        android:id="@+id/menu_logout"
+        android:title="Выйти"/>
+</menu>

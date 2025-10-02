@@ -9,6 +9,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import com.example.chatapp.fragments.GamesFragment
 
 class AdditionGameActivity : AppCompatActivity() {
 
@@ -121,7 +122,7 @@ class AdditionGameActivity : AppCompatActivity() {
         }
 
         builder.setNeutralButton("Главное меню") { _, _ ->
-            val intent = Intent(this, IgraActivity::class.java)
+            val intent = Intent(this, GamesFragment::class.java)
             startActivity(intent)
             finish()
         }

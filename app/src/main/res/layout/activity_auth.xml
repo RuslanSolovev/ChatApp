@@ -3,169 +3,183 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:padding="16dp"
-    android:background="@drawable/bg_gradient">
+    android:background="@drawable/bg_gradient"
+    android:fillViewport="true">
 
-    <LinearLayout
-        android:id="@+id/containerMain"
-        android:orientation="vertical"
+    <RelativeLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content">
 
-        <!-- Заголовок -->
         <LinearLayout
+            android:id="@+id/containerMain"
+            android:orientation="vertical"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingBottom="16dp">
-            <TextView
-                android:layout_width="0dp"
+            android:layout_height="wrap_content">
+
+            <!-- Заголовок -->
+            <LinearLayout
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Регистрация"
-                android:textSize="24sp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingBottom="16dp">
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="Регистрация"
+                    android:textSize="24sp"
+                    android:textColor="@color/white"
+                    android:textStyle="bold"/>
+            </LinearLayout>
+
+            <!-- Карточка для поля ввода email -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/card_email"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="4dp"
+                app:cardBackgroundColor="@color/white"
+                android:layout_marginBottom="16dp">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="16dp"
+                    android:gravity="center_vertical">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="📧"
+                        android:textSize="24sp"
+                        android:paddingEnd="16dp"/>
+                    <EditText
+                        android:id="@+id/etEmail"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:hint="Email"
+                        android:inputType="textEmailAddress"
+                        android:textColorHint="@color/black"
+                        android:textColor="@color/black"
+                        android:textSize="16sp"/>
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- Карточка для поля ввода пароля -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/card_password"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="4dp"
+                app:cardBackgroundColor="@color/white"
+                android:layout_marginBottom="16dp">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="16dp"
+                    android:gravity="center_vertical">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🔒"
+                        android:textSize="24sp"
+                        android:paddingEnd="16dp"/>
+                    <EditText
+                        android:id="@+id/etPassword"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:hint="Пароль"
+                        android:inputType="textPassword"
+                        android:textColorHint="@color/black"
+                        android:textColor="@color/black"
+                        android:textSize="16sp"/>
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- Карточка для поля ввода имени пользователя -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/card_username"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="4dp"
+                app:cardBackgroundColor="@color/white"
+                android:layout_marginBottom="16dp">
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="16dp"
+                    android:gravity="center_vertical">
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="👤"
+                        android:textSize="24sp"
+                        android:paddingEnd="16dp"/>
+                    <EditText
+                        android:id="@+id/etUsername"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:hint="Имя пользователя"
+                        android:inputType="text"
+                        android:textColorHint="@color/black"
+                        android:textColor="@color/black"
+                        android:textSize="16sp"/>
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+
+            <!-- Кнопка "Зарегистрироваться" -->
+            <Button
+                android:id="@+id/btnRegister"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Зарегистрироваться"
+                android:textSize="18sp"
                 android:textColor="@color/white"
-                android:textStyle="bold"/>
+                android:drawableStart="@drawable/ic_create_account"
+                android:drawableTint="@color/white"
+                android:backgroundTint="@color/colorPrimary"
+                android:paddingVertical="12dp"
+                android:layout_marginBottom="16dp"/>
+
+            <!-- Кнопка "Войти" -->
+            <Button
+                android:id="@+id/btnLogin"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Войти"
+                android:textSize="18sp"
+                android:textColor="@color/white"
+                android:drawableStart="@drawable/ic_login"
+                android:drawableTint="@color/white"
+                android:backgroundTint="@color/colorPrimary"
+                android:paddingVertical="12dp"
+                android:layout_marginBottom="16dp"/>
         </LinearLayout>
 
-        <!-- Карточка для поля ввода email -->
-        <androidx.cardview.widget.CardView
-            android:id="@+id/card_email"
+        <!-- Блокирующая поверхность с прогрессом -->
+        <FrameLayout
+            android:id="@+id/progressSurface"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="4dp"
-            app:cardBackgroundColor="@color/white"
-            android:layout_marginBottom="16dp">
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:padding="16dp"
-                android:gravity="center_vertical">
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="📧"
-                    android:textSize="24sp"
-                    android:paddingEnd="16dp"/>
-                <EditText
-                    android:id="@+id/etEmail"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:hint="Email"
-                    android:inputType="textEmailAddress"
-                    android:textColorHint="@color/black"
-                    android:textColor="@color/black"
-                    android:textSize="16sp"/>
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
-
-        <!-- Карточка для поля ввода пароля -->
-        <androidx.cardview.widget.CardView
-            android:id="@+id/card_password"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="4dp"
-            app:cardBackgroundColor="@color/white"
-            android:layout_marginBottom="16dp">
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:padding="16dp"
-                android:gravity="center_vertical">
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="🔒"
-                    android:textSize="24sp"
-                    android:paddingEnd="16dp"/>
-                <EditText
-                    android:id="@+id/etPassword"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:hint="Пароль"
-                    android:inputType="textPassword"
-                    android:textColorHint="@color/black"
-                    android:textColor="@color/black"
-                    android:textSize="16sp"/>
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
-
-        <!-- Карточка для поля ввода имени пользователя -->
-        <androidx.cardview.widget.CardView
-            android:id="@+id/card_username"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="4dp"
-            app:cardBackgroundColor="@color/white"
-            android:layout_marginBottom="16dp">
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:padding="16dp"
-                android:gravity="center_vertical">
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="👤"
-                    android:textSize="24sp"
-                    android:paddingEnd="16dp"/>
-                <EditText
-                    android:id="@+id/etUsername"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:hint="Имя пользователя"
-                    android:inputType="text"
-                    android:textColorHint="@color/black"
-                    android:textColor="@color/black"
-                    android:textSize="16sp"/>
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
-
-        <!-- Кнопка "Зарегистрироваться" -->
-        <Button
-            android:id="@+id/btnRegister"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Зарегистрироваться"
-            android:textSize="18sp"
-            android:textColor="@color/white"
-            android:drawableStart="@drawable/ic_create_account"
-            android:drawableTint="@color/white"
-            android:backgroundTint="@color/colorPrimary"
-            android:paddingVertical="12dp"
-            android:layout_marginBottom="16dp"/>
-
-        <!-- Кнопка "Войти" -->
-        <Button
-            android:id="@+id/btnLogin"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Войти"
-            android:textSize="18sp"
-            android:textColor="@color/white"
-            android:drawableStart="@drawable/ic_login"
-            android:drawableTint="@color/white"
-            android:backgroundTint="@color/colorPrimary"
-            android:paddingVertical="12dp"
-            android:layout_marginBottom="16dp"/>
-
-        <!-- Индикатор загрузки -->
-        <ProgressBar
-            android:id="@+id/progressBar"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_height="match_parent"
             android:visibility="gone"
-            android:indeterminate="true"
-            android:indeterminateTint="#4CF8C804"
-            android:layout_gravity="center"/>
-    </LinearLayout>
+            android:background="#80000000"
+            android:clickable="true"
+            android:focusable="true">
+
+            <ProgressBar
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:layout_gravity="center"
+                android:indeterminate="true"
+                android:indeterminateTint="@color/black"/>
+        </FrameLayout>
+    </RelativeLayout>
 </ScrollView>

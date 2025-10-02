@@ -1,28 +1,78 @@
-<LinearLayout
-    xmlns:android="http://schemas.android.com/apk/res/android"
+<?xml version="1.0" encoding="utf-8"?>
+<RelativeLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
     android:padding="16dp">
 
-    <TextView
-
+    <ScrollView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Создай беседу на любую тему"
-        android:textSize="22sp"
-        android:gravity="center"/>
+        android:layout_height="match_parent"
+        android:layout_above="@+id/fabCreateChatBeseda2"
+        android:fillViewport="true">
 
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
 
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Создай беседу на любую тему"
+                android:textSize="22sp"
+                android:gravity="center"
+                android:layout_marginBottom="24dp"/>
 
+            <!-- Карточка для поля ввода названия чата -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/card_beseda_name"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:cardCornerRadius="12dp"
+                app:cardElevation="4dp"
+                app:cardBackgroundColor="#EAFBD6"
+                android:layout_marginBottom="16dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:padding="16dp"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="📝"
+                        android:textSize="24sp"
+                        android:paddingEnd="16dp"/>
+
+                    <EditText
+                        android:id="@+id/etBesedaName"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:hint="Название беседы"
+                        android:textColorHint="@color/gray_600"
+                        android:textColor="@color/gray_600"
+                        android:textSize="16sp"
+                        android:inputType="text"/>
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+        </LinearLayout>
+    </ScrollView>
 
     <!-- Кнопка создания новой беседы -->
     <Button
         android:id="@+id/fabCreateChatBeseda2"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_gravity="end|bottom"
-        android:layout_margin="16dp"
-        android:src="@drawable/ic_add_chat"
-        android:contentDescription="Создать беседу"/>
-</LinearLayout>
+        android:layout_alignParentBottom="true"
+        android:layout_marginTop="16dp"
+        android:text="Создать беседу"
+        android:textAllCaps="false"
+        android:textSize="18sp"
+        android:backgroundTint="@color/colorPrimary"
+        android:textColor="@android:color/white"/>
+</RelativeLayout>

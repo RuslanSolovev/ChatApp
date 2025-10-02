@@ -6,9 +6,10 @@ import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.bumptech.glide.Glide
-import com.example.chatapp.LocationActivity
+
 import com.example.chatapp.R
 import com.example.chatapp.databinding.ActivityUserProfileBinding
+import com.example.chatapp.fragments.LocationFragment
 import com.example.chatapp.models.User
 import com.example.chatapp.models.UserLocation
 import com.google.firebase.database.*
@@ -118,7 +119,7 @@ class UserProfileActivity : AppCompatActivity() {
             .addOnSuccessListener { snapshot ->
                 val location = snapshot.getValue(UserLocation::class.java)
                 if (location != null) {
-                    val intent = Intent(this, LocationActivity::class.java).apply {
+                    val intent = Intent(this, LocationFragment::class.java).apply {
                         putExtra("TARGET_LAT", location.lat)
                         putExtra("TARGET_LNG", location.lng)
                         putExtra("TARGET_USER_ID", userId)

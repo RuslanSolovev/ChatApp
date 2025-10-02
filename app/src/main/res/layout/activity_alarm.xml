@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp"
+    tools:context=".budilnik.AlarmActivity">
+
+    <TextView
+        android:id="@+id/alarmTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Будильник мессенджера"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent" />
+
+    <Button
+        android:id="@+id/timePickerButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="32dp"
+        android:text="Выбрать время"
+        android:textAllCaps="false"
+        app:layout_constraintTop_toBottomOf="@id/alarmTitle" />
+
+    <TextView
+        android:id="@+id/selectedTimeText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="Время не выбрано"
+        android:textSize="18sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/timePickerButton" />
+
+    <TextView
+        android:id="@+id/alarmStatusText"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+
+        android:textSize="16sp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/selectedTimeText" />
+
+    <Button
+        android:id="@+id/setAlarmButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="32dp"
+        android:text="Подтвердить выбор"
+        android:textAllCaps="false"
+
+        app:layout_constraintTop_toBottomOf="@id/alarmStatusText" />
+
+    <Button
+        android:id="@+id/cancelAlarmButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="Отменить будильник"
+        android:textAllCaps="false"
+        app:layout_constraintTop_toBottomOf="@id/setAlarmButton"
+        />
+
+    <Button
+        android:id="@+id/stopAlarmButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:text="ОСТАНОВИТЬ СИГНАЛ"
+        android:textAllCaps="true"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/cancelAlarmButton" />
+
+</androidx.constraintlayout.widget.ConstraintLayout>

@@ -7,149 +7,257 @@
     android:background="@drawable/bg_gradient"
     android:padding="16dp">
 
-    <!-- Заголовок -->
+    <!-- Заголовок игры -->
+    <TextView
+        android:id="@+id/tvGameTitle"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:text="Сложение чисел"
+        android:textSize="24sp"
+        android:textColor="@color/white"
+        android:gravity="center"
+        android:layout_marginBottom="8dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- Заголовок уровня сложности -->
     <TextView
         android:id="@+id/tvTitle"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:text="Выберите уровень сложности"
-        android:textSize="24sp"
-        android:textColor="@color/colorOnPrimary"
+        android:textSize="16sp"
+        android:textColor="@color/white"
         android:gravity="center"
-        android:padding="16dp"
-        app:layout_constraintTop_toTopOf="parent"
+        android:textStyle="bold"
+        android:layout_marginBottom="24dp"
+        android:shadowColor="@color/black"
+        android:shadowDx="2"
+        android:shadowDy="2"
+        android:shadowRadius="4"
+        app:layout_constraintTop_toBottomOf="@id/tvGameTitle"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent" />
 
-    <!-- Однозначные числа -->
-    <LinearLayout
-        android:id="@+id/ll_single_digit"
+    <!-- Сетка 2x2 -->
+    <GridLayout
         android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:background="@drawable/rounded_background_white"
-        android:padding="12dp"
-        android:gravity="center_vertical"
-        android:layout_marginTop="24dp"
+        android:layout_height="0dp"
+        android:layout_marginTop="16dp"
+        android:columnCount="2"
+        android:rowCount="2"
+        android:alignmentMode="alignMargins"
+        android:useDefaultMargins="true"
         app:layout_constraintTop_toBottomOf="@id/tvTitle"
+        app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <ImageView
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:src="@drawable/ic_easy"
-            app:tint="@color/green_online"
-            android:contentDescription="Однозначные числа" />
-
-        <Button
-            android:id="@+id/btn_single_digit"
+        <!-- Уровень 1: Однозначные числа -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/card_single_digit"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Однозначные числа"
-            android:textSize="20sp"
-            android:textColor="@color/green_online"
-            android:backgroundTint="@android:color/transparent"
-            android:padding="12dp" />
-    </LinearLayout>
+            android:layout_height="0dp"
+            android:layout_rowWeight="1"
+            android:layout_columnWeight="1"
+            android:layout_margin="8dp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="6dp">
 
-    <!-- Двузначные числа -->
-    <LinearLayout
-        android:id="@+id/ll_two_digit"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:background="@drawable/rounded_background_white"
-        android:padding="12dp"
-        android:gravity="center_vertical"
-        android:layout_marginTop="16dp"
-        app:layout_constraintTop_toBottomOf="@id/ll_single_digit"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:padding="20dp"
+                android:gravity="center"
+                android:background="?android:attr/selectableItemBackground">
 
-        <ImageView
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:src="@drawable/ic_medium"
-            app:tint="@color/colorPrimary"
-            android:contentDescription="Двузначные числа" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="1"
+                    android:textSize="48sp"
+                    android:textStyle="bold"
+                    android:textColor="#4CAF50"
+                    android:layout_marginBottom="16dp"/>
 
-        <Button
-            android:id="@+id/btn_two_digit"
+                <TextView
+                    android:id="@+id/tv_single_digit"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Однозначные числа"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:textColor="#333"
+                    android:layout_marginBottom="8dp"
+                    android:gravity="center"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="1-9"
+                    android:textSize="14sp"
+                    android:textColor="#666"
+                    android:gravity="center"/>
+
+            </LinearLayout>
+
+        </androidx.cardview.widget.CardView>
+
+        <!-- Уровень 2: Двузначные числа -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/card_two_digit"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Двузначные числа"
-            android:textSize="20sp"
-            android:textColor="@color/colorPrimary"
-            android:backgroundTint="@android:color/transparent"
-            android:padding="12dp" />
-    </LinearLayout>
+            android:layout_height="0dp"
+            android:layout_rowWeight="1"
+            android:layout_columnWeight="1"
+            android:layout_margin="8dp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="6dp">
 
-    <!-- Трехзначные числа -->
-    <LinearLayout
-        android:id="@+id/ll_three_digit"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:background="@drawable/rounded_background_white"
-        android:padding="12dp"
-        android:gravity="center_vertical"
-        android:layout_marginTop="16dp"
-        app:layout_constraintTop_toBottomOf="@id/ll_two_digit"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:padding="20dp"
+                android:gravity="center"
+                android:background="?android:attr/selectableItemBackground">
 
-        <ImageView
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:src="@drawable/ic_hard"
-            app:tint="#F09B63"
-            android:contentDescription="Трехзначные числа" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="2"
+                    android:textSize="48sp"
+                    android:textStyle="bold"
+                    android:textColor="#2196F3"
+                    android:layout_marginBottom="16dp"/>
 
-        <Button
-            android:id="@+id/btn_three_digit"
+                <TextView
+                    android:id="@+id/tv_two_digit"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Двузначные числа"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:textColor="#333"
+                    android:layout_marginBottom="8dp"
+                    android:gravity="center"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="10-99"
+                    android:textSize="14sp"
+                    android:textColor="#666"
+                    android:gravity="center"/>
+
+            </LinearLayout>
+
+        </androidx.cardview.widget.CardView>
+
+        <!-- Уровень 3: Трехзначные числа -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/card_three_digit"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Трехзначные числа"
-            android:textSize="20sp"
-            android:textColor="#F09B63"
-            android:backgroundTint="@android:color/transparent"
-            android:padding="12dp" />
-    </LinearLayout>
+            android:layout_height="0dp"
+            android:layout_rowWeight="1"
+            android:layout_columnWeight="1"
+            android:layout_margin="8dp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="6dp">
 
-    <!-- Четырехзначные числа -->
-    <LinearLayout
-        android:id="@+id/ll_four_digit"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:background="@drawable/rounded_background_white"
-        android:padding="12dp"
-        android:gravity="center_vertical"
-        android:layout_marginTop="16dp"
-        app:layout_constraintTop_toBottomOf="@id/ll_three_digit"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:padding="20dp"
+                android:gravity="center"
+                android:background="?android:attr/selectableItemBackground">
 
-        <ImageView
-            android:layout_width="48dp"
-            android:layout_height="48dp"
-            android:src="@drawable/ic_extreme"
-            app:tint="@color/red"
-            android:contentDescription="Четырехзначные числа" />
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="3"
+                    android:textSize="48sp"
+                    android:textStyle="bold"
+                    android:textColor="#FF9800"
+                    android:layout_marginBottom="16dp"/>
 
-        <Button
-            android:id="@+id/btn_four_digit"
+                <TextView
+                    android:id="@+id/tv_three_digit"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Трехзначные числа"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:textColor="#333"
+                    android:layout_marginBottom="8dp"
+                    android:gravity="center"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="100-999"
+                    android:textSize="14sp"
+                    android:textColor="#666"
+                    android:gravity="center"/>
+
+            </LinearLayout>
+
+        </androidx.cardview.widget.CardView>
+
+        <!-- Уровень 4: Четырехзначные числа -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/card_four_digit"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Четырехзначные числа"
-            android:textSize="20sp"
-            android:textColor="@color/red"
-            android:backgroundTint="@android:color/transparent"
-            android:padding="12dp" />
-    </LinearLayout>
+            android:layout_height="0dp"
+            android:layout_rowWeight="1"
+            android:layout_columnWeight="1"
+            android:layout_margin="8dp"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="6dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:orientation="vertical"
+                android:padding="20dp"
+                android:gravity="center"
+                android:background="?android:attr/selectableItemBackground">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="4"
+                    android:textSize="48sp"
+                    android:textStyle="bold"
+                    android:textColor="#F44336"
+                    android:layout_marginBottom="16dp"/>
+
+                <TextView
+                    android:id="@+id/tv_four_digit"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Четырехзначные числа"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:textColor="#333"
+                    android:layout_marginBottom="8dp"
+                    android:gravity="center"/>
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="1000-9999"
+                    android:textSize="14sp"
+                    android:textColor="#666"
+                    android:gravity="center"/>
+
+            </LinearLayout>
+
+        </androidx.cardview.widget.CardView>
+
+    </GridLayout>
+
 </androidx.constraintlayout.widget.ConstraintLayout>

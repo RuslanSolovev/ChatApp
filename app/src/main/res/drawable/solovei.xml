@@ -1,0 +1,36 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="200dp"
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+
+    <!-- Жёлтый фон (круг) -->
+    <path
+        android:fillColor="#FFEB3B"
+        android:pathData="M50,0a50,50 0 1,1 0,100a50,50 0 1,1 0,-100z"/>
+
+    <!-- Тело соловья (коричневое) -->
+    <path
+        android:fillColor="#795548"
+        android:pathData="M50,30c10,0 18,8 18,18s-8,18-18,18 -18,-8-18,-18 8,-18 18,-18z"/>
+
+    <!-- Голова (темнее) -->
+    <path
+        android:fillColor="#5D4037"
+        android:pathData="M50,20c5,0 10,5 10,10s-5,10-10,10 -10,-5-10,-10 5,-10 10,-10z"/>
+
+    <!-- Глаз -->
+    <path
+        android:fillColor="#212121"
+        android:pathData="M55,25a2,2 0 1,1-4,0 2,2 0 1,1 4,0z"/>
+
+    <!-- Клюв -->
+    <path
+        android:fillColor="#FF9800"
+        android:pathData="M60,30l10,-5 -5,5z"/>
+
+    <!-- Хвост -->
+    <path
+        android:fillColor="#5D4037"
+        android:pathData="M30,50l-15,-10 5,10 -5,10z"/>
+</vector>

@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.provider.MediaStore
 import android.util.Log
 import android.view.View
+import android.widget.ImageView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
@@ -20,7 +21,9 @@ import androidx.core.content.ContextCompat
 import androidx.core.net.toFile
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.bumptech.glide.Glide
 import com.github.chrisbanes.photoview.PhotoView
+import com.example.chatapp.R
 import com.example.chatapp.adapters.MessageAdapter
 import com.example.chatapp.api.RetrofitInstance
 import com.example.chatapp.databinding.ActivityChatDetailBinding
@@ -74,10 +77,13 @@ class ChatDetailActivity : AppCompatActivity() {
     private val usersCache = hashMapOf<String, User>()
     private var chatId: String = ""
     private var replyingToMessage: Message? = null
+    private var otherUserId: String = "" // ID собеседника
+    private var otherUserName: String = "" // Имя собеседника
+    private var otherUserAvatar: String? = null // Аватар собеседника
+
     private val currentUserId: String
         get() = auth.currentUser?.uid ?: ""
     private val selectedMessageColor = Color.parseColor("#E3F2FD")
-
 
     companion object {
         private const val ACCESS_KEY_ID = "YCAJEIgiTghuX8JsxiQJUQIlM"
@@ -104,7 +110,9 @@ class ChatDetailActivity : AppCompatActivity() {
             setupRecyclerView()
             setupClickListeners()
             loadChatData()
+            setupUserUpdatesListener()
             registerFcmToken()
+            NotificationUtils.saveCurrentUserOneSignalIdToDatabase(this)
         } catch (e: Exception) {
             Log.e(TAG, "Initialization error", e)
             showErrorAndFinish("Initialization failed")
@@ -209,6 +217,7 @@ class ChatDetailActivity : AppCompatActivity() {
             adapter = messageAdapter
         }
     }
+
     private fun openImagePicker() {
         try {
             imagePicker.launch("image/*")
@@ -237,6 +246,19 @@ class ChatDetailActivity : AppCompatActivity() {
                     scrollToMessage(messageId)
                 }
             }
+
+            // Обработчики кликов на заголовок чата
+            ivProfileImage.setOnClickListener {
+                if (otherUserId.isNotEmpty()) {
+                    openUserProfile(otherUserId)
+                }
+            }
+
+            tvUserName.setOnClickListener {
+                if (otherUserId.isNotEmpty()) {
+                    openUserProfile(otherUserId)
+                }
+            }
         }
     }
 
@@ -245,6 +267,7 @@ class ChatDetailActivity : AppCompatActivity() {
             showErrorAndFinish("Invalid chat ID")
             return
         }
+
         database.child("chats").child(chatId).child("participants")
             .addListenerForSingleValueEvent(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
@@ -252,16 +275,115 @@ class ChatDetailActivity : AppCompatActivity() {
                         showErrorAndFinish("You don't have access to this chat")
                         return
                     }
-                    snapshot.children.mapNotNull { it.key }.let { userIds ->
-                        loadParticipantsData(userIds)
-                        fetchMessages()
+
+                    // Находим ID собеседника (всех участников кроме текущего пользователя)
+                    val participants = snapshot.children.mapNotNull { it.key }
+                    val otherParticipants = participants.filter { it != currentUserId }
+
+                    if (otherParticipants.isNotEmpty()) {
+                        // Для диалога берем первого собеседника (в групповых чатах логика будет другой)
+                        otherUserId = otherParticipants.first()
+                        loadOtherUserData(otherUserId)
+                    } else {
+                        // Если нет других участников, это может быть ошибка
+                        showError("No other participants found")
+                        // Устанавливаем заголовок по умолчанию
+                        binding.tvUserName.text = "Unknown"
                     }
+
+                    loadParticipantsData(participants)
+                    fetchMessages()
                 }
 
                 override fun onCancelled(error: DatabaseError) {
                     showError("Error checking access: ${error.message}")
                 }
             })
+    }
+
+    private fun loadOtherUserData(userId: String) {
+        database.child("users").child(userId)
+            .addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val user = snapshot.getValue(User::class.java)
+                    user?.let {
+                        otherUserName = it.name
+                        otherUserAvatar = it.profileImageUrl
+                        updateChatHeader() // Обновляем заголовок чата
+                    }
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    Log.e(TAG, "Error loading other user data", error.toException())
+                    otherUserName = "Unknown"
+                    updateChatHeader()
+                }
+            })
+    }
+
+    private fun updateChatHeader() {
+        binding.apply {
+            // Устанавливаем имя собеседника в заголовок
+            tvUserName.text = otherUserName
+
+            // Загружаем аватар собеседника
+            if (!otherUserAvatar.isNullOrEmpty()) {
+                loadUserAvatar(otherUserAvatar!!, ivProfileImage)
+            } else {
+                // Устанавливаем аватар по умолчанию
+                ivProfileImage.setImageResource(R.drawable.ic_default_profile)
+            }
+        }
+    }
+
+    private fun loadUserAvatar(avatarUrl: String, imageView: ImageView) {
+        try {
+            Glide.with(this)
+                .load(avatarUrl)
+                .placeholder(R.drawable.ic_default_profile)
+                .error(R.drawable.ic_default_profile)
+                .circleCrop()
+                .into(imageView)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading avatar", e)
+            imageView.setImageResource(R.drawable.ic_default_profile)
+        }
+    }
+
+    private fun setupUserUpdatesListener() {
+        // Слушаем изменения данных текущего пользователя
+        database.child("users").child(currentUserId)
+            .addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    snapshot.getValue(User::class.java)?.let { user ->
+                        usersCache[currentUserId] = user
+                        messageAdapter.notifyDataSetChanged()
+                    }
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    Log.e(TAG, "Failed to listen to user updates", error.toException())
+                }
+            })
+
+        // Слушаем изменения данных собеседника
+        if (otherUserId.isNotEmpty()) {
+            database.child("users").child(otherUserId)
+                .addValueEventListener(object : ValueEventListener {
+                    override fun onDataChange(snapshot: DataSnapshot) {
+                        val user = snapshot.getValue(User::class.java)
+                        user?.let {
+                            otherUserName = it.name ?: "Unknown"
+                            otherUserAvatar = it.profileImageUrl
+                            updateChatHeader()
+                        }
+                    }
+
+                    override fun onCancelled(error: DatabaseError) {
+                        Log.e(TAG, "Failed to listen to other user updates", error.toException())
+                    }
+                })
+        }
     }
 
     private fun showDeleteDialog(message: Message) {
@@ -505,13 +627,19 @@ class ChatDetailActivity : AppCompatActivity() {
         senderName: String,
         replyData: Map<String, String?>?
     ) {
+        // Для уведомлений используем имя текущего пользователя (отправителя)
+        val currentUser = usersCache[currentUserId]
+        val displayName = currentUser?.name ?: senderName
+
         val messageData = hashMapOf<String, Any>(
             "id" to messageId,
             "text" to text,
             "senderId" to currentUserId,
-            "senderName" to senderName,
+            "senderName" to displayName, // Сохраняем правильное имя отправителя
             "timestamp" to System.currentTimeMillis()
         )
+
+        // Эти поля относятся к сообщению, на которое отвечаем (если есть)
         replyData?.get("replyToMessageId")?.let {
             messageData["replyToMessageId"] = it
         }
@@ -521,14 +649,31 @@ class ChatDetailActivity : AppCompatActivity() {
         replyData?.get("replyToSenderName")?.let {
             messageData["replyToSenderName"] = it
         }
-        database.child("chats").child(chatId).child("messages").child(messageId)
-            .updateChildren(messageData)
+
+        // Подготавливаем обновления для узла чата
+        val chatUpdates = hashMapOf<String, Any>(
+            "lastMessageTimestamp" to System.currentTimeMillis(),
+            "lastMessageSenderId" to currentUserId,
+            "lastMessageSenderName" to displayName, // Используем правильное имя
+            "lastMessageText" to text
+        )
+
+        // Выполняем обе операции одновременно
+        val updates = hashMapOf<String, Any>()
+        updates["chats/$chatId/messages/$messageId"] = messageData
+        updates["chats/$chatId/lastMessageSenderId"] = chatUpdates["lastMessageSenderId"] as Any
+        updates["chats/$chatId/lastMessageSenderName"] = chatUpdates["lastMessageSenderName"] as Any
+        updates["chats/$chatId/lastMessageText"] = chatUpdates["lastMessageText"] as Any
+        updates["chats/$chatId/lastMessageTimestamp"] = chatUpdates["lastMessageTimestamp"] as Any
+
+        database.updateChildren(updates)
             .addOnSuccessListener {
-                Log.d(TAG, "Message saved successfully")
-                sendNotificationsToParticipants(text, senderName)
+                Log.d(TAG, "Message and chat info saved successfully")
+                // Отправляем уведомления с правильным именем отправителя
+                sendNotificationsToParticipants(text, displayName)
             }
             .addOnFailureListener { e ->
-                Log.e(TAG, "Failed to save message", e)
+                Log.e(TAG, "Failed to save message or update chat", e)
                 showError("Failed to send message")
             }
     }
@@ -540,11 +685,12 @@ class ChatDetailActivity : AppCompatActivity() {
                     snapshot.children.mapNotNull { it.key }
                         .filter { it != currentUserId }
                         .forEach { userId ->
+                            // Отправляем уведомление от имени текущего пользователя
                             NotificationUtils.sendChatNotification(
                                 this@ChatDetailActivity,
                                 userId,
                                 messageText,
-                                senderName,
+                                senderName, // Имя отправителя (текущего пользователя)
                                 chatId
                             )
                         }

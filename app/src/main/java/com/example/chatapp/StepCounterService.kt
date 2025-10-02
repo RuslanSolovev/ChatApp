@@ -12,43 +12,55 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
+import kotlinx.coroutines.*
+import kotlinx.coroutines.tasks.await
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.Executors
 import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
+import kotlin.math.abs
+import kotlin.math.max
 
 class StepCounterService : Service(), SensorEventListener {
-
-    private val database = FirebaseDatabase.getInstance().reference
-
+    private val firebaseDatabaseReference = FirebaseDatabase.getInstance().reference
     private lateinit var sensorManager: SensorManager
     private var stepCounterSensor: Sensor? = null
     private lateinit var notificationManager: NotificationManager
-    private lateinit var prefs: SharedPreferences
+    private lateinit var sharedPreferences: SharedPreferences
+    private lateinit var wakeLock: PowerManager.WakeLock
     private var lastSensorTimestamp = 0L
-    private var initialSteps = 0f
-    private var lastTotalSteps = 0f
-    private var lastSyncedTime = 0L
-    private var syncExecutor: ScheduledExecutorService? = null
+    private var initialStepsCount = 0f
+    private var lastTotalStepsCount = 0f
+    private var lastSyncTime = 0L
+    private var scheduledExecutor: ScheduledExecutorService? = null
+
+    // Корутин скоуп для фоновых задач сервиса
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     companion object {
         private const val NOTIFICATION_ID = 12345
         private const val CHANNEL_ID = "step_counter_channel"
         const val ACTION_STEPS_UPDATED = "com.example.chatapp.ACTION_STEPS_UPDATED"
-        private const val SYNC_INTERVAL = 15L // минуты
+        private const val SYNC_INTERVAL_MINUTES = 5L
+        private const val MIN_TIME_BETWEEN_STEPS_MS = 300L
+        private const val BOOT_TIME_THRESHOLD_MS = 5000L
+        private const val WAKE_LOCK_TIMEOUT = 10 * 60 * 1000L // 10 minutes
 
         fun startService(context: Context) {
-            val intent = Intent(context, StepCounterService::class.java)
+            val serviceIntent = Intent(context, StepCounterService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
+                context.startForegroundService(serviceIntent)
             } else {
-                context.startService(intent)
+                context.startService(serviceIntent)
             }
         }
     }
@@ -57,40 +69,53 @@ class StepCounterService : Service(), SensorEventListener {
 
     override fun onCreate() {
         super.onCreate()
-        Log.d("StepCounter", "Service created")
-        prefs = getSharedPreferences("step_prefs", Context.MODE_PRIVATE)
+        Log.d("StepCounterService", "Service created")
+
+        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+        wakeLock = powerManager.newWakeLock(
+            PowerManager.PARTIAL_WAKE_LOCK,
+            "StepCounterService::lock"
+        ).apply {
+            setReferenceCounted(false)
+            // Уменьшаем таймаут или убираем acquire, если не критично
+            // acquire(WAKE_LOCK_TIMEOUT)
+        }
+
+        sharedPreferences = getSharedPreferences("step_prefs", Context.MODE_PRIVATE)
         notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, createNotification())
+        startForeground(NOTIFICATION_ID, createInitialNotification())
 
         sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
         stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
 
         if (stepCounterSensor == null) {
-            Log.e("StepCounter", "Step counter sensor not available")
+            Log.e("StepCounterService", "Step counter sensor not available")
             stopSelf()
         } else {
-            sensorManager.registerListener(this, stepCounterSensor, SensorManager.SENSOR_DELAY_NORMAL)
-            Log.d("StepCounter", "Step counter sensor registered")
+            sensorManager.registerListener(
+                this,
+                stepCounterSensor,
+                SensorManager.SENSOR_DELAY_NORMAL
+            )
+            Log.d("StepCounterService", "Step counter sensor registered")
         }
 
-        // Загрузка сохраненных значений
-        initialSteps = prefs.getFloat("initial_step_count", 0f)
-        lastTotalSteps = prefs.getFloat("last_total_steps", 0f)
-        lastSyncedTime = prefs.getLong("last_sync_time", 0)
+        initialStepsCount = sharedPreferences.getFloat("initial_step_count", 0f)
+        lastTotalStepsCount = sharedPreferences.getFloat("last_total_steps", 0f)
+        lastSyncTime = sharedPreferences.getLong("last_sync_time", 0L)
 
-        // Периодическая синхронизация данных
-        startPeriodicSync()
+        startPeriodicDataSync()
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Счетчик шагов",
+                "Step Counter",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Подсчет ваших шагов"
+                description = "Tracks your steps in background"
                 setShowBadge(false)
                 enableVibration(false)
                 setSound(null, null)
@@ -99,10 +124,10 @@ class StepCounterService : Service(), SensorEventListener {
         }
     }
 
-    private fun createNotification(): Notification {
+    private fun createInitialNotification(): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Счетчик шагов")
-            .setContentText("Идет подсчет ваших шагов...")
+            .setContentTitle("Step Counter")
+            .setContentText("Counting your steps...")
             .setSmallIcon(R.drawable.ic_walk)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setOngoing(true)
@@ -114,90 +139,139 @@ class StepCounterService : Service(), SensorEventListener {
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
-        event?.let {
-            if (it.sensor.type == Sensor.TYPE_STEP_COUNTER) {
-                val now = System.currentTimeMillis()
-                // Защита от слишком частых обновлений (не чаще 1 раза в секунду)
-                if (now - lastSensorTimestamp > 1000) {
-                    processSteps(it.values[0])
-                    lastSensorTimestamp = now
+        event?.let { sensorEvent ->
+            if (sensorEvent.sensor.type == Sensor.TYPE_STEP_COUNTER) {
+                val currentTime = System.currentTimeMillis()
+                if (currentTime - lastSensorTimestamp > MIN_TIME_BETWEEN_STEPS_MS) {
+                    // Запускаем обработку в фоновой корутине
+                    serviceScope.launch {
+                        processNewSteps(sensorEvent.values[0])
+                    }
+                    lastSensorTimestamp = currentTime
                 }
             }
         }
     }
 
-    private fun processSteps(totalSteps: Float) {
-        val lastBoot = prefs.getLong("last_boot_time", 0)
-        val bootTime = System.currentTimeMillis() - android.os.SystemClock.elapsedRealtime()
+    // Сделана suspend для использования с корутинами
+    private suspend fun processNewSteps(totalSteps: Float) {
+        withContext(Dispatchers.IO) {
+            try {
+                checkAndResetForNewDay()
 
-        // Сброс при первом запуске или после перезагрузки
-        if (initialSteps == 0f || bootTime > lastBoot) {
-            Log.d("StepCounter", "Инициализация счетчика шагов: $totalSteps")
-            initialSteps = totalSteps
-            lastTotalSteps = totalSteps
+                val now = System.currentTimeMillis()
+                val systemBootTime = now - android.os.SystemClock.elapsedRealtime()
+                val lastBootTime = sharedPreferences.getLong("last_boot_time", 0L)
 
-            prefs.edit().apply {
-                putFloat("initial_step_count", totalSteps)
-                putFloat("last_total_steps", totalSteps)
-                putLong("last_boot_time", bootTime)
-                apply()
+                if (initialStepsCount == 0f ||
+                    abs(systemBootTime - lastBootTime) > BOOT_TIME_THRESHOLD_MS ||
+                    totalSteps < lastTotalStepsCount
+                ) {
+
+                    Log.d("StepCounterService", "Resetting step counter. Total: $totalSteps, Last: $lastTotalStepsCount")
+                    initialStepsCount = totalSteps
+                    lastTotalStepsCount = totalSteps
+
+                    sharedPreferences.edit().apply {
+                        putFloat("initial_step_count", totalSteps)
+                        putFloat("last_total_steps", totalSteps)
+                        putLong("last_boot_time", systemBootTime)
+                        apply()
+                    }
+                    return@withContext // Выходим из suspend функции
+                }
+
+                val stepsDifference = totalSteps - lastTotalStepsCount
+                if (stepsDifference > 0) {
+                    Log.d("StepCounterService", "New steps detected: $stepsDifference")
+                    addStepsToStatistics(stepsDifference.toInt())
+                    lastTotalStepsCount = totalSteps
+                    sharedPreferences.edit().putFloat("last_total_steps", totalSteps).apply()
+
+                    // Немедленная синхронизация при обнаружении новых шагов
+                    forceFullDataSync()
+                }
+            } catch (e: Exception) {
+                Log.e("StepCounterService", "Ошибка в processNewSteps", e)
             }
-            return
-        }
-
-        // Нормальное обновление шагов
-        val diff = totalSteps - lastTotalSteps
-        if (diff > 0) {
-            Log.d("StepCounter", "Обнаружены новые шаги: $diff")
-            addStepsToStats(diff.toInt())
-            lastTotalSteps = totalSteps
-            prefs.edit().putFloat("last_total_steps", totalSteps).apply()
         }
     }
 
-    private fun addStepsToStats(steps: Int) {
-        val todayKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-        val todaySteps = prefs.getInt(todayKey, 0) + steps
 
-        // Получаем текущее максимальное значение ДО редактирования
+    private fun checkAndResetForNewDay() {
+        val calendar = Calendar.getInstance()
+        val todayDateKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(calendar.time)
+
+        val lastProcessedDate = sharedPreferences.getString("last_processed_date", "")
+        if (lastProcessedDate != todayDateKey) {
+            val currentMonth = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date())
+            val lastMonth = sharedPreferences.getString("last_month", "")
+
+            if (currentMonth != lastMonth) {
+                sharedPreferences.edit().remove("max_steps_30days").apply()
+            }
+
+            sharedPreferences.edit()
+                .putString("last_processed_date", todayDateKey)
+                .putString("last_month", currentMonth)
+                .apply()
+        }
+    }
+
+    private fun addStepsToStatistics(newSteps: Int) {
+        val todayDateKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        val currentStepsToday = sharedPreferences.getInt(todayDateKey, 0) + newSteps
+
         val maxStepsKey = "max_steps_30days"
-        val currentMax = prefs.getInt(maxStepsKey, 0)
-        val newMax = if (todaySteps > currentMax) todaySteps else currentMax
+        val currentMaxSteps = sharedPreferences.getInt(maxStepsKey, 0)
+        val newMaxSteps = max(currentStepsToday, currentMaxSteps)
 
-        prefs.edit().apply {
-            putInt(todayKey, todaySteps)
-            putInt(maxStepsKey, newMax)
+        sharedPreferences.edit().apply {
+            putInt(todayDateKey, currentStepsToday)
+            putInt(maxStepsKey, newMaxSteps)
             apply()
         }
 
-        syncWithFirebase(todayKey, todaySteps)
-        notifyUiUpdate(todayKey, todaySteps)
-    }
-
-    private fun syncWithFirebase(date: String, steps: Int) {
-        FirebaseAuth.getInstance().currentUser?.let { user ->
-            // Сохраняем только число шагов вместо HashMap
-            FirebaseDatabase.getInstance().reference
-                .child("users")
-                .child(user.uid)
-                .child("stepsData")
-                .child(date)
-                .setValue(steps) // Просто число!
-                .addOnSuccessListener {
-                    Log.d("StepCounter", "Шаги синхронизированы: $steps за $date")
-                    lastSyncedTime = System.currentTimeMillis()
-                    prefs.edit().putLong("last_sync_time", lastSyncedTime).apply()
-                    updateNotification(steps)
-                }
-                .addOnFailureListener { e ->
-                    Log.e("StepCounter", "Ошибка синхронизации: ${e.message}")
-                }
+        // Синхронизация и обновление UI также в фоне
+        serviceScope.launch {
+            synchronizeWithFirebase(todayDateKey, currentStepsToday)
+            // notifyUIUpdate(todayDateKey, currentStepsToday) // Переносим в Main внутри функции
         }
     }
 
-    private fun updateNotification(steps: Int) {
+    private suspend fun synchronizeWithFirebase(date: String, steps: Int) {
+        try {
+            FirebaseAuth.getInstance().currentUser?.let { user ->
+                firebaseDatabaseReference
+                    .child("users")
+                    .child(user.uid)
+                    .child("stepsData")
+                    .child(date)
+                    .setValue(steps)
+                    .await() // Используем await для корутин
+                Log.d("StepCounterService", "Steps synchronized: $steps for $date")
+                lastSyncTime = System.currentTimeMillis()
+                sharedPreferences.edit().putLong("last_sync_time", lastSyncTime).apply()
+
+                // Обновление уведомления и отправка broadcast в Main потоке
+                withContext(Dispatchers.Main) {
+                    updateNotificationWithSteps(steps)
+                    notifyUIUpdate(date, steps)
+                }
+
+            }
+        } catch (exception: Exception) {
+            Log.e("StepCounterService", "Sync error: ${exception.message}", exception)
+            // Повторная попытка через 30 секунд
+            delay(30000)
+            synchronizeWithFirebase(date, steps) // Рекурсивный вызов внутри корутины
+        }
+    }
+
+
+    private fun updateNotificationWithSteps(steps: Int) {
         val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Счетчик шагов")
+            .setContentTitle("Step Counter")
             .setContentText("Сегодня: $steps шагов")
             .setSmallIcon(R.drawable.ic_walk)
             .setPriority(NotificationCompat.PRIORITY_LOW)
@@ -211,77 +285,93 @@ class StepCounterService : Service(), SensorEventListener {
         notificationManager.notify(NOTIFICATION_ID, notification)
     }
 
-    private fun notifyUiUpdate(date: String, steps: Int) {
-        val intent = Intent(ACTION_STEPS_UPDATED).apply {
-            putExtra("date", date)
-            putExtra("steps", steps)
+    private fun notifyUIUpdate(date: String, steps: Int) {
+        try {
+            // Отправляем broadcast как раньше
+            val updateIntent = Intent(ACTION_STEPS_UPDATED).apply {
+                putExtra("date", date)
+                putExtra("steps", steps)
+            }
+            sendBroadcast(updateIntent)
+
+            // Дополнительно можно обновлять ViewModel через Application
+            (application as? StepCounterApp)?.updateStepsInViewModel(steps)
+        } catch (e: Exception) {
+            Log.e("StepCounterService", "Ошибка при уведомлении UI", e)
         }
-        sendBroadcast(intent)
     }
 
-    private fun startPeriodicSync() {
-        syncExecutor = Executors.newSingleThreadScheduledExecutor()
-        syncExecutor?.scheduleWithFixedDelay({
-            Log.d("StepCounter", "Периодическая проверка синхронизации")
-            forceSyncAllData()
-        }, SYNC_INTERVAL, SYNC_INTERVAL, TimeUnit.MINUTES)
+    private fun startPeriodicDataSync() {
+        scheduledExecutor = Executors.newSingleThreadScheduledExecutor()
+        scheduledExecutor?.scheduleWithFixedDelay({
+            Log.d("StepCounterService", "Performing periodic data sync")
+            // Запускаем синхронизацию в корутине
+            serviceScope.launch {
+                forceFullDataSync()
+            }
+        }, SYNC_INTERVAL_MINUTES, SYNC_INTERVAL_MINUTES, TimeUnit.MINUTES)
     }
 
-    private fun forceSyncAllData() {
-        Log.d("StepCounter", "Принудительная синхронизация всех данных")
-        val todayKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-        val todaySteps = prefs.getInt(todayKey, 0)
+    private suspend fun forceFullDataSync() {
+        withContext(Dispatchers.IO) {
+            try {
+                Log.d("StepCounterService", "Forcing full data synchronization")
+                val todayDateKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                val todaySteps = sharedPreferences.getInt(todayDateKey, 0)
 
-        if (todaySteps > 0) {
-            syncWithFirebase(todayKey, todaySteps)
-        }
-
-        // Синхронизация исторических данных
-        syncHistoricalData()
-    }
-
-    private fun syncHistoricalData() {
-        val allEntries = prefs.all
-        FirebaseAuth.getInstance().currentUser?.let { user ->
-            allEntries.forEach { entry ->
-                if (entry.key is String && (entry.key as String).matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
-                    val date = entry.key as String
-                    val steps = entry.value as? Int ?: 0
-
-                    FirebaseDatabase.getInstance().reference // Используем полный путь
-                        .child("users")
-                        .child(user.uid)
-                        .child("stepsData")
-                        .child(date)
-                        .get()
-                        .addOnSuccessListener { snapshot ->
-                            if (!snapshot.exists()) {
-                                // Используем database, которую объявили в классе
-                                database.child("users")
-                                    .child(user.uid)
-                                    .child("stepsData")
-                                    .child(date)
-                                    .setValue(steps)
-                            }
-                        }
+                if (todaySteps > 0) {
+                    synchronizeWithFirebase(todayDateKey, todaySteps)
                 }
+
+                synchronizeHistoricalData()
+            } catch (e: Exception) {
+                Log.e("StepCounterService", "Ошибка в forceFullDataSync", e)
             }
         }
     }
 
-    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
-        // Не требуется
+    private suspend fun synchronizeHistoricalData() {
+        withContext(Dispatchers.IO) {
+            try {
+                val allEntries = sharedPreferences.all
+                FirebaseAuth.getInstance().currentUser?.let { user ->
+                    val batchUpdates = hashMapOf<String, Any>()
+
+                    allEntries.forEach { entry ->
+                        if (entry.key is String && (entry.key as String).matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
+                            val date = entry.key as String
+                            val steps = entry.value as? Int ?: 0
+                            batchUpdates["users/${user.uid}/stepsData/$date"] = steps
+                        }
+                    }
+
+                    if (batchUpdates.isNotEmpty()) {
+                        firebaseDatabaseReference.updateChildren(batchUpdates)
+                            .await() // Используем await для корутин
+                        Log.d("StepCounterService", "Historical data synchronized")
+                    }
+                }
+            } catch (exception: Exception) {
+                Log.e("StepCounterService", "Historical sync error: ${exception.message}", exception)
+            }
+        }
     }
+
+    override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
     override fun onDestroy() {
         super.onDestroy()
         sensorManager.unregisterListener(this)
-        syncExecutor?.shutdown()
-        Log.d("StepCounter", "Сервис остановлен")
+        scheduledExecutor?.shutdown()
+        if (wakeLock.isHeld) {
+            wakeLock.release()
+        }
+        // Отменяем все фоновые задачи сервиса
+        serviceScope.cancel()
+        Log.d("StepCounterService", "Service destroyed")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // Перезапускаем сервис при убийстве системы
-        return START_STICKY
+        return START_REDELIVER_INTENT
     }
 }

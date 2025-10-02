@@ -6,7 +6,7 @@ import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import com.example.chatapp.databinding.ActivityLocationSettingsBinding
 import com.example.chatapp.models.LocationSettings
-import com.example.chatapp.services.LocationUpdateService
+import com.example.chatapp.location.LocationUpdateService
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
 
