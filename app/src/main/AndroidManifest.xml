@@ -53,7 +53,7 @@
     <uses-permission android:name="com.huawei.permission.sec.MDM_LOCATION_INTERNAL" />
 
     <application
-        android:name=".StepCounterApp"
+        android:name=".step.StepCounterApp"
         android:allowBackup="true"
         android:icon="@drawable/splash_background"
         android:label="@string/app_name"
@@ -213,7 +213,7 @@
 
         <!-- Services -->
         <service
-            android:name=".StepCounterService"
+            android:name=".step.StepCounterService"
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="health" />

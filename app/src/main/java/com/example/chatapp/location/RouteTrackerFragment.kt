@@ -74,11 +74,9 @@ class RouteTrackerFragment : Fragment() {
     // Буфер для Kalman фильтра
     private val kalmanBuffer = LinkedList<Point>()
 
-
     // Настройки точности
     private var accuracyThreshold = 15.0f // метров (теперь Float)
     private var smoothingEnabled = true
-
 
     companion object {
         private const val TAG = "RouteTrackerFragment"
@@ -109,8 +107,7 @@ class RouteTrackerFragment : Fragment() {
         setupBottomSheet()
         setupButtons()
 
-        loadRouteForToday()
-        checkDrawingStatus()
+        resetUI() // Сброс UI при запуске
     }
 
     private fun initViews(view: View) {
@@ -133,18 +130,17 @@ class RouteTrackerFragment : Fragment() {
         mapContainer?.addView(mapView)
 
         mapView.map.move(
-            CameraPosition(Point(55.7558, 37.6173), 15f, 0f, 0f), // Увеличил zoom для лучшей детализации
+            CameraPosition(Point(55.7558, 37.6173), 15f, 0f, 0f),
             Animation(Animation.Type.SMOOTH, 0f),
             null
         )
     }
 
-    // Остальные методы setupBottomSheet, toggleBottomSheet, checkDrawingStatus остаются без изменений
     private fun setupBottomSheet() {
         bottomSheetBehavior = BottomSheetBehavior.from(bottomSheet)
 
         bottomSheetBehavior.apply {
-            peekHeight = 80
+            peekHeight = 160
             isHideable = false
             state = BottomSheetBehavior.STATE_COLLAPSED
 
@@ -183,22 +179,11 @@ class RouteTrackerFragment : Fragment() {
         }
     }
 
-    private fun checkDrawingStatus() {
-        val userId = auth.currentUser?.uid ?: return
-
-        database.child("drawing_status").child(userId)
-            .addListenerForSingleValueEvent(object : ValueEventListener {
-                override fun onDataChange(snapshot: DataSnapshot) {
-                    isDrawing = snapshot.getValue(Boolean::class.java) ?: false
-                    updateButtonStates()
-                    if (isDrawing) {
-                        startLocationListener()
-                    }
-                }
-                override fun onCancelled(error: DatabaseError) {
-                    Log.e(TAG, "Ошибка проверки статуса отрисовки", error.toException())
-                }
-            })
+    private fun resetUI() {
+        isDrawing = false
+        updateButtonStates()
+        clearRoute()
+        resetStats()
     }
 
     private fun startLocationListener() {
@@ -245,17 +230,14 @@ class RouteTrackerFragment : Fragment() {
         }
     }
 
-    // НОВЫЙ МЕТОД: Обработка новой локации с улучшенной фильтрацией
     private fun processNewLocation(location: UserLocation) {
         locationList.add(location)
 
-        // Применяем улучшенную фильтрацию
         val filteredLocation = applyAdvancedFiltering(location)
         filteredLocationList.add(filteredLocation)
 
         val newPoint = Point(filteredLocation.lat, filteredLocation.lng)
 
-        // Добавляем точку с учетом улучшенной логики
         if (routePoints.isEmpty()) {
             routePoints.add(newPoint)
         } else {
@@ -263,11 +245,7 @@ class RouteTrackerFragment : Fragment() {
             val distance = calculateDistance(lastPoint, newPoint)
             val bearingChange = calculateBearingChange(routePoints, newPoint)
 
-            // Условия добавления точки:
-            // 1. Достаточное расстояние ИЛИ
-            // 2. Значительное изменение направления
             if (distance >= MIN_POINT_DISTANCE || bearingChange > BEARING_CHANGE_THRESHOLD) {
-                // Применяем сглаживание траектории
                 val smoothedPoint = if (smoothingEnabled && routePoints.size >= 2) {
                     applyTrajectorySmoothing(newPoint)
                 } else {
@@ -276,7 +254,6 @@ class RouteTrackerFragment : Fragment() {
 
                 routePoints.add(smoothedPoint)
 
-                // Обновляем статистику и маршрут
                 recalculateStatsFromAllLocations()
                 updateRouteInRealTime()
             }
@@ -287,38 +264,32 @@ class RouteTrackerFragment : Fragment() {
 
     private fun applyAdvancedFiltering(location: UserLocation): UserLocation {
         if (filteredLocationList.size < 2) {
-            return location // Недостаточно данных для фильтрации
+            return location
         }
 
         val recentLocations = filteredLocationList.takeLast(3)
         val currentPoint = Point(location.lat, location.lng)
 
-        // 1. Фильтр скорости и ускорения
         if (!isSpeedAndAccelerationValid(location, recentLocations)) {
-            // Возвращаем последнюю валидную точку
             return filteredLocationList.last()
         }
 
-        // 2. Фильтр по точности (если есть данные о точности)
         if (location.accuracy > 0 && location.accuracy > accuracyThreshold) {
             Log.w(TAG, "Низкая точность локации: ${location.accuracy} м")
-            // Можно вернуть прогнозируемую точку или последнюю валидную
         }
 
-        // 3. Kalman фильтр для сглаживания
         val kalmanFiltered = applyKalmanFilter(currentPoint)
 
         return UserLocation(
             kalmanFiltered.latitude,
             kalmanFiltered.longitude,
             location.timestamp,
-            maxOf(1.0f, location.accuracy), // Используем Float вместо Double
+            maxOf(1.0f, location.accuracy),
             location.speed,
             location.color
         )
     }
 
-    // НОВЫЙ МЕТОД: Kalman фильтр для сглаживания координат
     private fun applyKalmanFilter(newPoint: Point): Point {
         kalmanBuffer.add(newPoint)
 
@@ -326,7 +297,6 @@ class RouteTrackerFragment : Fragment() {
             kalmanBuffer.removeFirst()
         }
 
-        // Простое усреднение (можно заменить на полноценный Kalman фильтр)
         return if (kalmanBuffer.size >= 2) {
             val avgLat = kalmanBuffer.map { it.latitude }.average()
             val avgLon = kalmanBuffer.map { it.longitude }.average()
@@ -336,19 +306,16 @@ class RouteTrackerFragment : Fragment() {
         }
     }
 
-    // НОВЫЙ МЕТОД: Сглаживание траектории
     private fun applyTrajectorySmoothing(newPoint: Point): Point {
         val lastPoints = routePoints.takeLast(3)
         if (lastPoints.size < 3) return newPoint
 
-        // Простое сглаживание - среднее между последними точками и новой
         val smoothedLat = (lastPoints[0].latitude + lastPoints[1].latitude + newPoint.latitude) / 3
         val smoothedLon = (lastPoints[0].longitude + lastPoints[1].longitude + newPoint.longitude) / 3
 
         return Point(smoothedLat, smoothedLon)
     }
 
-    // НОВЫЙ МЕТОД: Расчет изменения направления
     private fun calculateBearingChange(points: List<Point>, newPoint: Point): Double {
         if (points.size < 2) return 0.0
 
@@ -358,7 +325,6 @@ class RouteTrackerFragment : Fragment() {
         return abs(newBearing - prevBearing).coerceAtMost(360.0 - abs(newBearing - prevBearing))
     }
 
-    // НОВЫЙ МЕТОД: Расчет азимута между двумя точками
     private fun calculateBearing(from: Point, to: Point): Double {
         val lat1 = Math.toRadians(from.latitude)
         val lon1 = Math.toRadians(from.longitude)
@@ -386,22 +352,18 @@ class RouteTrackerFragment : Fragment() {
             Point(location.lat, location.lng)
         )
 
-        // Проверка минимального расстояния
         if (distance < 0.5) return false
 
-        // Проверка времени
         if (timeDiff < MIN_TIME_DIFF || timeDiff > MAX_TIME_DIFF) {
             return false
         }
 
-        // Расчет скорости
         val speed = distance / (timeDiff / 1000.0)
         if (speed < MIN_VALID_SPEED_MPS || speed > MAX_VALID_SPEED_MPS) {
             Log.w(TAG, "Недопустимая скорость: ${speed * 3.6} км/ч")
             return false
         }
 
-        // Проверка ускорения (если есть предыдущие точки)
         if (recentLocations.size >= 2) {
             val prevLocation = recentLocations[recentLocations.size - 2]
             val prevTimeDiff = lastLocation.timestamp - prevLocation.timestamp
@@ -424,19 +386,17 @@ class RouteTrackerFragment : Fragment() {
         return true
     }
 
-    // УЛУЧШЕННЫЙ МЕТОД: Валидация новой локации
     private fun isValidNewLocation(location: UserLocation): Boolean {
         if (locationList.isEmpty()) return true
 
         val lastLocation = locationList.last()
         val timeDiff = location.timestamp - lastLocation.timestamp
 
-        // Базовая проверка времени
         if (timeDiff < MIN_TIME_DIFF || timeDiff > MAX_TIME_DIFF) {
             return false
         }
 
-        return true // Детальная проверка в processNewLocation
+        return true
     }
 
     private fun updateButtonStates() {
@@ -448,7 +408,6 @@ class RouteTrackerFragment : Fragment() {
         btnStopTracking.text = if (isDrawing) "Остановить отрисовку" else "Отрисовка остановлена"
     }
 
-    // УЛУЧШЕННЫЙ МЕТОД: Перерасчет статистики
     private fun recalculateStatsFromAllLocations() {
         if (filteredLocationList.size < 2) {
             resetStats()
@@ -479,7 +438,6 @@ class RouteTrackerFragment : Fragment() {
                 val speed = distance / (timeDiff / 1000.0)
 
                 if (speed in MIN_VALID_SPEED_MPS..MAX_VALID_SPEED_MPS) {
-                    // Дополнительная проверка ускорения
                     if (i >= 2) {
                         val prevPrev = sortedLocations[i - 2]
                         val prevTimeDiff = prev.timestamp - prevPrev.timestamp
@@ -551,6 +509,9 @@ class RouteTrackerFragment : Fragment() {
     private fun startDrawing() {
         val userId = auth.currentUser?.uid ?: return
 
+        // Загрузка предыдущего маршрута (если есть) при запуске
+        loadRouteForToday()
+
         database.child("drawing_status").child(userId).setValue(true)
         isDrawing = true
         updateButtonStates()
@@ -568,6 +529,8 @@ class RouteTrackerFragment : Fragment() {
         removeLocationListener()
         updateFinalMarker()
 
+        saveRouteToHistory()
+
         Toast.makeText(context, "Отрисовка маршрута остановлена", Toast.LENGTH_LONG).show()
     }
 
@@ -583,7 +546,6 @@ class RouteTrackerFragment : Fragment() {
         }
     }
 
-    // УЛУЧШЕННЫЙ МЕТОД: Обновление маршрута в реальном времени
     private fun updateRouteInRealTime() {
         if (routePoints.size < 2) return
 
@@ -591,7 +553,7 @@ class RouteTrackerFragment : Fragment() {
             if (polyline == null) {
                 polyline = mapView.map.mapObjects.addPolyline(Polyline(routePoints)).apply {
                     setStrokeColor(Color.parseColor("#1E88E5"))
-                    setStrokeWidth(6f) // Уменьшил толщину для большей точности
+                    setStrokeWidth(6f)
                     setOutlineColor(Color.WHITE)
                     setOutlineWidth(1f)
                     zIndex = 10f
@@ -615,7 +577,7 @@ class RouteTrackerFragment : Fragment() {
             if (startMarker == null && routePoints.isNotEmpty()) {
                 startMarker = mapView.map.mapObjects.addPlacemark(routePoints.first()).apply {
                     setIcon(ImageProvider.fromResource(requireContext(), R.drawable.ic_location),
-                        IconStyle().setScale(1.0f)) // Уменьшил масштаб маркера
+                        IconStyle().setScale(1.0f))
                     setText("Старт")
                     zIndex = 20f
                 }
@@ -629,9 +591,8 @@ class RouteTrackerFragment : Fragment() {
                 zIndex = 20f
             }
 
-            // Плавное перемещение камеры с учетом всей траектории
             if (isDrawing && routePoints.size > 5) {
-                adjustCameraToRoute(routePoints.takeLast(10)) // Фокусируемся на последних точках
+                adjustCameraToRoute(routePoints.takeLast(10))
             }
 
         } catch (e: Exception) {
@@ -701,9 +662,6 @@ class RouteTrackerFragment : Fragment() {
         return met * userWeight * timeHours
     }
 
-    // Остальные методы (loadRouteForToday, calculateDistance, adjustCameraToRoute и т.д.)
-    // остаются аналогичными, но используют filteredLocationList вместо locationList
-
     private fun loadRouteForToday() {
         val startOfDay = getStartOfToday()
         val endOfDay = getEndOfDay()
@@ -724,7 +682,6 @@ class RouteTrackerFragment : Fragment() {
 
                     if (locations.isNotEmpty()) {
                         locations.sortBy { it.timestamp }
-                        // Используем улучшенную фильтрацию для исторических данных
                         val filteredLocations = applyHistoricalDataFiltering(locations)
 
                         if (filteredLocations.size >= 2) {
@@ -742,13 +699,13 @@ class RouteTrackerFragment : Fragment() {
                         }
                     }
                 }
+
                 override fun onCancelled(error: DatabaseError) {
                     Log.e(TAG, "Ошибка загрузки маршрута", error.toException())
                 }
             })
     }
 
-    // НОВЫЙ МЕТОД: Фильтрация исторических данных
     private fun applyHistoricalDataFiltering(locations: List<UserLocation>): List<UserLocation> {
         if (locations.size < 2) return locations
 
@@ -766,7 +723,6 @@ class RouteTrackerFragment : Fragment() {
 
             val timeDiff = curr.timestamp - prev.timestamp
 
-            // Более строгая фильтрация для исторических данных
             if (distance >= MIN_POINT_DISTANCE &&
                 timeDiff in MIN_TIME_DIFF..MAX_TIME_DIFF) {
 
@@ -816,7 +772,7 @@ class RouteTrackerFragment : Fragment() {
             maxDiff < 0.05 -> 12f
             maxDiff < 0.1 -> 11f
             else -> 10f
-        }.coerceIn(12f, 18f) // Увеличил минимальный zoom
+        }.coerceIn(12f, 18f)
 
         mapView.map.move(
             CameraPosition(center, zoom, 0f, 0f),
@@ -855,6 +811,7 @@ class RouteTrackerFragment : Fragment() {
                     snapshot.children.forEach { child -> child.ref.removeValue() }
                     clearUI()
                 }
+
                 override fun onCancelled(error: DatabaseError) {
                     Log.e(TAG, "Ошибка очистки БД", error.toException())
                 }
@@ -887,6 +844,17 @@ class RouteTrackerFragment : Fragment() {
         tvCalories.text = "🔥 Калории: ~0"
     }
 
+    private fun saveRouteToHistory() {
+        val userId = auth.currentUser?.uid ?: return
+
+        filteredLocationList.forEach { location ->
+            val key = database.child("user_location_history").child(userId).push().key
+            key?.let {
+                database.child("user_location_history").child(userId).child(it).setValue(location)
+            }
+        }
+    }
+
     private fun getStartOfToday(): Long {
         val calendar = java.util.Calendar.getInstance()
         calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
@@ -910,6 +878,7 @@ class RouteTrackerFragment : Fragment() {
         mapView.onStart()
         MapKitFactory.getInstance().onStart()
 
+        // Включаем слушатель, если отслеживание активно
         if (isDrawing) {
             startLocationListener()
         }
@@ -919,11 +888,16 @@ class RouteTrackerFragment : Fragment() {
         super.onStop()
         mapView.onStop()
         MapKitFactory.getInstance().onStop()
+
+        // Оставляем отслеживание активным, но убираем слушатель
+        if (isDrawing) {
+            removeLocationListener()
+        }
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
-        removeLocationListener()
+        // removeLocationListener() — убираем!
         clearRoute()
     }
 

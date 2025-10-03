@@ -1,6 +1,5 @@
 package com.example.chatapp
 
-import android.content.Context
 import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
@@ -11,7 +10,7 @@ import com.bumptech.glide.Glide
 import com.example.chatapp.adapters.TopUsersAdapter
 import com.example.chatapp.databinding.ActivityTopUsersBinding
 import com.example.chatapp.models.User
-import com.example.chatapp.viewmodels.StepCounterViewModel
+import com.example.chatapp.step.StepCounterViewModel
 import com.google.android.material.tabs.TabLayout
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.*

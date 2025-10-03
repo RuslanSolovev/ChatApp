@@ -26,9 +26,7 @@
                 android:text="Статистика шагов"
                 android:textSize="24sp"
                 android:textColor="@color/white"
-                android:textStyle="bold"/>
-
-
+                android:textStyle="bold" />
         </LinearLayout>
 
         <!-- Прогресс-бар цели -->
@@ -43,7 +41,7 @@
                 android:layout_height="wrap_content"
                 android:text="Ваша цель"
                 android:textColor="@color/white"
-                android:textSize="16sp"/>
+                android:textSize="16sp" />
 
             <ProgressBar
                 android:id="@+id/progress_steps"
@@ -53,7 +51,7 @@
                 android:progress="0"
                 android:max="10000"
                 android:progressTint="@color/colorPrimary"
-                android:progressBackgroundTint="@color/gray_light"/>
+                android:progressBackgroundTint="@color/gray_light" />
 
             <TextView
                 android:id="@+id/tv_goal"
@@ -62,7 +60,7 @@
                 android:text="0 / 10000 шагов"
                 android:textColor="@color/white"
                 android:gravity="end"
-                android:textSize="14sp"/>
+                android:textSize="14sp" />
         </LinearLayout>
 
         <!-- Карточка сегодняшних шагов -->
@@ -87,7 +85,7 @@
                     android:layout_height="wrap_content"
                     android:text="👣"
                     android:textSize="24sp"
-                    android:paddingEnd="16dp"/>
+                    android:paddingEnd="16dp" />
 
                 <TextView
                     android:id="@+id/tv_today"
@@ -95,7 +93,7 @@
                     android:layout_height="wrap_content"
                     android:text="Сегодня: 0 шагов"
                     android:textSize="18sp"
-                    android:textColor="@color/black"/>
+                    android:textColor="@color/black" />
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
@@ -121,7 +119,7 @@
                     android:layout_height="wrap_content"
                     android:text="📅"
                     android:textSize="24sp"
-                    android:paddingEnd="16dp"/>
+                    android:paddingEnd="16dp" />
 
                 <TextView
                     android:id="@+id/tv_week"
@@ -129,7 +127,7 @@
                     android:layout_height="wrap_content"
                     android:text="Неделя: 0 шагов"
                     android:textSize="18sp"
-                    android:textColor="@color/black"/>
+                    android:textColor="@color/black" />
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
@@ -155,7 +153,7 @@
                     android:layout_height="wrap_content"
                     android:text="📆"
                     android:textSize="24sp"
-                    android:paddingEnd="16dp"/>
+                    android:paddingEnd="16dp" />
 
                 <TextView
                     android:id="@+id/tv_month"
@@ -163,7 +161,7 @@
                     android:layout_height="wrap_content"
                     android:text="Месяц: 0 шагов"
                     android:textSize="18sp"
-                    android:textColor="@color/black"/>
+                    android:textColor="@color/black" />
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
@@ -189,7 +187,7 @@
                     android:layout_height="wrap_content"
                     android:text="🎉"
                     android:textSize="24sp"
-                    android:paddingEnd="16dp"/>
+                    android:paddingEnd="16dp" />
 
                 <TextView
                     android:id="@+id/tv_year"
@@ -197,7 +195,7 @@
                     android:layout_height="wrap_content"
                     android:text="Год: 0 шагов"
                     android:textSize="18sp"
-                    android:textColor="@color/black"/>
+                    android:textColor="@color/black" />
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
@@ -223,7 +221,7 @@
                     android:layout_height="wrap_content"
                     android:text="📊"
                     android:textSize="24sp"
-                    android:paddingEnd="16dp"/>
+                    android:paddingEnd="16dp" />
 
                 <TextView
                     android:id="@+id/tv_average"
@@ -231,7 +229,7 @@
                     android:layout_height="wrap_content"
                     android:text="Среднее: 0 шагов/день"
                     android:textSize="18sp"
-                    android:textColor="@color/black"/>
+                    android:textColor="@color/black" />
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
@@ -257,7 +255,7 @@
                     android:layout_height="wrap_content"
                     android:text="🏆"
                     android:textSize="24sp"
-                    android:paddingEnd="16dp"/>
+                    android:paddingEnd="16dp" />
 
                 <TextView
                     android:id="@+id/tv_max_day"
@@ -265,7 +263,7 @@
                     android:layout_height="wrap_content"
                     android:text="Рекорд: 0 шагов"
                     android:textSize="18sp"
-                    android:textColor="@color/black"/>
+                    android:textColor="@color/black" />
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
@@ -280,6 +278,6 @@
             android:drawableStart="@drawable/ic_leaderboard"
             android:drawableTint="@color/white"
             android:backgroundTint="@color/colorPrimary"
-            android:paddingVertical="12dp"/>
+            android:paddingVertical="12dp" />
     </LinearLayout>
 </ScrollView>

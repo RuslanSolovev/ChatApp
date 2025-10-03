@@ -22,9 +22,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
-import com.example.chatapp.LocationServiceWorker
-import com.example.chatapp.ServiceMonitorWorker
-import com.example.chatapp.StepCounterServiceWorker
+import com.example.chatapp.step.StepCounterServiceWorker
 import com.example.chatapp.R
 import com.example.chatapp.budilnik.AlarmActivity
 import com.example.chatapp.databinding.ActivityMainBinding
@@ -35,8 +33,9 @@ import com.example.chatapp.novosti.CreateNewsFragment
 import com.example.chatapp.novosti.FullScreenImageFragment
 import com.example.chatapp.novosti.NewsItem
 import com.example.chatapp.location.LocationUpdateService
-import com.example.chatapp.StepCounterService
+import com.example.chatapp.step.StepCounterService
 import com.example.chatapp.location.LocationPagerFragment
+import com.example.chatapp.step.StepCounterFragment
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.ktx.auth
@@ -311,12 +310,7 @@ class MainActivity : AppCompatActivity() {
             delay(3000) // 3 секунды задержка
             // Сама работа с WorkManager в IO
             withContext(Dispatchers.IO) {
-                try {
-                    Log.d(TAG, "initializeServicesSafely: Отложенное выполнение schedulePeriodicLocationWork")
-                    schedulePeriodicLocationWork()
-                } catch (e: Exception) {
-                    Log.e(TAG, "Location WorkManager scheduling failed", e)
-                }
+
 
                 try {
                     Log.d(TAG, "initializeServicesSafely: Отложенное выполнение schedulePeriodicStepWork")
@@ -325,12 +319,7 @@ class MainActivity : AppCompatActivity() {
                     Log.e(TAG, "Step WorkManager scheduling failed", e)
                 }
 
-                try {
-                    Log.d(TAG, "initializeServicesSafely: Отложенное выполнение scheduleServiceMonitorWork")
-                    scheduleServiceMonitorWork()
-                } catch (e: Exception) {
-                    Log.e(TAG, "Service monitor scheduling failed", e)
-                }
+
             }
         }
         Log.d(TAG, "initializeServicesSafely: Завершено (в фоне)")
@@ -424,27 +413,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun schedulePeriodicLocationWork() {
-        try {
-            Log.d(TAG, "schedulePeriodicLocationWork: Начало")
-            val workManager = WorkManager.getInstance(this)
-            val constraints = Constraints.Builder().build()
-
-            val periodicWorkRequest = PeriodicWorkRequestBuilder<LocationServiceWorker>(
-                LOCATION_SERVICE_INTERVAL_HOURS, TimeUnit.HOURS
-            ).setConstraints(constraints).build()
-
-            workManager.enqueueUniquePeriodicWork(
-                LOCATION_SERVICE_WORK_NAME,
-                ExistingPeriodicWorkPolicy.KEEP,
-                periodicWorkRequest
-            )
-            Log.d(TAG, "Location WorkManager scheduled successfully every $LOCATION_SERVICE_INTERVAL_HOURS hours")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to schedule location work", e)
-        }
-    }
-
     private fun schedulePeriodicStepWork() {
         try {
             Log.d(TAG, "schedulePeriodicStepWork: Начало")
@@ -466,27 +434,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun scheduleServiceMonitorWork() {
-        try {
-            Log.d(TAG, "scheduleServiceMonitorWork: Начало")
-            val workManager = WorkManager.getInstance(this)
-            val constraints = Constraints.Builder().build()
-
-            val periodicWorkRequest = PeriodicWorkRequestBuilder<ServiceMonitorWorker>(
-                SERVICE_MONITOR_INTERVAL_MINUTES, TimeUnit.MINUTES
-            ).setConstraints(constraints).build()
-
-            workManager.enqueueUniquePeriodicWork(
-                SERVICE_MONITOR_WORK_NAME,
-                ExistingPeriodicWorkPolicy.REPLACE,
-                periodicWorkRequest
-            )
-            Log.d(TAG, "Service monitor WorkManager scheduled every $SERVICE_MONITOR_INTERVAL_MINUTES minutes")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to schedule service monitor work", e)
-        }
-    }
-    // --- КОНЕЦ ИЗМЕНЕНИЙ ДЛЯ ИНИЦИАЛИЗАЦИИ СЕРВИСОВ ---
 
     private fun setupToolbar() {
         try {

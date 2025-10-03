@@ -41,7 +41,6 @@ data class User(
     val lastStepsUpdate: Long = 0,
     var totalSteps: Int = 0,
     var position: Int = 0,
-    val locationSettings: LocationSettings? = null,
     val lastLocation: UserLocation? = null
 ) {
     fun getTodaySteps(): Int {
