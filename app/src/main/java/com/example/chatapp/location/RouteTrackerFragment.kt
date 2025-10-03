@@ -99,6 +99,7 @@ class RouteTrackerFragment : Fragment() {
         return inflater.inflate(R.layout.fragment_route_tracker, container, false)
     }
 
+    // Добавьте в onViewCreated():
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
@@ -106,8 +107,12 @@ class RouteTrackerFragment : Fragment() {
         setupMap()
         setupBottomSheet()
         setupButtons()
+        setupTrackingStatusListener() // ДОБАВИТЬ ЭТУ СТРОЧКУ
 
-        resetUI() // Сброс UI при запуске
+        resetUI()
+
+        // Проверяем текущий статус трекинга при создании
+        checkCurrentTrackingStatus()
     }
 
     private fun initViews(view: View) {
@@ -229,6 +234,56 @@ class RouteTrackerFragment : Fragment() {
             userLocationsRef = null
         }
     }
+
+
+
+    // Добавьте эти методы в RouteTrackerFragment:
+
+    private fun setupTrackingStatusListener() {
+        val userId = auth.currentUser?.uid ?: return
+
+        database.child("tracking_status").child(userId)
+            .addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val isTracking = snapshot.getValue(Boolean::class.java) ?: false
+                    Log.d(TAG, "Статус трекинга из БД: $isTracking")
+
+                    if (isTracking && !isDrawing) {
+                        // Если трекинг активен в БД, но не в приложении - начинаем отрисовку
+                        startDrawing()
+                    } else if (!isTracking && isDrawing) {
+                        // Если трекинг остановлен в БД, но активен в приложении - останавливаем
+                        stopDrawing()
+                    }
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    Log.e(TAG, "Ошибка слушателя статуса трекинга", error.toException())
+                }
+            })
+    }
+
+
+    private fun checkCurrentTrackingStatus() {
+        val userId = auth.currentUser?.uid ?: return
+
+        database.child("tracking_status").child(userId)
+            .addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val isTracking = snapshot.getValue(Boolean::class.java) ?: false
+                    if (isTracking) {
+                        // Если трекинг активен, начинаем отрисовку
+                        startDrawing()
+                    }
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    Log.e(TAG, "Ошибка проверки статуса трекинга", error.toException())
+                }
+            })
+    }
+
+
 
     private fun processNewLocation(location: UserLocation) {
         locationList.add(location)
@@ -498,21 +553,27 @@ class RouteTrackerFragment : Fragment() {
         }
 
         btnStartTracking.setOnClickListener {
+            // Запускаем сервис и начинаем отрисовку
+            LocationServiceManager.startLocationService(requireContext())
             startDrawing()
         }
 
         btnStopTracking.setOnClickListener {
+            // Останавливаем сервис и отрисовку
+            LocationServiceManager.stopLocationService(requireContext())
             stopDrawing()
         }
     }
 
+    // Обновите метод startDrawing():
     private fun startDrawing() {
         val userId = auth.currentUser?.uid ?: return
 
-        // Загрузка предыдущего маршрута (если есть) при запуске
+        // Загружаем предыдущий маршрут при запуске
         loadRouteForToday()
 
-        database.child("drawing_status").child(userId).setValue(true)
+        // Устанавливаем статус трекинга
+        database.child("tracking_status").child(userId).setValue(true)
         isDrawing = true
         updateButtonStates()
         startLocationListener()
@@ -520,10 +581,11 @@ class RouteTrackerFragment : Fragment() {
         Toast.makeText(context, "Отрисовка маршрута начата", Toast.LENGTH_SHORT).show()
     }
 
+    // Обновите метод stopDrawing():
     private fun stopDrawing() {
         val userId = auth.currentUser?.uid ?: return
 
-        database.child("drawing_status").child(userId).setValue(false)
+        database.child("tracking_status").child(userId).setValue(false)
         isDrawing = false
         updateButtonStates()
         removeLocationListener()

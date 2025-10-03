@@ -85,23 +85,34 @@ class LocationUpdateService : Service() {
         Log.d(TAG, "onCreate: Завершено")
     }
 
-    // В сервисе УБИРАЕМ всю логику с tracking_status и ACTION_STOP
+    // Замените onStartCommand():
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.d(TAG, "onStartCommand: Вызван с action=${intent?.action}")
 
-        // Сервис всегда запускается и работает в фоне
-        if (!isRunning.get()) {
-            Log.d(TAG, "onStartCommand: Запускаем сервис в foreground")
-            startForegroundService()
-            setupLocationUpdates()
+        when (intent?.action) {
+            ACTION_START -> {
+                if (!isRunning.get()) {
+                    Log.d(TAG, "onStartCommand: Запускаем сервис в foreground")
+                    startForegroundService()
+                    setupLocationUpdates()
+                    updateTrackingStatus(true) // ДОБАВИТЬ
+                }
+            }
+            ACTION_STOP -> {
+                Log.d(TAG, "onStartCommand: Получена команда STOP")
+                stopLocationTracking()
+                stopSelf()
+            }
+            else -> {
+                // Если сервис перезапущен системой, проверяем статус трекинга
+                checkTrackingStatusAndStart()
+            }
         }
 
         return START_STICKY
     }
 
-// Убираем обработку ACTION_STOP
-
-    // ДОБАВЛЕНО: метод для полной остановки трекинга
+    // В методе stopLocationTracking() убедитесь, что статус обновляется:
     private fun stopLocationTracking() {
         Log.d(TAG, "stopLocationTracking: Начало остановки трекинга")
 
@@ -377,6 +388,9 @@ class LocationUpdateService : Service() {
         }
     }
 
+
+
+
     private fun checkTurnAngle(newPoint: Point) {
         if (routePoints.size >= 2) {
             val prevPoint1 = routePoints[routePoints.size - 2]
@@ -422,6 +436,29 @@ class LocationUpdateService : Service() {
 
         val bearing = (Math.toDegrees(atan2(y, x)) + 360) % 360
         return bearing
+    }
+
+
+    // Добавьте метод проверки статуса:
+    private fun checkTrackingStatusAndStart() {
+        val userId = auth.currentUser?.uid ?: return
+
+        serviceScope.launch {
+            try {
+                val snapshot = database.child("tracking_status").child(userId).get().await()
+                val isTracking = snapshot.getValue(Boolean::class.java) ?: false
+
+                if (isTracking && !isRunning.get()) {
+                    Log.d(TAG, "checkTrackingStatusAndStart: Трекинг активен, запускаем сервис")
+                    withContext(Dispatchers.Main) {
+                        startForegroundService()
+                        setupLocationUpdates()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка проверки статуса трекинга", e)
+            }
+        }
     }
 
     // УСОВЕРШЕНСТВОВАНО: улучшена валидация локации

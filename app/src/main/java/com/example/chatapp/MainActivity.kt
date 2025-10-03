@@ -35,6 +35,7 @@ import com.example.chatapp.novosti.NewsItem
 import com.example.chatapp.location.LocationUpdateService
 import com.example.chatapp.step.StepCounterService
 import com.example.chatapp.location.LocationPagerFragment
+import com.example.chatapp.location.LocationServiceManager
 import com.example.chatapp.step.StepCounterFragment
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.firebase.auth.FirebaseAuth
@@ -123,20 +124,9 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         try {
             super.onCreate(savedInstanceState)
-            Log.d(TAG, "onCreate: Начало")
-            binding = ActivityMainBinding.inflate(layoutInflater)
-            setContentView(binding.root)
 
-            WindowCompat.setDecorFitsSystemWindows(window, false)
-
-            try {
-                auth = Firebase.auth
-                Log.d(TAG, "onCreate: Firebase Auth инициализирован")
-            } catch (e: Exception) {
-                Log.e(TAG, "Firebase auth initialization failed", e)
-                showErrorAndFinish("Ошибка инициализации приложения")
-                return
-            }
+            // ДОБАВИТЬ ПЕРВЫМ ДЕЛОМ - проверка авторизации ДО проверки трекинга
+            auth = Firebase.auth
 
             if (auth.currentUser == null) {
                 Log.d(TAG, "onCreate: Пользователь не авторизован, переход к AuthActivity")
@@ -144,6 +134,22 @@ class MainActivity : AppCompatActivity() {
                 finish()
                 return
             }
+
+            // ТЕПЕРЬ проверяем и запускаем сервис трекинга
+            LocationServiceManager.isTrackingActive(this) { isTracking ->
+                if (isTracking) {
+                    Log.d(TAG, "onCreate: Трекинг активен, запускаем сервис")
+                    LocationServiceManager.startLocationService(this)
+                } else {
+                    Log.d(TAG, "onCreate: Трекинг не активен")
+                }
+            }
+
+            Log.d(TAG, "onCreate: Начало")
+            binding = ActivityMainBinding.inflate(layoutInflater)
+            setContentView(binding.root)
+
+            WindowCompat.setDecorFitsSystemWindows(window, false)
 
             setupToolbar()
             setupBottomNavigation()
@@ -364,6 +370,18 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "Error checking location permissions", e)
             false
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+
+        // Перепроверяем статус трекинга при возвращении в приложение
+        if (auth.currentUser != null) {
+            LocationServiceManager.isTrackingActive(this) { isTracking ->
+                Log.d(TAG, "onResume: Статус трекинга - $isTracking")
+                // Можно обновить UI если нужно
+            }
         }
     }
 
