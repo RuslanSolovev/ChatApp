@@ -1,26 +1,26 @@
 package com.example.chatapp
 
-
 import android.content.Intent
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
-import android.widget.Button
+import android.view.View
+import androidx.cardview.widget.CardView
 
 class AdditionGameMenuActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_addition_game_menu)
 
-        findViewById<Button>(R.id.btn_single_digit).setOnClickListener {
+        findViewById<CardView>(R.id.card_single_digit).setOnClickListener {
             startGame(1)
         }
-        findViewById<Button>(R.id.btn_two_digit).setOnClickListener {
+        findViewById<CardView>(R.id.card_two_digit).setOnClickListener {
             startGame(2)
         }
-        findViewById<Button>(R.id.btn_three_digit).setOnClickListener {
+        findViewById<CardView>(R.id.card_three_digit).setOnClickListener {
             startGame(3)
         }
-        findViewById<Button>(R.id.btn_four_digit).setOnClickListener {
+        findViewById<CardView>(R.id.card_four_digit).setOnClickListener {
             startGame(4)
         }
     }

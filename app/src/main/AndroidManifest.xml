@@ -1,73 +1,193 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Разрешения для запуска при загрузке -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- Базовые разрешения -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" /> <!-- Разрешения для работы с медиа -->
+
+    <!-- Разрешения для уведомлений -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- Разрешения для работы с медиа -->
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
-    <uses-permission android:name="android.permission.BODY_SENSORS" />
-    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+
+    <!-- Разрешения для будильника -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.SET_ALARM" />
+
+    <!-- Разрешения для WakeLock -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Разрешения для Full Screen Intent -->
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+
+    <!-- Разрешения для локации -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" /> <!-- Разрешения для шагомера -->
-    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
-    <uses-permission android:name="android.permission.BODY_SENSORS" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
-    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" /> <!-- Разрешения для локации -->
-    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" /> <!-- Для Android 10+ -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission
         android:name="android.permission.ACCESS_BACKGROUND_LOCATION"
         tools:ignore="ProtectedPermissions" />
 
+    <!-- Разрешения для шагомера и датчиков -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <uses-permission android:name="android.permission.BODY_SENSORS" />
+
+    <!-- Разрешения для Foreground Services -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_HEALTH" />
+
+    <!-- Push-уведомления -->
+    <uses-permission android:name="com.google.android.c2dm.permission.RECEIVE" />
+
+    <!-- Разрешения для Huawei (опционально) -->
+    <uses-permission android:name="com.huawei.permission.sec.MDM_LOCATION" />
+    <uses-permission android:name="com.huawei.permission.sec.MDM_LOCATION_INTERNAL" />
+
     <application
-        android:name=".StepCounterApp"
+        android:name=".step.StepCounterApp"
         android:allowBackup="true"
-        android:icon="@drawable/solovei_png"
+        android:icon="@drawable/splash_background"
         android:label="@string/app_name"
-        android:roundIcon="@drawable/solovei_png"
+        android:roundIcon="@drawable/splash_background"
         android:supportsRtl="true"
         android:theme="@style/Theme.AppCompat.Light.DarkActionBar"
         android:usesCleartextTraffic="true"
+        android:requestLegacyExternalStorage="true"
         tools:targetApi="31">
 
-        <!-- Активность авторизации -->
+        <!-- Splash Activity (точка входа) -->
         <activity
-            android:name=".activities.AuthActivity"
-            android:exported="true"
-            android:theme="@style/Theme.AppCompat.Light.NoActionBar">
+            android:name=".activities.SplashActivity"
+            android:theme="@style/SplashTheme"
+            android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
-
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-        </activity> <!-- Главная активность -->
+        </activity>
+
+        <!-- Auth Activity -->
+        <activity
+            android:name=".activities.AuthActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
+
+        <!-- Main Activity -->
         <activity
             android:name=".activities.MainActivity"
             android:exported="true"
-            android:theme="@style/Theme.AppCompat.Light.NoActionBar" /> <!-- Активность шагомера -->
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
+
+        <!-- Maps Activity (новый) -->
+        <activity
+            android:name=".location.MapsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.Filosoff" />
+
+        <!-- Alarm Activities -->
+        <activity
+            android:name=".budilnik.AlarmActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.ChatApp"
+            android:turnScreenOn="true"
+            android:showWhenLocked="true">
+            <intent-filter>
+                <action android:name="ALARM_ACTION" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+
+        <!-- Mozgi Activities -->
+        <activity
+            android:name=".mozgi.ui.QuizActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ChatApp"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
+            android:name=".mozgi.ui.ResultActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ChatApp" />
+
+        <activity
+            android:name=".mozgi.ui.LeaderboardActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ChatApp" />
+
+        <activity
+            android:name=".mozgi.ui.StartQuizActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ChatApp" />
+
+        <activity
+            android:name=".mozgi.ui.CategoriesActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.ChatApp" />
+
+        <!-- Music Activity -->
+        <activity
+            android:name=".muzika.ui.MusicMainActivity"
+            android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar"/>
+
+        <!-- Step Counter Activity -->
         <activity
             android:name=".StepCounterActivity"
             android:exported="false"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
-        <activity android:name=".IgraActivity"></activity>
-        <activity android:name=".SozdanieBeseda"></activity>
-        <activity android:name=".ChatObsudit"></activity>
-        <activity android:name=".activities.ChatWithGigaActivity"></activity>
 
-        <activity android:name=".AdditionGameMenuActivity"></activity>
+        <!-- Game Activities -->
+        <activity
+            android:name=".pamyat.MemoryGameActivity"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.ChatApp" />
 
+        <activity android:name=".AdditionGameMenuActivity" />
+        <activity android:name=".AdditionGameActivity" />
+        <activity android:name=".GuessNumberMenuActivity" />
+        <activity android:name=".GuessNumberGameActivity" />
+        <activity
+            android:name=".chess.ChessActivity"
+            android:label="Шахматы"
+            android:exported="true" />
+
+        <!-- Chat Activities -->
+        <activity android:name="SozdanieBeseda" />
+        <activity android:name="DiscussionActivity" />
+        <activity
+            android:name=".activities.CreateChatActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
+        <activity
+            android:name=".activities.ChatDetailActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
+        <activity
+            android:name=".activities.SelectUsersActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
+
+        <!-- Profile Activities -->
+        <activity
+            android:name=".activities.UserProfileActivity"
+            android:exported="false" />
+        <activity
+            android:name=".activities.ProfileActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
+
+        <!-- Other Activities -->
         <activity
             android:name=".TopUsersActivity"
             android:exported="false"
@@ -78,42 +198,39 @@
                 android:value=".StepCounterActivity" />
         </activity>
 
-        <activity android:name=".activities.UserProfileActivity" android:exported="false" />
-        <activity android:name=".AdditionGameActivity"></activity>
+        <activity
+            android:name=".location.FriendsListActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
 
         <activity
-            android:name=".ChatSpisok"
-            android:theme="@style/Theme.ChatApp"
-            android:exported="false"/>
+            android:name=".activities.FullScreenImageActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
 
-
-        <activity android:name=".GuessNumberMenuActivity"></activity>
-        <activity android:name=".GuessNumberGameActivity"></activity>
-        <activity android:name=".LocationActivity"></activity>
         <activity
             android:name=".LocationSettingsActivity"
             android:exported="false" />
-        <activity
-            android:name=".activities.CreateChatActivity"
-            android:exported="false"
-            android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
-        <activity
-            android:name=".activities.ChatDetailActivity"
-            android:exported="false"
-            android:theme="@style/Theme.AppCompat.Light.NoActionBar" /> <!-- Новая активность для выбора пользователей -->
-        <activity
-            android:name=".activities.SelectUsersActivity"
-            android:exported="false"
-            android:theme="@style/Theme.AppCompat.Light.NoActionBar" /> <!-- Активность профиля -->
-        <activity
-            android:name=".activities.ProfileActivity"
-            android:exported="false"
-            android:theme="@style/Theme.AppCompat.Light.NoActionBar" /> <!-- Сервис шагомера -->
+
+        <!-- Services -->
         <service
-            android:name=".StepCounterService"
+            android:name=".step.StepCounterService"
             android:enabled="true"
             android:exported="false"
-            android:foregroundServiceType="health" /> <!-- Приемник для автозапуска -->
+            android:foregroundServiceType="health" />
+
+        <service
+            android:name=".location.LocationUpdateService"
+        android:enabled="true"
+        android:exported="false"
+        android:foregroundServiceType="location" />
+
+        <service
+            android:name=".budilnik.AlarmService"
+            android:enabled="true"
+            android:exported="false"/>
+
+        <!-- Receivers -->
         <receiver
             android:name=".receivers.BootReceiver"
             android:enabled="true"
@@ -121,16 +238,26 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.QUICKBOOT_POWERON" />
-                <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+                <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
-        </receiver> <!-- Firebase сервисы -->
-        <service
-            android:name=".services.MyFirebaseMessagingService"
+        </receiver>
+
+        <receiver
+            android:name=".budilnik.AlarmReceiver"
+            android:enabled="true"
             android:exported="false">
             <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+                <action android:name="ALARM_ACTION" />
+                <action android:name="com.example.chatapp.STOP_ALARM" />
             </intent-filter>
-        </service>
+        </receiver>
+
+        <receiver android:name=".receivers.HistoryCleanupReceiver" />
+
+        <!-- Metadata -->
+        <meta-data
+            android:name="com.huawei.hms.client.appid"
+            android:value="appid=your_huawei_app_id" />
 
         <meta-data
             android:name="firebase_messaging_auto_init_enabled"
@@ -142,5 +269,4 @@
             android:name="com.yandex.maps.mobile.apikey"
             android:value="6b7f7e6b-d322-42b2-8471-d8aecc6570d1" />
     </application>
-
 </manifest>

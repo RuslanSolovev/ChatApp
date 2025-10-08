@@ -1,169 +1,264 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:orientation="vertical"
     android:padding="16dp"
     android:background="@drawable/bg_gradient">
 
-    <LinearLayout
+    <!-- Название игры -->
+    <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:text="Угадай число"
+        android:textSize="26sp"
+        android:textColor="@color/white"
+        android:gravity="center"
+        android:layout_marginBottom="8dp"
+        android:shadowColor="@color/black"
+        android:shadowDx="1"
+        android:shadowDy="1"
+        android:shadowRadius="2" />
+
+    <!-- Заголовок -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Выберите уровень сложности"
+        android:textSize="16sp"
+        android:textColor="@color/white"
+        android:gravity="center"
+        android:textStyle="bold"
+        android:layout_marginBottom="24dp"
+        android:shadowColor="@color/black"
+        android:shadowDx="2"
+        android:shadowDy="2"
+        android:shadowRadius="4" />
+
+    <!-- Основная область с сеткой -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:orientation="vertical">
 
-        <!-- Заголовок -->
-        <TextView
+        <!-- Сетка 2x2 -->
+        <GridLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Выберите уровень сложности"
-            android:textSize="24sp"
-            android:textColor="@color/white"
-            android:gravity="center"
-            android:textStyle="bold"
-            android:layout_marginBottom="24dp" />
+            android:layout_height="match_parent"
+            android:columnCount="2"
+            android:rowCount="2"
+            android:alignmentMode="alignMargins"
+            android:useDefaultMargins="true">
 
-        <!-- Легкий уровень -->
-        <androidx.cardview.widget.CardView
-            android:id="@+id/card_easy"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="4dp"
-            app:cardBackgroundColor="@color/white"
-            android:layout_marginBottom="16dp">
+            <!-- Легкий уровень -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/card_easy"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_rowWeight="1"
+                android:layout_columnWeight="1"
+                android:layout_margin="8dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="6dp"
+                app:cardBackgroundColor="@color/white">
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:padding="16dp"
-                android:gravity="center_vertical">
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="🚶‍♂️"
-                    android:textSize="24sp"
-                    android:paddingEnd="16dp" />
-
-                <Button
-                    android:id="@+id/btn_easy"
+                <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Легкий (1 - 100)"
-                    android:textSize="18sp"
-                    android:textColor="@color/black"
-                    android:backgroundTint="@color/white"
-                    android:padding="8dp" />
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
+                    android:layout_height="match_parent"
+                    android:orientation="vertical"
+                    android:padding="20dp"
+                    android:gravity="center"
+                    android:background="?android:attr/selectableItemBackground">
 
-        <!-- Средний уровень -->
-        <androidx.cardview.widget.CardView
-            android:id="@+id/card_medium"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="4dp"
-            app:cardBackgroundColor="@color/white"
-            android:layout_marginBottom="16dp">
+                    <TextView
+                        android:layout_width="60dp"
+                        android:layout_height="60dp"
+                        android:text="1"
+                        android:textSize="32sp"
+                        android:textStyle="bold"
+                        android:textColor="#05F60F"
+                        android:gravity="center"
+                        android:background="@drawable/circle_background"
+                        android:layout_marginBottom="16dp" />
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:padding="16dp"
-                android:gravity="center_vertical">
+                    <TextView
+                        android:id="@+id/btn_easy"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Легкий"
+                        android:textSize="18sp"
+                        android:textStyle="bold"
+                        android:textColor="#333"
+                        android:gravity="center"
+                        android:layout_marginBottom="8dp" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="🏃‍♂️"
-                    android:textSize="24sp"
-                    android:paddingEnd="16dp" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="1 - 100"
+                        android:textSize="14sp"
+                        android:textColor="#666"
+                        android:gravity="center" />
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
 
-                <Button
-                    android:id="@+id/btn_medium"
+            <!-- Средний уровень -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/card_medium"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_rowWeight="1"
+                android:layout_columnWeight="1"
+                android:layout_margin="8dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="6dp"
+                app:cardBackgroundColor="@color/white">
+
+                <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Средний (1 - 1000)"
-                    android:textSize="18sp"
-                    android:textColor="@color/black"
-                    android:backgroundTint="@color/white"
-                    android:padding="8dp" />
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
+                    android:layout_height="match_parent"
+                    android:orientation="vertical"
+                    android:padding="20dp"
+                    android:gravity="center"
+                    android:background="?android:attr/selectableItemBackground">
 
-        <!-- Сложный уровень -->
-        <androidx.cardview.widget.CardView
-            android:id="@+id/card_hard"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="4dp"
-            app:cardBackgroundColor="@color/white"
-            android:layout_marginBottom="16dp">
+                    <TextView
+                        android:layout_width="60dp"
+                        android:layout_height="60dp"
+                        android:text="2"
+                        android:textSize="32sp"
+                        android:textStyle="bold"
+                        android:textColor="#0B0B0B"
+                        android:gravity="center"
+                        android:background="@drawable/circle_background"
+                        android:layout_marginBottom="16dp" />
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:padding="16dp"
-                android:gravity="center_vertical">
+                    <TextView
+                        android:id="@+id/btn_medium"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Средний"
+                        android:textSize="18sp"
+                        android:textStyle="bold"
+                        android:textColor="#333"
+                        android:gravity="center"
+                        android:layout_marginBottom="8dp" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="⛰️"
-                    android:textSize="24sp"
-                    android:paddingEnd="16dp" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="1 - 1000"
+                        android:textSize="14sp"
+                        android:textColor="#666"
+                        android:gravity="center" />
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
 
-                <Button
-                    android:id="@+id/btn_hard"
+            <!-- Сложный уровень -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/card_hard"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_rowWeight="1"
+                android:layout_columnWeight="1"
+                android:layout_margin="8dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="6dp"
+                app:cardBackgroundColor="@color/white">
+
+                <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Сложный (1 - 10000)"
-                    android:textSize="18sp"
-                    android:textColor="@color/black"
-                    android:backgroundTint="@color/white"
-                    android:padding="8dp" />
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
+                    android:layout_height="match_parent"
+                    android:orientation="vertical"
+                    android:padding="20dp"
+                    android:gravity="center"
+                    android:background="?android:attr/selectableItemBackground">
 
-        <!-- Экспертный уровень -->
-        <androidx.cardview.widget.CardView
-            android:id="@+id/card_expert"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="4dp"
-            app:cardBackgroundColor="@color/white"
-            android:layout_marginBottom="16dp">
+                    <TextView
+                        android:layout_width="60dp"
+                        android:layout_height="60dp"
+                        android:text="3"
+                        android:textSize="32sp"
+                        android:textStyle="bold"
+                        android:textColor="#FFE600"
+                        android:gravity="center"
+                        android:background="@drawable/circle_background"
+                        android:layout_marginBottom="16dp" />
 
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:padding="16dp"
-                android:gravity="center_vertical">
+                    <TextView
+                        android:id="@+id/btn_hard"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Сложный"
+                        android:textSize="18sp"
+                        android:textStyle="bold"
+                        android:textColor="#333"
+                        android:gravity="center"
+                        android:layout_marginBottom="8dp" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="🏆"
-                    android:textSize="24sp"
-                    android:paddingEnd="16dp" />
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="1 - 10000"
+                        android:textSize="14sp"
+                        android:textColor="#666"
+                        android:gravity="center" />
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
 
-                <Button
-                    android:id="@+id/btn_expert"
+            <!-- Экспертный уровень -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/card_expert"
+                android:layout_width="0dp"
+                android:layout_height="0dp"
+                android:layout_rowWeight="1"
+                android:layout_columnWeight="1"
+                android:layout_margin="8dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="6dp"
+                app:cardBackgroundColor="@color/white">
+
+                <LinearLayout
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Эксперт (1 - 100000)"
-                    android:textSize="18sp"
-                    android:textColor="@color/black"
-                    android:backgroundTint="@color/white"
-                    android:padding="8dp" />
-            </LinearLayout>
-        </androidx.cardview.widget.CardView>
+                    android:layout_height="match_parent"
+                    android:orientation="vertical"
+                    android:padding="20dp"
+                    android:gravity="center"
+                    android:background="?android:attr/selectableItemBackground">
+
+                    <TextView
+                        android:layout_width="60dp"
+                        android:layout_height="60dp"
+                        android:text="4"
+                        android:textSize="32sp"
+                        android:textStyle="bold"
+                        android:textColor="#FF0101"
+                        android:gravity="center"
+                        android:background="@drawable/circle_background"
+                        android:layout_marginBottom="16dp" />
+
+                    <TextView
+                        android:id="@+id/btn_expert"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Эксперт"
+                        android:textSize="18sp"
+                        android:textStyle="bold"
+                        android:textColor="#333"
+                        android:gravity="center"
+                        android:layout_marginBottom="8dp" />
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="1 - 100000"
+                        android:textSize="14sp"
+                        android:textColor="#666"
+                        android:gravity="center" />
+                </LinearLayout>
+            </androidx.cardview.widget.CardView>
+        </GridLayout>
     </LinearLayout>
-</ScrollView>
+</LinearLayout>

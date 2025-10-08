@@ -6,7 +6,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import com.bumptech.glide.Glide
-import com.example.chatapp.LocationActivity
+
 import com.example.chatapp.R
 import com.example.chatapp.databinding.ActivityUserProfileBinding
 import com.example.chatapp.models.User
@@ -51,7 +51,7 @@ class UserProfileActivity : AppCompatActivity() {
 
     private fun setupClickListeners() {
         binding.btnShowOnMap.setOnClickListener {
-            showUserOnMap()
+
         }
     }
 
@@ -112,23 +112,6 @@ class UserProfileActivity : AppCompatActivity() {
         }
     }
 
-    private fun showUserOnMap() {
-        database.child("user_locations").child(userId)
-            .get()
-            .addOnSuccessListener { snapshot ->
-                val location = snapshot.getValue(UserLocation::class.java)
-                if (location != null) {
-                    val intent = Intent(this, LocationActivity::class.java).apply {
-                        putExtra("TARGET_LAT", location.lat)
-                        putExtra("TARGET_LNG", location.lng)
-                        putExtra("TARGET_USER_ID", userId)
-                    }
-                    startActivity(intent)
-                } else {
-                    Toast.makeText(this, "Локация пользователя не найдена", Toast.LENGTH_SHORT).show()
-                }
-            }
-    }
 
     private fun showProfileNotFound() {
         Toast.makeText(this, "Профиль не найден", Toast.LENGTH_SHORT).show()

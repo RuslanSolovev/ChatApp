@@ -1,5 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
@@ -10,14 +12,16 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:padding="8dp"/>
+        android:padding="8dp"
+        android:clipToPadding="false"
+        android:paddingBottom="16dp"/>
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:paddingTop="8dp">
-        <!-- Кнопка очистки диалога -->
+        android:paddingTop="8dp"
+        >
 
         <ImageButton
             android:id="@+id/btnClearDialog"
@@ -39,14 +43,14 @@
             android:layout_marginStart="5dp"
             android:background="@drawable/bg_message_right"/>
 
-        <Button
+        <ImageButton
             android:id="@+id/btnSendMessage"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="Отправить"
-            android:padding="8dp"
-            android:layout_marginStart="8dp"/>
-
-
+            android:layout_width="50dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_send"
+            android:contentDescription="Отправить сообщение"
+            app:tint="#1CE215"
+            android:scaleType="centerInside" />
     </LinearLayout>
 </LinearLayout>

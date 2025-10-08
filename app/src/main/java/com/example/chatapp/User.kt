@@ -18,21 +18,29 @@ data class User(
     var isActive: Boolean = false,
     val createdAt: Long = System.currentTimeMillis(),
 
+
+
+
+    @get:PropertyName("isPlaying")
+    @set:PropertyName("isPlaying")
+    var isPlaying: Boolean = false,
+
+
+
     // Исправление: сопоставление с Firebase-полем "online"
     @get:PropertyName("online")
     @set:PropertyName("online")
-    var isOnline: Boolean = false,
+    var online: Boolean = false,
 
     val fcmToken: String? = null,
     val lastActive: Long? = null,
 
     // Ключевое изменение: тип Any вместо Int
-    val stepsData: Map<String, Any> = emptyMap(),
+    var stepsData: Map<String, Any> = emptyMap(),
     val maxDailySteps: Int = 0,
     val lastStepsUpdate: Long = 0,
     var totalSteps: Int = 0,
-
-    val locationSettings: LocationSettings? = null,
+    var position: Int = 0,
     val lastLocation: UserLocation? = null
 ) {
     fun getTodaySteps(): Int {

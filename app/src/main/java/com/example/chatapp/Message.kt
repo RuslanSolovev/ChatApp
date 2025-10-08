@@ -11,7 +11,7 @@ data class Message(
     val timestamp: Long = System.currentTimeMillis(),
 
 
-
+    val aspectRatio: Float = 1f,
     val imageUrl: String? = null,
     val replyToMessageId: String? = null,
     val replyToMessageText: String? = null,
@@ -20,8 +20,6 @@ data class Message(
     val status: MessageStatus = MessageStatus.SENT,
     val messageType: MessageType = MessageType.TEXT
 ) {
-    // Пустой конструктор для Firebase
-    constructor() : this("", "", "", "", 0L, null, null, null, null, false, MessageStatus.SENT, MessageType.TEXT)
 
     enum class MessageStatus {
         SENT, DELIVERED, READ

@@ -11,7 +11,8 @@ data class Chat(
     val creatorAvatar: String? = null,
     val imageUrl: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
-    val replyToMessageId: String? = null,  // ID сообщения, на которое отвечаем
-    val replyToMessageText: String? = null, // Текст сообщения, на которое отвечаем
-    val replyToSenderName: String? = null   // Имя отправителя исходного сообщения
+    val lastMessageSenderId: String? = null,
+    val lastMessageSenderName: String? = null,
+    val lastMessageText: String? = null
+
 )

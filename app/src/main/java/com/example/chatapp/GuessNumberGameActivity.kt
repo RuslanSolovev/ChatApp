@@ -11,6 +11,7 @@ import android.widget.EditText
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import com.example.chatapp.fragments.GamesFragment
 import kotlin.random.Random
 
 class GuessNumberGameActivity : AppCompatActivity() {
@@ -97,7 +98,7 @@ class GuessNumberGameActivity : AppCompatActivity() {
                 finish()
             }
         .setNeutralButton("Главное меню") { _, _ ->
-            val intent = Intent(this, IgraActivity::class.java)
+            val intent = Intent(this, GamesFragment::class.java)
             startActivity(intent)
             finish()
         }

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 1. Фон -->
+    <item android:drawable="@color/yellow_background"/>
+
+    <!-- 2. Логотип -->
+    <item>
+        <bitmap
+            android:gravity="center"
+            android:src="@drawable/fill"
+            android:width="100dp"
+            android:height="100dp"/>
+    </item>
+</layer-list>

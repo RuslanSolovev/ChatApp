@@ -1,0 +1,57 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="200dp"
+    android:height="60dp"
+    android:viewportWidth="200"
+    android:viewportHeight="60">
+
+    <!-- Буква Н -->
+    <path
+        android:fillColor="#FF0000"
+        android:pathData="M10,10 L10,50 L20,50 L20,30 L40,30 L40,50 L50,50 L50,10 L40,10 L40,20 L20,20 L20,10 Z"/>
+
+    <!-- Буква О -->
+    <path
+        android:fillColor="#FB0000"
+        android:pathData="M60,10 L60,50 L90,50 L90,10 Z"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M65,15 L65,45 L85,45 L85,15 Z"/>
+
+    <!-- Буква В -->
+    <path
+        android:fillColor="#FF0000"
+        android:pathData="M100,10 L100,50 L130,50 L135,45 L135,35 L125,35 L125,30 L135,30 L135,15 L130,10 Z"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M105,15 L105,30 L120,30 L120,15 Z"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M105,35 L105,45 L125,45 L125,35 Z"/>
+
+    <!-- Буква О -->
+    <path
+        android:fillColor="#F80101"
+        android:pathData="M140,10 L140,50 L170,50 L170,10 Z"
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="5"/>
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M145,15 L145,45 L165,45 L165,15 Z"/>
+
+    <!-- Буква С -->
+    <path
+        android:fillColor="#FF0000"
+        android:pathData="M180,10 L180,50 L210,50 L210,45 L185,45 L185,15 L210,15 L210,10 Z"/>
+
+    <!-- Буква Т -->
+    <path
+        android:fillColor="#FF0000"
+        android:pathData="M220,10 L220,15 L230,15 L230,50 L240,50 L240,15 L250,15 L250,10 Z"/>
+
+    <!-- Буква И -->
+    <path
+        android:fillColor="#FF0000"
+        android:pathData="M260,10 L260,50 L270,50 L280,30 L290,50 L300,50 L300,10 L290,10 L290,40 L280,20 L270,40 L270,10 Z"/>
+</vector>

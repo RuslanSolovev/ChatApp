@@ -12,10 +12,20 @@
     <color name="reply_background">#1F000000</color>
     <color name="bg_message_left">#FFF5F5F5</color>
     <color name="bg_message_right">#FFE3F2FD</color>
+    <!-- colors.xml -->
+    <color name="primary3">#1E88E5</color>
+    <color name="primary_dark">#1565C0</color>
+    <color name="accent">#FF4081</color>
+    <color name="background">#F5F5F5</color>
+    <color name="card_background">#FFFFFF</color>
+    <color name="text_primary1">#212121</color>
+    <color name="text_secondary2">#757575</color>
+    <color name="divider">#E0E0E0</color>
 
-  
+    <color name="external_news_bg">#4CAF50</color>
 
-    
+    <color name="grey">#FF9E9E9E</color>
+    <color name="yellow_background">#EBEBB9</color>
 
 
     <color name="secondary_text">#EB0707</color>
@@ -84,5 +94,20 @@
     <!-- Иконки -->
     <color name="icon_tint">#6200EE</color> <!-- Цвет иконок -->
 
+        <!-- ... другие цвета ... -->
+        <color name="route_color">#4CAF50</color>
+        <color name="start_marker_color">#2196F3</color>
+        <color name="end_marker_color">#F44336</color>
+
+    <color name="alarm_background">#FBF8F8</color>
+    <color name="alarm_primary">#9595FD</color>
+    <color name="alarm_secondary">#FDA78C</color>
+    <color name="alarm_text">#020202</color>
+    <color name="alarm_stop">#FFEB3B</color>
+
+
+    <color name="alarm_emergency">#F44336</color>
+
+    <color name="alarm_text_emergency">#FFFFFF</color>
 
 </resources>

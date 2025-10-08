@@ -1,71 +1,133 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/bg_gradient"
+    android:orientation="vertical"
     android:padding="16dp">
 
-    <LinearLayout
+    <!-- Заголовок -->
+    <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:text="Выберите игру"
+        android:textSize="28sp"
+        android:textColor="@color/white"
+        android:gravity="center"
+        android:textStyle="bold"
+        android:layout_marginBottom="24dp"
+        android:shadowColor="@color/black"
+        android:shadowDx="2"
+        android:shadowDy="2"
+        android:shadowRadius="4" />
+
+    <!-- Основная сетка игр -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:orientation="vertical">
 
-        <!-- Заголовок -->
-        <TextView
+        <!-- Верхний ряд (2 игры) -->
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Выберите игру"
-            android:textSize="24sp"
-            android:textColor="@color/white"
-            android:gravity="center"
-            android:textStyle="bold"
-            android:layout_marginBottom="24dp" />
-
-        <!-- Карточка для игры "Угадай число" -->
-        <androidx.cardview.widget.CardView
-            android:id="@+id/card_guess_number"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="4dp"
-            app:cardBackgroundColor="@color/white"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal"
             android:layout_marginBottom="16dp">
 
-            <Button
-                android:id="@+id/btn_guess_number"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="🎯 Угадай число"
-                android:textSize="18sp"
-                android:textColor="@color/black"
-                android:backgroundTint="@color/white"
-                android:drawableStart="@drawable/ic_target"
-                android:drawableTint="@color/black"
-                android:padding="16dp" />
-        </androidx.cardview.widget.CardView>
+            <!-- Карточка "Угадай число" -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/card_guess_number"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="8dp"
+                app:cardBackgroundColor="@color/white">
 
-        <!-- Карточка для игры "Сложение чисел" -->
-        <androidx.cardview.widget.CardView
-            android:id="@+id/card_addition_game"
+                <ImageView
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:src="@drawable/ygadai"
+                    android:scaleType="centerCrop"
+                    android:contentDescription="Угадай число" />
+
+            </androidx.cardview.widget.CardView>
+
+            <!-- Карточка "Сложение чисел" -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/card_addition_game"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="8dp"
+                app:cardBackgroundColor="@color/white">
+
+                <ImageView
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:src="@drawable/sum"
+                    android:scaleType="centerCrop"
+                    android:contentDescription="Сложение чисел" />
+
+            </androidx.cardview.widget.CardView>
+
+        </LinearLayout>
+
+        <!-- Нижний ряд (2 игры) -->
+        <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="4dp"
-            app:cardBackgroundColor="@color/white"
-            android:layout_marginBottom="16dp">
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:orientation="horizontal">
 
-            <Button
-                android:id="@+id/btn_addition_game"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="➕ Сложение чисел"
-                android:textSize="18sp"
-                android:textColor="@color/black"
-                android:backgroundTint="@color/white"
-                android:drawableStart="@drawable/ic_plus"
-                android:drawableTint="@color/black"
-                android:padding="16dp" />
-        </androidx.cardview.widget.CardView>
+            <!-- Карточка "Шахматы" -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/card_chess"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:layout_marginEnd="8dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="8dp"
+                app:cardBackgroundColor="@color/white">
+
+                <ImageView
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:src="@drawable/chess"
+                    android:scaleType="centerCrop"
+                    android:contentDescription="Шахматы" />
+
+            </androidx.cardview.widget.CardView>
+
+            <!-- Карточка "На память" -->
+            <androidx.cardview.widget.CardView
+                android:id="@+id/card_memory_game"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:layout_marginStart="8dp"
+                app:cardCornerRadius="16dp"
+                app:cardElevation="8dp"
+                app:cardBackgroundColor="@color/white">
+
+                <ImageView
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:src="@drawable/mozgi"
+                    android:scaleType="centerCrop"
+                    android:contentDescription="На память" />
+
+            </androidx.cardview.widget.CardView>
+
+        </LinearLayout>
+
     </LinearLayout>
-</ScrollView>
+
+</LinearLayout>
