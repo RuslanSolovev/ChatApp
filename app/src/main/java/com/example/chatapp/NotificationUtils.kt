@@ -137,6 +137,81 @@ object NotificationUtils {
     }
 
     /**
+     * Отправляет философскую цитату текущему пользователю через OneSignal API.
+     *
+     * @param context Контекст приложения.
+     */
+    fun sendPhilosophyQuoteNotification(context: Context) {
+        val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: run {
+            LogUtils.e("Пользователь не авторизован для отправки философской цитаты")
+            return
+        }
+
+        // Получаем oneSignalId текущего пользователя из Firebase
+        FirebaseDatabase.getInstance().reference
+            .child("users").child(currentUserId).child("oneSignalId")
+            .addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val oneSignalId = snapshot.getValue(String::class.java)
+                    if (!oneSignalId.isNullOrBlank()) {
+                        try {
+                            val randomQuote = PhilosophyQuotes.getRandomQuote()
+                            val authHeader = "key $REST_API_KEY"
+
+                            val notification = NotificationRequest(
+                                app_id = ONESIGNAL_APP_ID,
+                                include_player_ids = listOf(oneSignalId),
+                                contents = mapOf("en" to randomQuote.text),
+                                headings = mapOf("en" to "💭 Мудрая мысль от ${randomQuote.author}"),
+                                android_channel_id = "292588fb-8a77-4b57-8566-b8bb9552ff68",
+                                small_icon = "res://drawable/ic_notification",
+                                data = mapOf(
+                                    "type" to "philosophy_quote",
+                                    "author" to randomQuote.author
+                                )
+                            )
+
+                            LogUtils.d("Отправка философской цитаты пользователю $currentUserId ($oneSignalId): ${randomQuote.text}")
+
+                            val call = RetrofitInstance.oneSignalApi.sendNotification(
+                                authHeader,
+                                notification
+                            )
+                            call.enqueue(object : Callback<ResponseBody> {
+                                override fun onResponse(
+                                    call: Call<ResponseBody>,
+                                    response: Response<ResponseBody>
+                                ) {
+                                    if (response.isSuccessful) {
+                                        LogUtils.d("Философская цитата успешно отправлена пользователю $currentUserId")
+                                    } else {
+                                        LogUtils.e("Ошибка отправки философской цитаты пользователю $currentUserId: ${response.code()}")
+                                        response.errorBody()?.string()?.let {
+                                            LogUtils.e("Текст ошибки: $it")
+                                        }
+                                    }
+                                }
+
+                                override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
+                                    LogUtils.e("Сетевая ошибка при отправке философской цитаты пользователю $currentUserId: ${t.message}", t)
+                                }
+                            })
+
+                        } catch (e: Exception) {
+                            LogUtils.e("Ошибка создания уведомления с философской цитатой для пользователя $currentUserId", e)
+                        }
+                    } else {
+                        LogUtils.e("OneSignal ID пуст для пользователя $currentUserId. Философская цитата не отправлена.")
+                    }
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    LogUtils.e("Ошибка получения OneSignal ID для пользователя $currentUserId при отправке философской цитаты: ${error.message}")
+                }
+            })
+    }
+
+    /**
      * Отправляет push-уведомление о новом сообщении в чате через OneSignal API.
      *
      * @param context Контекст приложения.

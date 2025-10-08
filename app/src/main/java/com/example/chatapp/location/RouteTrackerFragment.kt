@@ -125,7 +125,6 @@ class RouteTrackerFragment : Fragment() {
         btnToggleSheet = view.findViewById(R.id.btnToggleSheet)
         bottomSheet = view.findViewById(R.id.bottomSheet)
 
-        // Скрываем ненужные кнопки
         view.findViewById<Button>(R.id.btnStartTracking)?.visibility = View.GONE
         view.findViewById<Button>(R.id.btnStopTracking)?.visibility = View.GONE
     }
@@ -136,7 +135,6 @@ class RouteTrackerFragment : Fragment() {
         mapContainer?.removeAllViews()
         mapContainer?.addView(mapView)
 
-        // Устанавливаем начальную позицию карты
         mapView.map.move(
             CameraPosition(Point(55.7558, 37.6173), 12f, 0f, 0f),
             Animation(Animation.Type.SMOOTH, 0f),
@@ -220,7 +218,6 @@ class RouteTrackerFragment : Fragment() {
 
                 override fun onCancelled(error: DatabaseError) {
                     Log.e(TAG, "Ошибка проверки статуса трекинга: ${error.message}")
-                    // В случае ошибки тоже запускаем трекинг
                     startAutomaticTracking()
                 }
             })
@@ -311,7 +308,6 @@ class RouteTrackerFragment : Fragment() {
         if (routePoints.isEmpty()) {
             Log.d(TAG, "Первая точка маршрута: ${newPoint.latitude}, ${newPoint.longitude}")
             routePoints.add(newPoint)
-            // Сразу обновляем маршрут для первой точки
             updateRouteInRealTime()
         } else {
             val lastPoint = routePoints.last()
@@ -472,10 +468,11 @@ class RouteTrackerFragment : Fragment() {
         val lastLocation = locationList.last()
         val timeDiff = location.timestamp - lastLocation.timestamp
 
-        if (timeDiff < MIN_TIME_DIFF || timeDiff > MAX_TIME_DIFF) {
-            Log.w(TAG, "Невалидная разница времени: $timeDiff мс")
-            return false
-        }
+        // ВРЕМЕННО УБИРАЕМ СТРОГУЮ ПРОВЕРКУ ДЛЯ ТЕСТА
+        // if (timeDiff < MIN_TIME_DIFF || timeDiff > MAX_TIME_DIFF) {
+        //     Log.w(TAG, "Невалидная разница времени: $timeDiff мс")
+        //     return false
+        // }
 
         return true
     }
@@ -620,7 +617,6 @@ class RouteTrackerFragment : Fragment() {
                 }
             }
 
-            // Обновляем конечный маркер
             endMarker?.let {
                 mapView.map.mapObjects.remove(it)
                 Log.d(TAG, "Удален старый конечный маркер")
@@ -717,33 +713,27 @@ class RouteTrackerFragment : Fragment() {
                         val location = child.getValue(UserLocation::class.java)
                         location?.let {
                             locations.add(it)
-                            Log.d(TAG, "Загружена точка: ${it.lat}, ${it.lng}, время: ${it.timestamp}")
                         }
                     }
 
                     if (locations.isNotEmpty()) {
                         Log.d(TAG, "Загружено ${locations.size} точек маршрута")
                         locations.sortBy { it.timestamp }
-                        val filteredLocations = applyHistoricalDataFiltering(locations)
 
-                        if (filteredLocations.size >= 2) {
-                            Log.d(TAG, "После фильтрации осталось ${filteredLocations.size} точек")
-                            val points = filteredLocations.map { Point(it.lat, it.lng) }
-                            routePoints.clear()
-                            routePoints.addAll(points)
-                            locationList.clear()
-                            locationList.addAll(locations)
-                            filteredLocationList.clear()
-                            filteredLocationList.addAll(filteredLocations)
+                        // ПРОСТАЯ ОТРИСОВКА БЕЗ ФИЛЬТРАЦИИ ДЛЯ ТЕСТА
+                        val points = locations.map { Point(it.lat, it.lng) }
+                        routePoints.clear()
+                        routePoints.addAll(points)
+                        locationList.clear()
+                        locationList.addAll(locations)
+                        filteredLocationList.clear()
+                        filteredLocationList.addAll(locations)
 
-                            drawRoute(points)
-                            recalculateStatsFromAllLocations()
-                            adjustCameraToRoute(points)
+                        drawRoute(points)
+                        recalculateStatsFromAllLocations()
+                        adjustCameraToRoute(points)
 
-                            Toast.makeText(context, "Загружен маршрут за сегодня (${points.size} точек)", Toast.LENGTH_SHORT).show()
-                        } else {
-                            Log.d(TAG, "После фильтрации недостаточно точек для отрисовки маршрута")
-                        }
+                        Toast.makeText(context, "Загружен маршрут (${points.size} точек)", Toast.LENGTH_SHORT).show()
                     } else {
                         Log.d(TAG, "Нет данных маршрута за сегодня")
                         Toast.makeText(context, "Нет данных маршрута за сегодня", Toast.LENGTH_SHORT).show()
@@ -760,8 +750,12 @@ class RouteTrackerFragment : Fragment() {
     private fun applyHistoricalDataFiltering(locations: List<UserLocation>): List<UserLocation> {
         if (locations.size < 2) return locations
 
+        Log.d(TAG, "Начинаем фильтрацию ${locations.size} точек")
+
         val filtered = mutableListOf<UserLocation>()
         filtered.add(locations.first())
+
+        var skippedCount = 0
 
         for (i in 1 until locations.size) {
             val prev = filtered.last()
@@ -774,15 +768,27 @@ class RouteTrackerFragment : Fragment() {
 
             val timeDiff = curr.timestamp - prev.timestamp
 
-            if (distance >= MIN_POINT_DISTANCE &&
-                timeDiff in MIN_TIME_DIFF..MAX_TIME_DIFF) {
+            // УСЛАБЛЕННЫЕ УСЛОВИЯ ФИЛЬТРАЦИИ:
+            if (distance >= 0.5 && // Уменьшил минимальное расстояние
+                timeDiff in 500..60000L) { // Расширил временной диапазон
 
-                val speed = distance / (timeDiff / 1000.0)
-                if (speed in MIN_VALID_SPEED_MPS..MAX_VALID_SPEED_MPS) {
+                val speed = if (timeDiff > 0) distance / (timeDiff / 1000.0) else 0.0
+
+                // Более мягкая проверка скорости
+                if (speed <= MAX_VALID_SPEED_MPS) {
                     filtered.add(curr)
+                    Log.d(TAG, "Точка добавлена: расстояние=$distance м, время=$timeDiff мс, скорость=${String.format("%.2f", speed)} м/с")
+                } else {
+                    skippedCount++
+                    Log.d(TAG, "Точка пропущена по скорости: $speed м/с")
                 }
+            } else {
+                skippedCount++
+                Log.d(TAG, "Точка пропущена: расстояние=$distance м, время=$timeDiff мс")
             }
         }
+
+        Log.d(TAG, "Фильтрация завершена. Оставлено точек: ${filtered.size}, пропущено: $skippedCount")
 
         return filtered
     }
@@ -878,12 +884,16 @@ class RouteTrackerFragment : Fragment() {
     private fun drawRoute(points: List<Point>) {
         clearRoute()
         if (points.size < 2) {
-            Log.d(TAG, "Недостаточно точек для отрисовки маршрута")
+            Log.d(TAG, "Недостаточно точек для отрисовки маршрута: ${points.size}")
             return
         }
 
         try {
             Log.d(TAG, "Отрисовываем маршрут из ${points.size} точек")
+
+            // Показываем первую и последнюю точки для отладки
+            Log.d(TAG, "Первая точка: ${points.first().latitude}, ${points.first().longitude}")
+            Log.d(TAG, "Последняя точка: ${points.last().latitude}, ${points.last().longitude}")
 
             polyline = mapView.map.mapObjects.addPolyline(Polyline(points)).apply {
                 setStrokeColor(Color.parseColor("#1E88E5"))

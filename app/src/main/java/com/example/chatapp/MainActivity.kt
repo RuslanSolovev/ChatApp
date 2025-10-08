@@ -37,6 +37,7 @@ import com.example.chatapp.step.StepCounterService
 import com.example.chatapp.location.LocationPagerFragment
 import com.example.chatapp.location.LocationServiceManager
 import com.example.chatapp.step.StepCounterFragment
+import com.example.chatapp.utils.PhilosophyQuoteWorker
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.ktx.auth
@@ -119,6 +120,7 @@ class MainActivity : AppCompatActivity() {
         private const val LOCATION_SERVICE_INTERVAL_HOURS = 2L
         private const val STEP_SERVICE_INTERVAL_MINUTES = 30L
         private const val SERVICE_MONITOR_INTERVAL_MINUTES = 30L
+        private const val PHILOSOPHY_QUOTES_WORK_NAME = "hourly_philosophy_quotes"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -277,7 +279,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // --- ИЗМЕНЕНО: Инициализация сервисов в фоновом потоке ---
+
     private suspend fun initializeServicesSafely() {
         Log.d(TAG, "initializeServicesSafely: Начало (в фоновом потоке)")
         // Эти методы теперь выполняются в Dispatchers.IO или запускаются в Main Dispatcher через корутины
@@ -310,22 +312,28 @@ class MainActivity : AppCompatActivity() {
             Log.e(TAG, "Step service initialization failed", e)
         }
 
+        try {
+            Log.d(TAG, "initializeServicesSafely: Инициализация философских цитат")
+            // Запуск философских цитат в main thread
+            withContext(Dispatchers.Main) {
+                startPhilosophyQuotes()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Philosophy quotes initialization failed", e)
+        }
+
         // WorkManager также запускаем с задержкой, но в фоне
         // Запускаем корутину в Main scope, чтобы handler.postDelayed работал
         CoroutineScope(Dispatchers.Main).launch {
             delay(3000) // 3 секунды задержка
             // Сама работа с WorkManager в IO
             withContext(Dispatchers.IO) {
-
-
                 try {
                     Log.d(TAG, "initializeServicesSafely: Отложенное выполнение schedulePeriodicStepWork")
                     schedulePeriodicStepWork()
                 } catch (e: Exception) {
                     Log.e(TAG, "Step WorkManager scheduling failed", e)
                 }
-
-
             }
         }
         Log.d(TAG, "initializeServicesSafely: Завершено (в фоне)")
@@ -357,6 +365,55 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "Step service init error", e)
+        }
+    }
+
+
+
+
+
+
+
+
+    private fun startPhilosophyQuotes() {
+        try {
+            Log.d(TAG, "startPhilosophyQuotes: Запуск ежечасных философских цитат")
+
+            val sharedPreferences = getSharedPreferences("app_prefs", MODE_PRIVATE)
+            val quotesStarted = sharedPreferences.getBoolean("philosophy_quotes_started", false)
+
+            if (!quotesStarted) {
+                val workManager = WorkManager.getInstance(this)
+
+                val quoteWorkRequest = PeriodicWorkRequestBuilder<PhilosophyQuoteWorker>(
+                    1, // Каждый час
+                    TimeUnit.HOURS,
+                    15, // 15 минут гибкости
+                    TimeUnit.MINUTES
+                ).build()
+
+                workManager.enqueueUniquePeriodicWork(
+                    PHILOSOPHY_QUOTES_WORK_NAME,
+                    ExistingPeriodicWorkPolicy.KEEP,
+                    quoteWorkRequest
+                )
+
+                // Сохраняем флаг, что цитаты запущены
+                sharedPreferences.edit().putBoolean("philosophy_quotes_started", true).apply()
+
+                Log.d(TAG, "✅ Ежечасные философские цитаты запущены")
+
+                // Для тестирования - можно отправить цитату сразу
+                // CoroutineScope(Dispatchers.Main).launch {
+                //     delay(5000)
+                //     NotificationUtils.sendPhilosophyQuoteNotification(this@MainActivity)
+                // }
+            } else {
+                Log.d(TAG, "ℹ️ Философские цитаты уже запущены ранее")
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка запуска философских цитат", e)
         }
     }
 
@@ -613,6 +670,8 @@ class MainActivity : AppCompatActivity() {
                 WorkManager.getInstance(this).cancelUniqueWork(LOCATION_SERVICE_WORK_NAME)
                 WorkManager.getInstance(this).cancelUniqueWork(STEP_SERVICE_WORK_NAME)
                 WorkManager.getInstance(this).cancelUniqueWork(SERVICE_MONITOR_WORK_NAME)
+                // ДОБАВЬТЕ ЭТУ СТРОКУ ДЛЯ ОСТАНОВКИ ФИЛОСОФСКИХ ЦИТАТ
+                WorkManager.getInstance(this).cancelUniqueWork(PHILOSOPHY_QUOTES_WORK_NAME)
             } catch (e: Exception) {
                 Log.w(TAG, "Error canceling work manager jobs", e)
             }
@@ -629,6 +688,16 @@ class MainActivity : AppCompatActivity() {
                 stopService(Intent(this, StepCounterService::class.java))
             } catch (e: Exception) {
                 Log.w(TAG, "Error stopping step service", e)
+            }
+
+            // ДОБАВЬТЕ ЭТОТ БЛОК ДЛЯ ОЧИСТКИ НАСТРОЕК ЦИТАТ
+            try {
+                Log.d(TAG, "logoutUser: Очистка настроек философских цитат")
+                val sharedPreferences = getSharedPreferences("app_prefs", MODE_PRIVATE)
+                sharedPreferences.edit().remove("philosophy_quotes_started").apply()
+                Log.d(TAG, "Настройки философских цитат очищены")
+            } catch (e: Exception) {
+                Log.w(TAG, "Error clearing philosophy quotes settings", e)
             }
 
             Log.d(TAG, "logoutUser: Выход из Firebase")
