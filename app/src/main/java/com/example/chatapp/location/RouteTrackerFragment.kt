@@ -72,13 +72,25 @@ class RouteTrackerFragment : Fragment() {
     private var dailyCleanupHandler = Handler(Looper.getMainLooper())
     private var dailyCleanupRunnable: Runnable? = null
 
+    // Улучшенные буферы для сглаживания
     private val kalmanBuffer = ArrayList<Point>()
+    private val smoothingBuffer = ArrayList<Point>()
+    private val trajectoryBuffer = ArrayList<TrajectoryPoint>()
 
     private var accuracyThreshold = 15.0f
     private var smoothingEnabled = true
+    private var adaptiveSmoothingEnabled = true
 
     private var isFirstLaunch = true
     private var isFragmentDestroyed = false
+
+    // Класс для хранения точек траектории с временными метками
+    private data class TrajectoryPoint(
+        val point: Point,
+        val timestamp: Long,
+        val speed: Double = 0.0,
+        val accuracy: Float = 0.0f
+    )
 
     companion object {
         private const val TAG = "RouteTrackerFragment"
@@ -90,7 +102,12 @@ class RouteTrackerFragment : Fragment() {
         private const val MIN_TIME_DIFF = 1000L
         private const val MAX_ACCELERATION = 10.0f
         private const val BEARING_CHANGE_THRESHOLD = 45.0
+
+        // Настройки сглаживания
         private const val KALMAN_BUFFER_SIZE = 5
+        private const val SMOOTHING_BUFFER_SIZE = 7
+        private const val TRAJECTORY_BUFFER_SIZE = 10
+        private const val ADAPTIVE_SMOOTHING_THRESHOLD = 25.0 // км/ч
     }
 
     override fun onCreateView(
@@ -366,8 +383,8 @@ class RouteTrackerFragment : Fragment() {
             Log.d(TAG, "Расстояние до предыдущей точки: $distance м, изменение направления: $bearingChange°")
 
             if (distance >= MIN_POINT_DISTANCE || bearingChange > BEARING_CHANGE_THRESHOLD) {
-                val smoothedPoint = if (smoothingEnabled && routePoints.size >= 2) {
-                    applyTrajectorySmoothing(newPoint)
+                val smoothedPoint = if (smoothingEnabled) {
+                    applyAdvancedTrajectorySmoothing(newPoint, location.timestamp)
                 } else {
                     newPoint
                 }
@@ -383,6 +400,155 @@ class RouteTrackerFragment : Fragment() {
         }
 
         lastLocationTime = location.timestamp
+    }
+
+    /**
+     * Улучшенное сглаживание траектории с адаптивными алгоритмами
+     */
+    private fun applyAdvancedTrajectorySmoothing(newPoint: Point, timestamp: Long): Point {
+        // Добавляем точку в буфер траектории
+        val trajectoryPoint = TrajectoryPoint(newPoint, timestamp)
+        trajectoryBuffer.add(trajectoryPoint)
+
+        if (trajectoryBuffer.size > TRAJECTORY_BUFFER_SIZE) {
+            trajectoryBuffer.removeAt(0)
+        }
+
+        // Определяем текущую скорость для адаптивного сглаживания
+        val currentSpeedKmh = calculateCurrentSpeedKmh()
+
+        return when {
+            // При высокой скорости используем более агрессивное сглаживание
+            currentSpeedKmh > ADAPTIVE_SMOOTHING_THRESHOLD -> {
+                applyHighSpeedSmoothing(newPoint)
+            }
+            // При низкой скорости используем мягкое сглаживание
+            else -> {
+                applyLowSpeedSmoothing(newPoint)
+            }
+        }
+    }
+
+    /**
+     * Сглаживание для высокой скорости (автомобиль, велосипед)
+     */
+    private fun applyHighSpeedSmoothing(newPoint: Point): Point {
+        if (trajectoryBuffer.size < 3) return newPoint
+
+        // Используем взвешенное скользящее среднее с большим окном
+        val windowSize = minOf(5, trajectoryBuffer.size)
+        val recentPoints = trajectoryBuffer.takeLast(windowSize).map { it.point }
+
+        // Веса: последние точки имеют больший вес
+        val weights = List(windowSize) { index ->
+            (index + 1).toDouble() / windowSize
+        }
+
+        val totalWeight = weights.sum()
+        val weightedLat = recentPoints.mapIndexed { index, point ->
+            point.latitude * weights[index]
+        }.sum() / totalWeight
+
+        val weightedLon = recentPoints.mapIndexed { index, point ->
+            point.longitude * weights[index]
+        }.sum() / totalWeight
+
+        Log.d(TAG, "Применено высокоскоростное сглаживание. Окно: $windowSize")
+        return Point(weightedLat, weightedLon)
+    }
+
+    /**
+     * Сглаживание для низкой скорости (ходьба)
+     */
+    private fun applyLowSpeedSmoothing(newPoint: Point): Point {
+        if (trajectoryBuffer.size < 2) return newPoint
+
+        // Используем простое скользящее среднее с маленьким окном
+        val windowSize = minOf(3, trajectoryBuffer.size)
+        val recentPoints = trajectoryBuffer.takeLast(windowSize).map { it.point }
+
+        val avgLat = recentPoints.map { it.latitude }.average()
+        val avgLon = recentPoints.map { it.longitude }.average()
+
+        Log.d(TAG, "Применено низкоскоростное сглаживание. Окно: $windowSize")
+        return Point(avgLat, avgLon)
+    }
+
+    /**
+     * Расчет текущей скорости в км/ч на основе последних точек
+     */
+    private fun calculateCurrentSpeedKmh(): Double {
+        if (trajectoryBuffer.size < 2) return 0.0
+
+        val recentPoints = trajectoryBuffer.takeLast(2)
+        val point1 = recentPoints[0]
+        val point2 = recentPoints[1]
+
+        val distance = calculateDistance(point1.point, point2.point)
+        val timeDiff = (point2.timestamp - point1.timestamp) / 1000.0 // в секундах
+
+        if (timeDiff <= 0) return 0.0
+
+        val speedMps = distance / timeDiff
+        return speedMps * 3.6 // конвертация в км/ч
+    }
+
+    /**
+     * Улучшенный фильтр Калмана с адаптивным шумом
+     */
+    private fun applyEnhancedKalmanFilter(newPoint: Point): Point {
+        kalmanBuffer.add(newPoint)
+
+        if (kalmanBuffer.size > KALMAN_BUFFER_SIZE) {
+            kalmanBuffer.removeAt(0)
+        }
+
+        return when (kalmanBuffer.size) {
+            0 -> newPoint
+            1 -> newPoint
+            else -> {
+                // Адаптивный фильтр Калмана с учетом скорости
+                val currentSpeed = calculateCurrentSpeedKmh()
+                val processNoise = when {
+                    currentSpeed > 20.0 -> 0.0001 // Меньше шума при высокой скорости
+                    currentSpeed > 5.0 -> 0.0005
+                    else -> 0.001 // Больше шума при низкой скорости
+                }
+
+                applyAdaptiveKalman(newPoint, processNoise)
+            }
+        }
+    }
+
+    /**
+     * Адаптивная реализация фильтра Калмана
+     */
+    private fun applyAdaptiveKalman(newPoint: Point, processNoise: Double): Point {
+        if (kalmanBuffer.size < 2) return newPoint
+
+        val lastPoint = kalmanBuffer.last()
+
+        // Простая реализация предсказания
+        val predictedLat = lastPoint.latitude
+        val predictedLon = lastPoint.longitude
+
+        // Ковариация процесса
+        val pLat = processNoise
+        val pLon = processNoise
+
+        // Ковариация измерения (зависит от точности GPS)
+        val rLat = 0.0001
+        val rLon = 0.0001
+
+        // Коэффициент Калмана
+        val kLat = pLat / (pLat + rLat)
+        val kLon = pLon / (pLon + rLon)
+
+        // Коррекция
+        val correctedLat = predictedLat + kLat * (newPoint.latitude - predictedLat)
+        val correctedLon = predictedLon + kLon * (newPoint.longitude - predictedLon)
+
+        return Point(correctedLat, correctedLon)
     }
 
     private fun applyAdvancedFiltering(location: UserLocation): UserLocation {
@@ -402,7 +568,7 @@ class RouteTrackerFragment : Fragment() {
             Log.w(TAG, "Низкая точность локации: ${location.accuracy} м")
         }
 
-        val kalmanFiltered = applyKalmanFilter(currentPoint)
+        val kalmanFiltered = applyEnhancedKalmanFilter(currentPoint)
 
         return UserLocation(
             kalmanFiltered.latitude,
@@ -412,32 +578,6 @@ class RouteTrackerFragment : Fragment() {
             location.speed,
             location.color
         )
-    }
-
-    private fun applyKalmanFilter(newPoint: Point): Point {
-        kalmanBuffer.add(newPoint)
-
-        if (kalmanBuffer.size > KALMAN_BUFFER_SIZE) {
-            kalmanBuffer.removeAt(0)
-        }
-
-        return if (kalmanBuffer.size >= 2) {
-            val avgLat = kalmanBuffer.map { it.latitude }.average()
-            val avgLon = kalmanBuffer.map { it.longitude }.average()
-            Point(avgLat, avgLon)
-        } else {
-            newPoint
-        }
-    }
-
-    private fun applyTrajectorySmoothing(newPoint: Point): Point {
-        val lastPoints = routePoints.takeLast(3)
-        if (lastPoints.size < 3) return newPoint
-
-        val smoothedLat = (lastPoints[0].latitude + lastPoints[1].latitude + newPoint.latitude) / 3
-        val smoothedLon = (lastPoints[0].longitude + lastPoints[1].longitude + newPoint.longitude) / 3
-
-        return Point(smoothedLat, smoothedLon)
     }
 
     private fun calculateBearingChange(points: List<Point>, newPoint: Point): Double {
@@ -964,6 +1104,8 @@ class RouteTrackerFragment : Fragment() {
         locationList.clear()
         filteredLocationList.clear()
         kalmanBuffer.clear()
+        smoothingBuffer.clear()
+        trajectoryBuffer.clear()
 
         tvDistance.text = "🛣️ Пройдено: 0 км"
         tvTime.text = "⏱️ Время: 0 мин"
