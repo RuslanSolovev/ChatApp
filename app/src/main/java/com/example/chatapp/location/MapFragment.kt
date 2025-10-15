@@ -42,6 +42,14 @@ import com.yandex.mapkit.mapview.MapView
 import com.yandex.runtime.image.ImageProvider
 import com.yandex.mapkit.location.*
 import com.yandex.mapkit.search.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
+import kotlinx.coroutines.withContext
 import java.io.IOException
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -130,6 +138,10 @@ class MapFragment : Fragment() {
     private var lastMyAvatarLoadTime: Long = 0
     private val MY_AVATAR_LOAD_THROTTLE = 5000L
 
+    private val ioScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private var lastUserDataLoadTime = 0L
+    private val USER_DATA_LOAD_THROTTLE = 5000L // 5 секунд
+
     companion object {
         private const val TAG = "MapFragment"
         private const val MIN_MOVE_DISTANCE = 50.0
@@ -165,6 +177,7 @@ class MapFragment : Fragment() {
 
         locationManager = MapKitFactory.getInstance().createLocationManager()
 
+        // Отложить тяжелые операции
         Handler(Looper.getMainLooper()).postDelayed({
             if (!isFragmentDestroyed && isAdded) {
                 observeUserLocations()
@@ -206,6 +219,121 @@ class MapFragment : Fragment() {
 
         setupMapTouchHandling()
     }
+
+    override fun onResume() {
+        super.onResume()
+        Log.d(TAG, "onResume: НАЧАЛО")
+
+        isFragmentDestroyed = false
+
+        // 1. Сначала запускаем только критически важные операции в основном потоке
+        locationUpdateHandler.postDelayed(locationUpdateRunnable, 15000)
+        locationRestartHandler.postDelayed(locationRestartRunnable, 45000)
+
+        // 2. Быстрая инициализация UI
+        fixTouchInterception()
+        startLocationTracking()
+
+        // 3. Отложить тяжелые операции с помощью корутин
+        ioScope.launch {
+            // Небольшая задержка чтобы дать UI отрисоваться
+            delay(100)
+
+            withContext(Dispatchers.Main) {
+                if (!isFragmentDestroyed && isAdded) {
+                    if (shouldReloadData) {
+                        Log.d(TAG, "onResume: Перезагрузка всех данных")
+                        reloadAllMarkers()
+                        shouldReloadData = false
+                    }
+                }
+            }
+
+            // Еще одна задержка для распределения нагрузки
+            delay(500)
+
+            withContext(Dispatchers.Main) {
+                if (!isFragmentDestroyed && isAdded) {
+                    setupNormalCameraUpdates()
+                }
+            }
+
+            // Самые тяжелые операции - последними с наибольшей задержкой
+            delay(2000)
+
+            withContext(Dispatchers.Main) {
+                if (!isFragmentDestroyed && isAdded) {
+                    val currentPoint = mapView.map.cameraPosition.target
+                    Log.d(TAG, "onResume: обновление геокодирования после возвращения")
+                    reverseGeocode(currentPoint)
+                }
+            }
+        }
+
+        // 4. Оптимизированная загрузка данных пользователей с троттлингом
+        handler.postDelayed({
+            if (!isFragmentDestroyed && isAdded) {
+                loadUserDataWithThrottle()
+            }
+        }, 1000)
+
+        Log.d(TAG, "onResume: КОНЕЦ")
+    }
+
+    private fun loadUserDataWithThrottle() {
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - lastUserDataLoadTime < USER_DATA_LOAD_THROTTLE) {
+            Log.d(TAG, "loadUserDataWithThrottle: Пропускаем загрузку - троттлинг")
+            return
+        }
+        lastUserDataLoadTime = currentTime
+
+        ioScope.launch {
+            try {
+                // Загрузка данных пользователей в фоне
+                loadEssentialUserData()
+            } catch (e: Exception) {
+                Log.e(TAG, "loadUserDataWithThrottle: Ошибка загрузки данных", e)
+            }
+        }
+    }
+
+    private suspend fun loadEssentialUserData() {
+        // Загружаем только самые необходимые данные
+        val currentUserId = auth.currentUser?.uid ?: return
+
+        // Пример: загрузка основных данных текущего пользователя
+        try {
+            val userSnapshot = withContext(Dispatchers.IO) {
+                database.child("users").child(currentUserId).get().await()
+            }
+
+            // Обработка данных в основном потоке если нужно обновить UI
+            withContext(Dispatchers.Main) {
+                if (!isFragmentDestroyed && isAdded) {
+                    // Обновление UI если необходимо
+                    updateUserProfileIfNeeded(userSnapshot)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "loadEssentialUserData: Ошибка загрузки данных пользователя", e)
+        }
+    }
+
+    private fun updateUserProfileIfNeeded(snapshot: DataSnapshot) {
+        // Минимальное обновление UI если нужно
+        try {
+            val user = snapshot.getValue(User::class.java)
+            user?.let {
+                // Только критически важные обновления UI
+                Log.d(TAG, "updateUserProfileIfNeeded: Данные пользователя загружены")
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "updateUserProfileIfNeeded: Ошибка обновления UI", e)
+        }
+    }
+
+    // Остальные методы остаются без изменений...
 
     private fun setupMapTouchHandling() {
         mapView.isClickable = true
@@ -507,37 +635,6 @@ class MapFragment : Fragment() {
         }
     }
 
-    override fun onResume() {
-        super.onResume()
-        Log.d(TAG, "onResume: НАЧАЛО")
-
-        isFragmentDestroyed = false
-
-        locationUpdateHandler.postDelayed(locationUpdateRunnable, 15000)
-        locationRestartHandler.postDelayed(locationRestartRunnable, 45000)
-
-        fixTouchInterception()
-
-        startLocationTracking()
-
-        if (shouldReloadData) {
-            Log.d(TAG, "onResume: Перезагрузка всех данных")
-            reloadAllMarkers()
-            shouldReloadData = false
-
-            Handler(Looper.getMainLooper()).postDelayed({
-                if (!isFragmentDestroyed && isAdded) {
-                    setupNormalCameraUpdates()
-                    val currentPoint = mapView.map.cameraPosition.target
-                    Log.d(TAG, "onResume: обновление геокодирования после возвращения")
-                    reverseGeocode(currentPoint)
-                }
-            }, 3000)
-        }
-
-        Log.d(TAG, "onResume: КОНЕЦ")
-    }
-
     override fun onPause() {
         super.onPause()
         Log.d(TAG, "onPause: НАЧАЛО")
@@ -731,54 +828,42 @@ class MapFragment : Fragment() {
     }
 
     private fun loadUserInfo(userId: String) {
-        Log.d(TAG, "loadUserInfo: Начало загрузки для $userId")
-        if (isFragmentDestroyed || !isAdded) {
-            Log.w(TAG, "loadUserInfo: Fragment not attached or destroyed, skipping load for $userId")
-            return
-        }
+        if (isFragmentDestroyed || !isAdded) return
 
         val lastLoadTime = lastActiveTime[userId] ?: 0L
         val now = System.currentTimeMillis()
-        if (now - lastLoadTime < 10000) {
-            Log.d(TAG, "loadUserInfo: Слишком частый вызов для $userId, пропускаем")
+        if (now - lastLoadTime < 30000) { // Увеличить интервал до 30 секунд
             return
         }
         lastActiveTime[userId] = now
 
-        database.child("users").child(userId)
-            .addListenerForSingleValueEvent(object : ValueEventListener {
-                override fun onDataChange(snapshot: DataSnapshot) {
-                    if (isFragmentDestroyed || !isAdded) {
-                        Log.w(TAG, "loadUserInfo: Fragment not attached or destroyed, skipping update for $userId")
-                        return
-                    }
+        ioScope.launch {
+            try {
+                val snapshot = withContext(Dispatchers.IO) {
+                    database.child("users").child(userId).get().await()
+                }
 
-                    Log.d(TAG, "loadUserInfo: onDataChange для $userId")
+                if (isFragmentDestroyed || !isAdded) return@launch
+
+                withContext(Dispatchers.Main) {
                     val user = snapshot.getValue(User::class.java)
                     val name = user?.getFullName()
                     val avatarUrl = user?.profileImageUrl
 
                     userInfoCache[userId] = UserInfo(name, avatarUrl)
-                    Log.d(TAG, "loadUserInfo: Информация загружена для $userId: имя='$name'")
 
                     markers[userId]?.let { marker ->
-                        Log.d(TAG, "loadUserInfo: Маркер для $userId найден, обновляем текст и аватар")
                         val finalName = name ?: ""
                         marker.setText(finalName)
                         updateMarkerAppearance(userId, marker, isOnline[userId] ?: true)
                     }
                 }
-
-                override fun onCancelled(error: DatabaseError) {
-                    if (isFragmentDestroyed || !isAdded) return
-                    Log.e(TAG, "loadUserInfo: onCancelled для $userId", error.toException())
-                    userInfoCache[userId] = UserInfo(null, null)
-                    markers[userId]?.let { marker ->
-                        marker.setText("")
-                        updateMarkerAppearance(userId, marker, isOnline[userId] ?: true)
-                    }
+            } catch (e: Exception) {
+                if (!isFragmentDestroyed && isAdded) {
+                    Log.e(TAG, "loadUserInfo: Ошибка для $userId", e)
                 }
-            })
+            }
+        }
     }
 
     private fun updateMyMarker(point: Point) {
@@ -1048,43 +1133,58 @@ class MapFragment : Fragment() {
         val avatarUrl = userInfo?.avatarUrl
             ?: "https://storage.yandexcloud.net/chatskii/profile_$userId.jpg"
 
+        // Кэширование ключа для предотвращения повторных загрузок
+        val cacheKey = "$userId-${userInfo?.avatarUrl}"
+        if (avatarCache.containsKey(cacheKey)) {
+            avatarCache[cacheKey]?.let { bitmap ->
+                setMarkerIconWithListener(userId, placemark, bitmap)
+                return
+            }
+        }
+
         val placeholderBitmap = createPlaceholderBitmap(name, onlineStatus)
 
-        Glide.with(this)
-            .asBitmap()
-            .load(avatarUrl)
-            .circleCrop()
-            .override(150, 150)
-            .into(object : CustomTarget<Bitmap>() {
-                override fun onResourceReady(resource: Bitmap, transition: Transition<in Bitmap>?) {
-                    if (isFragmentDestroyed || !isAdded) return
-                    val finalBitmap = try {
-                        createMarkerBitmap(resource, name, onlineStatus)
+        // Использование Dispatchers.IO для загрузки изображений
+        ioScope.launch {
+            try {
+                val bitmap = withContext(Dispatchers.IO) {
+                    try {
+                        Glide.with(this@MapFragment)
+                            .asBitmap()
+                            .load(avatarUrl)
+                            .circleCrop()
+                            .override(150, 150)
+                            .submit()
+                            .get()
                     } catch (e: Exception) {
-                        placeholderBitmap
-                    }
-                    if (placemark.isValid) {
-                        setMarkerIconWithListener(userId, placemark, finalBitmap)
+                        null
                     }
                 }
 
-                override fun onLoadCleared(placeholder: Drawable?) {
+                withContext(Dispatchers.Main) {
+                    if (isFragmentDestroyed || !isAdded) return@withContext
+
+                    val finalBitmap = bitmap?.let {
+                        try {
+                            createMarkerBitmap(it, name, onlineStatus)
+                        } catch (e: Exception) {
+                            placeholderBitmap
+                        }
+                    } ?: placeholderBitmap
+
+                    if (placemark.isValid) {
+                        avatarCache[cacheKey] = finalBitmap
+                        setMarkerIconWithListener(userId, placemark, finalBitmap)
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
                     if (!isFragmentDestroyed && isAdded && placemark.isValid) {
                         setMarkerIconWithListener(userId, placemark, placeholderBitmap)
                     }
                 }
-
-                override fun onLoadFailed(errorDrawable: Drawable?) {
-                    if (!isFragmentDestroyed && isAdded && placemark.isValid) {
-                        val finalBitmap = try {
-                            createMarkerBitmap(placeholderBitmap, name, onlineStatus)
-                        } catch (e: Exception) {
-                            placeholderBitmap
-                        }
-                        setMarkerIconWithListener(userId, placemark, finalBitmap)
-                    }
-                }
-            })
+            }
+        }
     }
 
     private fun getCurrentLocationAndCenter() {
@@ -1714,6 +1814,9 @@ class MapFragment : Fragment() {
         Log.d(TAG, "onDestroyView: НАЧАЛО")
 
         isFragmentDestroyed = true
+
+        // Отменяем корутины
+        ioScope.cancel()
 
         geocoderExecutor.shutdownNow()
 

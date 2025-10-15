@@ -1,6 +1,7 @@
 package com.example.chatapp.activities
 
 import android.Manifest
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
@@ -16,27 +17,29 @@ import androidx.appcompat.widget.PopupMenu
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.fragment.app.Fragment
-import androidx.work.Constraints
+import androidx.lifecycle.lifecycleScope
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
-import com.example.chatapp.step.StepCounterServiceWorker
 import com.example.chatapp.R
 import com.example.chatapp.budilnik.AlarmActivity
 import com.example.chatapp.databinding.ActivityMainBinding
 import com.example.chatapp.fragments.*
+import com.example.chatapp.location.LocationServiceManager
+import com.example.chatapp.location.LocationUpdateService
+import com.example.chatapp.location.LocationPagerFragment
+import com.example.chatapp.managers.ServiceRestartManager
 import com.example.chatapp.models.User
+import com.example.chatapp.mozgi.ui.CategoriesActivity
 import com.example.chatapp.muzika.ui.MusicMainActivity
 import com.example.chatapp.novosti.CreateNewsFragment
 import com.example.chatapp.novosti.FullScreenImageFragment
 import com.example.chatapp.novosti.NewsItem
-import com.example.chatapp.location.LocationUpdateService
-import com.example.chatapp.step.StepCounterService
-import com.example.chatapp.location.LocationPagerFragment
-import com.example.chatapp.location.LocationServiceManager
 import com.example.chatapp.step.StepCounterFragment
+import com.example.chatapp.step.StepCounterService
+import com.example.chatapp.step.StepCounterServiceWorker
 import com.example.chatapp.utils.PhilosophyQuoteWorker
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.firebase.auth.FirebaseAuth
@@ -46,25 +49,35 @@ import com.google.firebase.database.DatabaseError
 import com.google.firebase.database.ValueEventListener
 import com.google.firebase.database.ktx.database
 import com.google.firebase.ktx.Firebase
-import kotlinx.coroutines.* // Добавлено для корутин
+import kotlinx.coroutines.*
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.resume
+import kotlin.coroutines.suspendCoroutine
 
 class MainActivity : AppCompatActivity() {
-
     private lateinit var binding: ActivityMainBinding
     private lateinit var auth: FirebaseAuth
     private lateinit var bottomNav: BottomNavigationView
-
     private var isFirstLaunch = true
-    private val permissionQueue = mutableListOf<String>()
     private var currentPermissionIndex = 0
+
+    // Атомарные флаги для предотвращения многократного запуска
+    private val isLocationServiceStarting = AtomicBoolean(false)
+    private val isStepServiceStarting = AtomicBoolean(false)
+
+    // Обработчик для отложенных задач
+    private val handler = Handler(Looper.getMainLooper())
+
+    // Кэш для фрагментов
+    private val fragmentCache = mutableMapOf<String, Fragment>()
+    private var currentFragmentTag: String? = null
 
     // --- БЕЗОПАСНЫЙ СПИСОК РАЗРЕШЕНИЙ ---
     private val basicPermissions = listOf(
         Manifest.permission.ACCESS_FINE_LOCATION,
         Manifest.permission.ACCESS_COARSE_LOCATION
     )
-
     private val additionalPermissions = mutableListOf<String>().apply {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             add(Manifest.permission.ACTIVITY_RECOGNITION)
@@ -81,7 +94,10 @@ class MainActivity : AppCompatActivity() {
         try {
             Log.d(TAG, "Basic permissions result: $permissions")
             currentPermissionIndex = 0
-            requestNextAdditionalPermission()
+            // Запускаем с задержкой для стабильности
+            handler.postDelayed({
+                requestNextAdditionalPermission()
+            }, PERMISSION_REQUEST_DELAY)
         } catch (e: Exception) {
             Log.e(TAG, "Error in basic permission callback", e)
             proceedWithMainInitialization()
@@ -96,7 +112,9 @@ class MainActivity : AppCompatActivity() {
             val currentPermission = additionalPermissions.getOrNull(currentPermissionIndex)
             Log.d(TAG, "Additional permission $currentPermission granted: $isGranted")
             currentPermissionIndex++
-            requestNextAdditionalPermission()
+            handler.postDelayed({
+                requestNextAdditionalPermission()
+            }, PERMISSION_REQUEST_DELAY)
         } catch (e: Exception) {
             Log.e(TAG, "Error in additional permission callback", e)
             proceedWithMainInitialization()
@@ -112,66 +130,62 @@ class MainActivity : AppCompatActivity() {
         private const val GAMES_FRAGMENT_TAG = "games_fragment"
 
         // Имена для WorkManager
-        private const val LOCATION_SERVICE_WORK_NAME = "LocationServicePeriodicWork"
         private const val STEP_SERVICE_WORK_NAME = "StepCounterServicePeriodicWork"
-        private const val SERVICE_MONITOR_WORK_NAME = "ServiceMonitorWork"
+        private const val PHILOSOPHY_QUOTES_WORK_NAME = "hourly_philosophy_quotes"
 
         // Интервалы для WorkManager
-        private const val LOCATION_SERVICE_INTERVAL_HOURS = 2L
         private const val STEP_SERVICE_INTERVAL_MINUTES = 30L
-        private const val SERVICE_MONITOR_INTERVAL_MINUTES = 30L
-        private const val PHILOSOPHY_QUOTES_WORK_NAME = "hourly_philosophy_quotes"
+
+        // Таймауты
+        private const val TRACKING_CHECK_TIMEOUT = 5000L // 5 секунд
+        private const val SERVICE_INIT_TIMEOUT = 10000L // 10 секунд
+        private const val PERMISSION_REQUEST_DELAY = 300L // Задержка для стабильности UI
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         try {
             super.onCreate(savedInstanceState)
 
-            // ДОБАВИТЬ ПЕРВЫМ ДЕЛОМ - проверка авторизации ДО проверки трекинга
-            auth = Firebase.auth
+            setupExceptionHandler()
 
+            // Упрощенная проверка авторизации
+            auth = Firebase.auth
             if (auth.currentUser == null) {
                 Log.d(TAG, "onCreate: Пользователь не авторизован, переход к AuthActivity")
-                startActivity(Intent(this, AuthActivity::class.java))
-                finish()
+                redirectToAuth()
                 return
             }
 
-            // ТЕПЕРЬ проверяем и запускаем сервис трекинга
-            LocationServiceManager.isTrackingActive(this) { isTracking ->
-                if (isTracking) {
-                    Log.d(TAG, "onCreate: Трекинг активен, запускаем сервис")
-                    LocationServiceManager.startLocationService(this)
-                } else {
-                    Log.d(TAG, "onCreate: Трекинг не активен")
-                }
-            }
+            checkAndRestoreServicesAfterCrash()
 
-            Log.d(TAG, "onCreate: Начало")
             binding = ActivityMainBinding.inflate(layoutInflater)
             setContentView(binding.root)
-
             WindowCompat.setDecorFitsSystemWindows(window, false)
 
             setupToolbar()
             setupBottomNavigation()
             loadCurrentUserData()
 
-            if (savedInstanceState == null && isFirstLaunch) {
-                Log.d(TAG, "onCreate: Первый запуск, проверка разрешений")
-                checkAndRequestMainPermissions()
-            } else {
-                Log.d(TAG, "onCreate: Не первый запуск или есть состояние, инициализация")
-                proceedWithMainInitialization()
-            }
-
+            // Загрузка начального фрагмента без задержек
             if (savedInstanceState == null) {
-                Log.d(TAG, "onCreate: Загрузка начального фрагмента")
                 loadFragment(HomeFragment(), HOME_FRAGMENT_TAG)
                 binding.bottomNavigation.selectedItemId = R.id.nav_home
             }
 
-            Log.d(TAG, "onCreate: Завершено")
+            // Отложенная инициализация сервисов
+            if (savedInstanceState == null && isFirstLaunch) {
+                Log.d(TAG, "onCreate: Первый запуск, проверка разрешений")
+                // Запускаем с небольшой задержкой для стабильности UI
+                handler.postDelayed({
+                    checkAndRequestMainPermissions()
+                }, 1000)
+            } else {
+                Log.d(TAG, "onCreate: Не первый запуск или есть состояние")
+                proceedWithMainInitialization()
+            }
+
+            // Асинхронная проверка трекинга без блокировки UI
+            checkTrackingStatusAsync()
 
         } catch (e: Exception) {
             Log.e(TAG, "Critical error in onCreate", e)
@@ -179,15 +193,70 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Асинхронная проверка статуса трекинга с таймаутом
+     */
+    private fun checkTrackingStatusAsync() {
+        if (isLocationServiceStarting.get()) {
+            Log.d(TAG, "checkTrackingStatusAsync: Сервис уже запускается, пропускаем проверку")
+            return
+        }
+
+        lifecycleScope.launch {
+            try {
+                withTimeout(TRACKING_CHECK_TIMEOUT) {
+                    val isTracking = withContext(Dispatchers.IO) {
+                        try {
+                            suspendCoroutine<Boolean> { continuation ->
+                                LocationServiceManager.isTrackingActive(this@MainActivity) { isTracking ->
+                                    continuation.resume(isTracking)
+                                }
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Ошибка проверки трекинга", e)
+                            false
+                        }
+                    }
+
+                    if (isTracking && !isLocationServiceStarting.get()) {
+                        Log.d(TAG, "Трекинг активен, запускаем сервис")
+                        startLocationUpdateService()
+                    } else {
+                        Log.d(TAG, "Трекинг не активен или сервис уже запускается")
+                    }
+                }
+            } catch (e: TimeoutCancellationException) {
+                Log.w(TAG, "Проверка трекинга заняла слишком долго, пропускаем")
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка проверки трекинга", e)
+            }
+        }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        currentFragmentTag?.let { tag ->
+            outState.putString("current_fragment_tag", tag)
+        }
+    }
+
+    override fun onRestoreInstanceState(savedInstanceState: Bundle) {
+        super.onRestoreInstanceState(savedInstanceState)
+        savedInstanceState.getString("current_fragment_tag")?.let { tag ->
+            currentFragmentTag = tag
+        }
+    }
+
     private fun showErrorAndFinish(message: String) {
         try {
             Log.e(TAG, "showErrorAndFinish: $message")
             Toast.makeText(this, message, Toast.LENGTH_LONG).show()
-            Handler(Looper.getMainLooper()).postDelayed({
+            lifecycleScope.launch {
+                delay(2000)
                 finish()
-            }, 2000)
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "showErrorAndFinish: Критическая ошибка при показе сообщения", e)
+            Log.e(TAG, "showErrorAndFinish: Критическая ошибка", e)
             finish()
         }
     }
@@ -199,12 +268,12 @@ class MainActivity : AppCompatActivity() {
             val missingBasicPermissions = basicPermissions.filter {
                 ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
             }
-
             if (missingBasicPermissions.isNotEmpty()) {
                 Log.d(TAG, "Requesting basic permissions: $missingBasicPermissions")
                 basicPermissionLauncher.launch(missingBasicPermissions.toTypedArray())
             } else {
-                Log.d(TAG, "checkAndRequestMainPermissions: Основные разрешения есть, запрос дополнительных")
+                Log.d(TAG, "Основные разрешения есть, запрос дополнительных")
+                currentPermissionIndex = 0
                 requestNextAdditionalPermission()
             }
         } catch (e: Exception) {
@@ -213,21 +282,71 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
+
+
+
+    private fun checkAndRestoreServicesAfterCrash() {
+        lifecycleScope.launch {
+            try {
+                val prefs = getSharedPreferences("service_prefs", Context.MODE_PRIVATE)
+                val wasCrash = prefs.getBoolean("was_crash", false)
+
+                if (wasCrash) {
+                    Log.w(TAG, "App crashed previously, restoring services...")
+                    ServiceRestartManager.restartAllServices(this@MainActivity)
+
+                    // Сбрасываем флаг краша
+                    prefs.edit().putBoolean("was_crash", false).apply()
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error checking crash recovery", e)
+            }
+        }
+    }
+
+    /**
+     * Установка обработчика непойманных исключений
+     */
+    private fun setupExceptionHandler() {
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                // Сохраняем информацию о краше
+                val prefs = getSharedPreferences("service_prefs", Context.MODE_PRIVATE)
+                prefs.edit().putBoolean("was_crash", true).apply()
+
+                Log.e(TAG, "Uncaught exception, saving crash state", throwable)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in exception handler", e)
+            } finally {
+                // Вызываем стандартный обработчик
+                defaultHandler?.uncaughtException(thread, throwable)
+            }
+        }
+    }
+
+
+
+
+
+
+
     private fun requestNextAdditionalPermission() {
         try {
-            Log.d(TAG, "requestNextAdditionalPermission: Индекс=$currentPermissionIndex, Всего=${additionalPermissions.size}")
             if (currentPermissionIndex < additionalPermissions.size) {
                 val nextPermission = additionalPermissions[currentPermissionIndex]
-
                 if (ContextCompat.checkSelfPermission(this, nextPermission) != PackageManager.PERMISSION_GRANTED &&
                     isPermissionSupported(nextPermission)) {
-
                     Log.d(TAG, "Requesting additional permission: $nextPermission")
                     additionalPermissionLauncher.launch(nextPermission)
                 } else {
-                    Log.d(TAG, "requestNextAdditionalPermission: Разрешение $nextPermission уже предоставлено или не поддерживается")
+                    Log.d(TAG, "Разрешение $nextPermission уже предоставлено или не поддерживается")
                     currentPermissionIndex++
-                    requestNextAdditionalPermission()
+                    handler.postDelayed({
+                        requestNextAdditionalPermission()
+                    }, PERMISSION_REQUEST_DELAY)
                 }
             } else {
                 Log.d(TAG, "All permissions processed")
@@ -254,164 +373,115 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    // --- ИЗМЕНЕНО: Инициализация сервисов в фоновом потоке ---
+    // --- УЛУЧШЕННАЯ ИНИЦИАЛИЗАЦИЯ СЕРВИСОВ ---
     private fun proceedWithMainInitialization() {
         Log.d(TAG, "Proceeding with main initialization. isFirstLaunch=$isFirstLaunch")
-
         if (isFirstLaunch) {
-            Log.d(TAG, "proceedWithMainInitialization: Запуск инициализации сервисов в фоне")
-            // Запускаем корутину в Main scope, чтобы handler.postDelayed работал
-            CoroutineScope(Dispatchers.Main).launch {
+            lifecycleScope.launch {
                 try {
-                    delay(1000) // 1 секунда задержка перед запуском фоновой задачи
-                    // Сама инициализация в IO потоке
-                    withContext(Dispatchers.IO) {
-                        Log.d(TAG, "proceedWithMainInitialization: Отложенное выполнение initializeServicesSafely в фоне")
+                    withTimeout(SERVICE_INIT_TIMEOUT) {
                         initializeServicesSafely()
                     }
+                } catch (e: TimeoutCancellationException) {
+                    Log.e(TAG, "Инициализация сервисов заняла слишком долго")
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error in delayed initialization", e)
+                    Log.e(TAG, "Ошибка инициализации сервисов", e)
                 }
             }
             isFirstLaunch = false
-        } else {
-            Log.d(TAG, "proceedWithMainInitialization: Не первый запуск, пропуск инициализации сервисов")
         }
     }
-
 
     private suspend fun initializeServicesSafely() {
-        Log.d(TAG, "initializeServicesSafely: Начало (в фоновом потоке)")
-        // Эти методы теперь выполняются в Dispatchers.IO или запускаются в Main Dispatcher через корутины
+        Log.d(TAG, "initializeServicesSafely: Начало")
 
-        try {
-            Log.d(TAG, "initializeServicesSafely: Инициализация сервиса локации")
-            if (hasLocationPermissions()) {
-                // Запуск сервиса требует main thread, используем корутину в Main
-                withContext(Dispatchers.Main) {
-                    startLocationUpdateService()
+        // Параллельная инициализация сервисов с индивидуальными таймаутами
+        val locationJob = lifecycleScope.async {
+            try {
+                withTimeout(SERVICE_INIT_TIMEOUT) {
+                    if (hasLocationPermissions()) {
+                        startLocationUpdateService()
+                        Log.d(TAG, "Сервис локации инициализирован")
+                    }
                 }
-            } else {
-                Log.w(TAG, "Location permissions not granted, skipping service start")
+            } catch (e: TimeoutCancellationException) {
+                Log.e(TAG, "Таймаут инициализации сервиса локации", e)
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка инициализации сервиса локации", e)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Location service initialization failed", e)
         }
 
-        try {
-            Log.d(TAG, "initializeServicesSafely: Инициализация сервиса шагомера")
-            if (hasStepPermissions()) {
-                // Запуск сервиса требует main thread, используем корутину в Main
-                withContext(Dispatchers.Main) {
-                    startStepCounterService()
+        val stepJob = lifecycleScope.async {
+            try {
+                withTimeout(SERVICE_INIT_TIMEOUT) {
+                    if (hasStepPermissions()) {
+                        startStepCounterService()
+                        Log.d(TAG, "Сервис шагомера инициализирован")
+                    }
                 }
-            } else {
-                Log.w(TAG, "Step permissions not granted, skipping service start")
+            } catch (e: TimeoutCancellationException) {
+                Log.e(TAG, "Таймаут инициализации сервиса шагомера", e)
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка инициализации сервиса шагомера", e)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Step service initialization failed", e)
         }
 
-        try {
-            Log.d(TAG, "initializeServicesSafely: Инициализация философских цитат")
-            // Запуск философских цитат в main thread
-            withContext(Dispatchers.Main) {
-                startPhilosophyQuotes()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Philosophy quotes initialization failed", e)
-        }
-
-        // WorkManager также запускаем с задержкой, но в фоне
-        // Запускаем корутину в Main scope, чтобы handler.postDelayed работал
-        CoroutineScope(Dispatchers.Main).launch {
-            delay(3000) // 3 секунды задержка
-            // Сама работа с WorkManager в IO
-            withContext(Dispatchers.IO) {
-                try {
-                    Log.d(TAG, "initializeServicesSafely: Отложенное выполнение schedulePeriodicStepWork")
-                    schedulePeriodicStepWork()
-                } catch (e: Exception) {
-                    Log.e(TAG, "Step WorkManager scheduling failed", e)
+        val quotesJob = lifecycleScope.async {
+            try {
+                withTimeout(5000L) {
+                    startPhilosophyQuotes()
+                    Log.d(TAG, "Философские цитаты инициализированы")
                 }
+            } catch (e: TimeoutCancellationException) {
+                Log.e(TAG, "Таймаут инициализации философских цитат", e)
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка инициализации философских цитат", e)
             }
         }
-        Log.d(TAG, "initializeServicesSafely: Завершено (в фоне)")
-    }
 
-    // --- БЕЗОПАСНЫЕ МЕТОДЫ СЕРВИСОВ ---
-    private fun initializeLocationService() {
+        // Ожидаем завершения с общим таймаутом
         try {
-            Log.d(TAG, "initializeLocationService: Проверка разрешений")
-            if (hasLocationPermissions()) {
-                Log.d(TAG, "initializeLocationService: Разрешения есть, запуск сервиса")
-                startLocationUpdateService()
-            } else {
-                Log.w(TAG, "Location permissions not granted, skipping service start")
+            withTimeout(15000L) {
+                locationJob.await()
+                stepJob.await()
+                quotesJob.await()
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Location service init error", e)
+        } catch (e: TimeoutCancellationException) {
+            Log.e(TAG, "Общий таймаут инициализации сервисов", e)
         }
-    }
 
-    private fun initializeStepService() {
-        try {
-            Log.d(TAG, "initializeStepService: Проверка разрешений")
-            if (hasStepPermissions()) {
-                Log.d(TAG, "initializeStepService: Разрешения есть, запуск сервиса")
-                startStepCounterService()
-            } else {
-                Log.w(TAG, "Step permissions not granted, skipping service start")
+        // Отложенная настройка WorkManager (не критично для старта)
+        lifecycleScope.launch {
+            delay(3000)
+            try {
+                schedulePeriodicStepWork()
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка настройки WorkManager", e)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Step service init error", e)
         }
+
+        Log.d(TAG, "initializeServicesSafely: Завершено")
     }
-
-
-
-
-
-
-
 
     private fun startPhilosophyQuotes() {
         try {
             Log.d(TAG, "startPhilosophyQuotes: Запуск ежечасных философских цитат")
-
             val sharedPreferences = getSharedPreferences("app_prefs", MODE_PRIVATE)
             val quotesStarted = sharedPreferences.getBoolean("philosophy_quotes_started", false)
-
             if (!quotesStarted) {
                 val workManager = WorkManager.getInstance(this)
-
                 val quoteWorkRequest = PeriodicWorkRequestBuilder<PhilosophyQuoteWorker>(
-                    1, // Каждый час
-                    TimeUnit.HOURS,
-                    15, // 15 минут гибкости
-                    TimeUnit.MINUTES
+                    1, TimeUnit.HOURS,
+                    15, TimeUnit.MINUTES
                 ).build()
-
                 workManager.enqueueUniquePeriodicWork(
                     PHILOSOPHY_QUOTES_WORK_NAME,
                     ExistingPeriodicWorkPolicy.KEEP,
                     quoteWorkRequest
                 )
-
-                // Сохраняем флаг, что цитаты запущены
                 sharedPreferences.edit().putBoolean("philosophy_quotes_started", true).apply()
-
                 Log.d(TAG, "✅ Ежечасные философские цитаты запущены")
-
-                // Для тестирования - можно отправить цитату сразу
-                // CoroutineScope(Dispatchers.Main).launch {
-                //     delay(5000)
-                //     NotificationUtils.sendPhilosophyQuoteNotification(this@MainActivity)
-                // }
-            } else {
-                Log.d(TAG, "ℹ️ Философские цитаты уже запущены ранее")
             }
-
         } catch (e: Exception) {
             Log.e(TAG, "Ошибка запуска философских цитат", e)
         }
@@ -421,9 +491,7 @@ class MainActivity : AppCompatActivity() {
         return try {
             val hasFine = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
             val hasCoarse = ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-            val result = hasFine || hasCoarse
-            Log.d(TAG, "hasLocationPermissions: ACCESS_FINE_LOCATION=$hasFine, ACCESS_COARSE_LOCATION=$hasCoarse, Result=$result")
-            result
+            hasFine || hasCoarse
         } catch (e: Exception) {
             Log.e(TAG, "Error checking location permissions", e)
             false
@@ -432,41 +500,40 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-
-        // Перепроверяем статус трекинга при возвращении в приложение
+        // Упрощенная проверка трекинга
         if (auth.currentUser != null) {
             LocationServiceManager.isTrackingActive(this) { isTracking ->
                 Log.d(TAG, "onResume: Статус трекинга - $isTracking")
-                // Можно обновить UI если нужно
             }
         }
     }
 
     private fun hasStepPermissions(): Boolean {
         return try {
-            val result = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val hasActivity = ContextCompat.checkSelfPermission(this, Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED
-                Log.d(TAG, "hasStepPermissions: ACTIVITY_RECOGNITION=$hasActivity")
-                hasActivity
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                ContextCompat.checkSelfPermission(this, Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED
             } else {
-                Log.d(TAG, "hasStepPermissions: Android < Q, считаем разрешения предоставленными")
                 true
             }
-            result
         } catch (e: Exception) {
             Log.e(TAG, "Error checking step permissions", e)
             false
         }
     }
 
+    /**
+     * Безопасный запуск сервиса локации с защитой от дублирования
+     */
     private fun startLocationUpdateService() {
+        if (isLocationServiceStarting.getAndSet(true)) {
+            Log.d(TAG, "Location service start already in progress, skipping")
+            return
+        }
+
         try {
-            Log.d(TAG, "startLocationUpdateService: Создание Intent")
             val serviceIntent = Intent(this, LocationUpdateService::class.java).apply {
                 action = LocationUpdateService.ACTION_START
             }
-
-            Log.d(TAG, "startLocationUpdateService: Запуск сервиса")
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 startForegroundService(serviceIntent)
             } else {
@@ -475,16 +542,32 @@ class MainActivity : AppCompatActivity() {
             Log.d(TAG, "Location service started successfully")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start location service", e)
+        } finally {
+            // Сбрасываем флаг через небольшой промежуток времени
+            handler.postDelayed({
+                isLocationServiceStarting.set(false)
+            }, 2000)
         }
     }
 
+    /**
+     * Безопасный запуск сервиса шагомера с защитой от дублирования
+     */
     private fun startStepCounterService() {
+        if (isStepServiceStarting.getAndSet(true)) {
+            Log.d(TAG, "Step service start already in progress, skipping")
+            return
+        }
+
         try {
-            Log.d(TAG, "startStepCounterService: Запуск через статический метод")
             StepCounterService.startService(this)
             Log.d(TAG, "Step service started successfully")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to start step service", e)
+        } finally {
+            handler.postDelayed({
+                isStepServiceStarting.set(false)
+            }, 1000)
         }
     }
 
@@ -492,23 +575,19 @@ class MainActivity : AppCompatActivity() {
         try {
             Log.d(TAG, "schedulePeriodicStepWork: Начало")
             val workManager = WorkManager.getInstance(this)
-            val constraints = Constraints.Builder().build()
-
             val periodicWorkRequest = PeriodicWorkRequestBuilder<StepCounterServiceWorker>(
                 STEP_SERVICE_INTERVAL_MINUTES, TimeUnit.MINUTES
-            ).setConstraints(constraints).build()
-
+            ).build()
             workManager.enqueueUniquePeriodicWork(
                 STEP_SERVICE_WORK_NAME,
                 ExistingPeriodicWorkPolicy.KEEP,
                 periodicWorkRequest
             )
-            Log.d(TAG, "Step WorkManager scheduled successfully every $STEP_SERVICE_INTERVAL_MINUTES minutes")
+            Log.d(TAG, "Step WorkManager scheduled successfully")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to schedule step work", e)
         }
     }
-
 
     private fun setupToolbar() {
         try {
@@ -518,35 +597,34 @@ class MainActivity : AppCompatActivity() {
 
             binding.btnMusic.setOnClickListener {
                 try {
-                    Log.d(TAG, "setupToolbar: Кнопка музыки нажата")
                     startActivity(Intent(this, MusicMainActivity::class.java))
                 } catch (e: Exception) {
                     Log.e(TAG, "Error starting MusicActivity", e)
+                    Toast.makeText(this, "Ошибка открытия музыки", Toast.LENGTH_SHORT).show()
                 }
             }
 
             binding.btnMenu.setOnClickListener { view ->
-                Log.d(TAG, "setupToolbar: Кнопка меню нажата")
                 showPopupMenu(view)
             }
 
             binding.ivUserAvatar.setOnClickListener {
                 try {
-                    Log.d(TAG, "setupToolbar: Аватар нажат")
                     startActivity(Intent(this, ProfileActivity::class.java))
                 } catch (e: Exception) {
                     Log.e(TAG, "Error starting ProfileActivity", e)
+                    Toast.makeText(this, "Ошибка открытия профиля", Toast.LENGTH_SHORT).show()
                 }
             }
+
             binding.tvUserName.setOnClickListener {
                 try {
-                    Log.d(TAG, "setupToolbar: Имя пользователя нажато")
                     startActivity(Intent(this, ProfileActivity::class.java))
                 } catch (e: Exception) {
                     Log.e(TAG, "Error starting ProfileActivity", e)
+                    Toast.makeText(this, "Ошибка открытия профиля", Toast.LENGTH_SHORT).show()
                 }
             }
-            Log.d(TAG, "setupToolbar: Завершено")
         } catch (e: Exception) {
             Log.e(TAG, "Error setting up toolbar", e)
         }
@@ -555,32 +633,21 @@ class MainActivity : AppCompatActivity() {
     private fun loadCurrentUserData() {
         try {
             Log.d(TAG, "loadCurrentUserData: Начало")
-            val currentUserId = auth.currentUser?.uid ?: run {
-                Log.w(TAG, "loadCurrentUserData: Пользователь не авторизован")
-                return
-            }
-            val database = Firebase.database.reference
+            val currentUserId = auth.currentUser?.uid ?: return
 
+            val database = Firebase.database.reference
             database.child("users").child(currentUserId).addListenerForSingleValueEvent(
                 object : ValueEventListener {
                     override fun onDataChange(snapshot: DataSnapshot) {
                         try {
-                            Log.d(TAG, "loadCurrentUserData: onDataChange вызван")
                             if (snapshot.exists()) {
                                 val user = snapshot.getValue(User::class.java)
-                                user?.let {
-                                    Log.d(TAG, "loadCurrentUserData: Данные пользователя получены, обновление UI")
-                                    // runOnUiThread НЕ НУЖЕН - onDataChange уже в main thread
-                                    updateToolbarUserInfo(it)
-                                }
-                            } else {
-                                Log.d(TAG, "loadCurrentUserData: Данные пользователя не найдены")
+                                user?.let { updateToolbarUserInfo(it) }
                             }
                         } catch (e: Exception) {
                             Log.e(TAG, "Error processing user data", e)
                         }
                     }
-
                     override fun onCancelled(error: DatabaseError) {
                         Log.e(TAG, "Failed to load user data", error.toException())
                     }
@@ -592,20 +659,16 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateToolbarUserInfo(user: User) {
         try {
-            Log.d(TAG, "updateToolbarUserInfo: Обновление информации пользователя")
             binding.tvUserName.text = user.getFullName()
             user.profileImageUrl?.takeIf { it.isNotBlank() }?.let { url ->
-                Log.d(TAG, "updateToolbarUserInfo: Загрузка аватара из $url")
                 Glide.with(this)
                     .load(url)
                     .circleCrop()
                     .placeholder(R.drawable.ic_default_profile)
                     .error(R.drawable.ic_default_profile)
-                    // Добавлено для более агрессивного кэширования
                     .diskCacheStrategy(DiskCacheStrategy.ALL)
                     .into(binding.ivUserAvatar)
             } ?: run {
-                Log.d(TAG, "updateToolbarUserInfo: URL аватара пуст, установка дефолтного")
                 binding.ivUserAvatar.setImageResource(R.drawable.ic_default_profile)
             }
         } catch (e: Exception) {
@@ -616,14 +679,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun showPopupMenu(view: View) {
         try {
-            Log.d(TAG, "showPopupMenu: Показ меню")
             val popup = PopupMenu(this, view)
             popup.menuInflater.inflate(R.menu.main_menu, popup.menu)
+
             popup.setOnMenuItemClickListener { item ->
                 when (item.itemId) {
                     R.id.menu_profile -> {
                         try {
-                            Log.d(TAG, "showPopupMenu: Выбран пункт Профиль")
                             startActivity(Intent(this, ProfileActivity::class.java))
                         } catch (e: Exception) {
                             Log.e(TAG, "Error starting ProfileActivity", e)
@@ -632,8 +694,7 @@ class MainActivity : AppCompatActivity() {
                     }
                     R.id.menu_mozgi -> {
                         try {
-                            Log.d(TAG, "showPopupMenu: Выбран пункт Мозги")
-                            startActivity(Intent(this, com.example.chatapp.mozgi.ui.CategoriesActivity::class.java))
+                            startActivity(Intent(this, CategoriesActivity::class.java))
                         } catch (e: Exception) {
                             Log.e(TAG, "Error starting CategoriesActivity", e)
                         }
@@ -641,7 +702,6 @@ class MainActivity : AppCompatActivity() {
                     }
                     R.id.menu_alarm -> {
                         try {
-                            Log.d(TAG, "showPopupMenu: Выбран пункт Будильник")
                             startActivity(Intent(this, AlarmActivity::class.java))
                         } catch (e: Exception) {
                             Log.e(TAG, "Error starting AlarmActivity", e)
@@ -649,7 +709,6 @@ class MainActivity : AppCompatActivity() {
                         true
                     }
                     R.id.menu_logout -> {
-                        Log.d(TAG, "showPopupMenu: Выбран пункт Выход")
                         logoutUser()
                         true
                     }
@@ -663,152 +722,153 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun logoutUser() {
-        try {
-            Log.d(TAG, "logoutUser: Начало процесса выхода")
+        lifecycleScope.launch {
             try {
-                Log.d(TAG, "logoutUser: Отмена WorkManager задач")
-                WorkManager.getInstance(this).cancelUniqueWork(LOCATION_SERVICE_WORK_NAME)
-                WorkManager.getInstance(this).cancelUniqueWork(STEP_SERVICE_WORK_NAME)
-                WorkManager.getInstance(this).cancelUniqueWork(SERVICE_MONITOR_WORK_NAME)
-                // ДОБАВЬТЕ ЭТУ СТРОКУ ДЛЯ ОСТАНОВКИ ФИЛОСОФСКИХ ЦИТАТ
-                WorkManager.getInstance(this).cancelUniqueWork(PHILOSOPHY_QUOTES_WORK_NAME)
-            } catch (e: Exception) {
-                Log.w(TAG, "Error canceling work manager jobs", e)
-            }
+                // Останавливаем сервисы
+                stopService(Intent(this@MainActivity, LocationUpdateService::class.java))
+                stopService(Intent(this@MainActivity, StepCounterService::class.java))
 
-            try {
-                Log.d(TAG, "logoutUser: Остановка сервиса локации")
-                stopService(Intent(this, LocationUpdateService::class.java))
-            } catch (e: Exception) {
-                Log.w(TAG, "Error stopping location service", e)
-            }
+                // Отменяем WorkManager задачи
+                WorkManager.getInstance(this@MainActivity).apply {
+                    cancelUniqueWork(STEP_SERVICE_WORK_NAME)
+                    cancelUniqueWork(PHILOSOPHY_QUOTES_WORK_NAME)
+                }
 
-            try {
-                Log.d(TAG, "logoutUser: Остановка сервиса шагомера")
-                stopService(Intent(this, StepCounterService::class.java))
-            } catch (e: Exception) {
-                Log.w(TAG, "Error stopping step service", e)
-            }
+                // Очищаем настройки
+                getSharedPreferences("app_prefs", MODE_PRIVATE).edit().clear().apply()
 
-            // ДОБАВЬТЕ ЭТОТ БЛОК ДЛЯ ОЧИСТКИ НАСТРОЕК ЦИТАТ
-            try {
-                Log.d(TAG, "logoutUser: Очистка настроек философских цитат")
-                val sharedPreferences = getSharedPreferences("app_prefs", MODE_PRIVATE)
-                sharedPreferences.edit().remove("philosophy_quotes_started").apply()
-                Log.d(TAG, "Настройки философских цитат очищены")
-            } catch (e: Exception) {
-                Log.w(TAG, "Error clearing philosophy quotes settings", e)
-            }
+                // Очищаем кэш
+                fragmentCache.clear()
 
-            Log.d(TAG, "logoutUser: Выход из Firebase")
-            auth.signOut()
+                // Выход из Firebase
+                auth.signOut()
 
-            Log.d(TAG, "logoutUser: Переход к AuthActivity")
-            startActivity(Intent(this, AuthActivity::class.java).apply {
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
-            })
-            finish()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error during logout", e)
-            try {
-                startActivity(Intent(this, AuthActivity::class.java).apply {
+                // Переход к авторизации
+                startActivity(Intent(this@MainActivity, AuthActivity::class.java).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                 })
                 finish()
-            } catch (e2: Exception) {
-                Log.e(TAG, "Critical error during logout", e2)
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during logout", e)
+                // Принудительный переход при ошибке
+                startActivity(Intent(this@MainActivity, AuthActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                })
+                finish()
             }
         }
     }
 
     private fun setupBottomNavigation() {
         try {
-            Log.d(TAG, "setupBottomNavigation: Начало")
             bottomNav = binding.bottomNavigation
 
-            // Обработчик выбора вкладки
             bottomNav.setOnItemSelectedListener { item ->
                 when (item.itemId) {
                     R.id.nav_home -> {
-                        Log.d(TAG, "setupBottomNavigation: Выбрана вкладка Домой")
-                        loadFragment(HomeFragment(), HOME_FRAGMENT_TAG)
+                        switchToFragment(HOME_FRAGMENT_TAG) { HomeFragment() }
                         true
                     }
                     R.id.nav_gigachat -> {
-                        Log.d(TAG, "setupBottomNavigation: Выбрана вкладка ГигаЧат")
-                        loadFragment(ChatWithGigaFragment(), CHAT_FRAGMENT_TAG)
+                        switchToFragment(CHAT_FRAGMENT_TAG) { ChatWithGigaFragment() }
                         true
                     }
                     R.id.nav_steps -> {
-                        Log.d(TAG, "setupBottomNavigation: Выбрана вкладка Шаги")
-                        loadFragment(StepCounterFragment(), STEPS_FRAGMENT_TAG)
+                        switchToFragment(STEPS_FRAGMENT_TAG) { StepCounterFragment() }
                         true
                     }
                     R.id.nav_maps -> {
-                        Log.d(TAG, "setupBottomNavigation: Выбрана вкладка Карта")
-                        loadFragment(LocationPagerFragment(), MAPS_FRAGMENT_TAG)
+                        switchToFragment(MAPS_FRAGMENT_TAG) { LocationPagerFragment() }
                         true
                     }
                     R.id.nav_games -> {
-                        Log.d(TAG, "setupBottomNavigation: Выбрана вкладка Игры")
-                        loadFragment(GamesFragment(), GAMES_FRAGMENT_TAG)
+                        switchToFragment(GAMES_FRAGMENT_TAG) { GamesFragment() }
                         true
                     }
-                    else -> {
-                        Log.d(TAG, "setupBottomNavigation: Неизвестная вкладка itemId=${item.itemId}")
-                        false
-                    }
+                    else -> false
                 }
             }
 
-            // Обработчик ПОВТОРНОГО нажатия на вкладку
             bottomNav.setOnItemReselectedListener { item ->
                 when (item.itemId) {
-                    R.id.nav_home -> {
-                        Log.d(TAG, "setupBottomNavigation: ПОВТОРНОЕ нажатие на вкладку Домой")
-                        scrollNewsToTop()
-                    }
-                    // Можно добавить обработку для других вкладок при необходимости
-                    R.id.nav_gigachat -> {
-                        Log.d(TAG, "setupBottomNavigation: ПОВТОРНОЕ нажатие на вкладку ГигаЧат")
-                        // Можно добавить скролл чатов к началу
-                    }
+                    R.id.nav_home -> scrollNewsToTop()
                 }
             }
-
-            Log.d(TAG, "setupBottomNavigation: Завершено")
         } catch (e: Exception) {
             Log.e(TAG, "Error setting up bottom navigation", e)
         }
     }
 
     /**
-     * Скроллит новости к началу, если открыта вкладка новостей
+     * Умное переключение между фрагментами с кэшированием
+     */
+    private fun switchToFragment(tag: String, fragmentFactory: () -> Fragment) {
+        try {
+            if (currentFragmentTag == tag) return
+
+            val fragment = fragmentCache[tag] ?: run {
+                val newFragment = fragmentFactory()
+                fragmentCache[tag] = newFragment
+                newFragment
+            }
+
+            // Скрываем текущий фрагмент
+            currentFragmentTag?.let { currentTag ->
+                fragmentCache[currentTag]?.let { currentFragment ->
+                    if (currentFragment.isAdded) {
+                        supportFragmentManager.beginTransaction()
+                            .hide(currentFragment)
+                            .commitAllowingStateLoss()
+                    }
+                }
+            }
+
+            // Показываем целевой фрагмент
+            if (fragment.isAdded) {
+                supportFragmentManager.beginTransaction()
+                    .show(fragment)
+                    .commitAllowingStateLoss()
+            } else {
+                supportFragmentManager.beginTransaction()
+                    .add(R.id.fragment_container, fragment, tag)
+                    .commitAllowingStateLoss()
+            }
+
+            currentFragmentTag = tag
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error switching to fragment: $tag", e)
+            // Fallback
+            loadFragment(fragmentFactory(), tag)
+        }
+    }
+
+    /**
+     * Скроллит новости к началу
      */
     private fun scrollNewsToTop() {
         try {
-            Log.d(TAG, "scrollNewsToTop: Попытка скролла новостей к началу")
-
-            // Получаем текущий фрагмент HomeFragment
             val homeFragment = supportFragmentManager.findFragmentByTag(HOME_FRAGMENT_TAG) as? HomeFragment
             if (homeFragment != null && homeFragment.isVisible) {
-                Log.d(TAG, "scrollNewsToTop: HomeFragment найден и видим, скроллим новости")
                 homeFragment.scrollNewsToTop()
-            } else {
-                Log.d(TAG, "scrollNewsToTop: HomeFragment не найден или не видим")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error scrolling news to top", e)
         }
     }
 
+    /**
+     * Стандартная загрузка фрагмента
+     */
     private fun loadFragment(fragment: Fragment, tag: String) {
         try {
-            Log.d(TAG, "loadFragment: Загрузка фрагмента с тегом $tag")
             supportFragmentManager.beginTransaction()
                 .replace(R.id.fragment_container, fragment, tag)
                 .commitAllowingStateLoss()
-            Log.d(TAG, "loadFragment: Фрагмент $tag загружен")
+
+            fragmentCache[tag] = fragment
+            currentFragmentTag = tag
         } catch (e: Exception) {
             Log.e(TAG, "Error loading fragment: $tag", e)
         }
@@ -817,7 +877,6 @@ class MainActivity : AppCompatActivity() {
     // Методы для открытия фрагментов новостей
     fun openCreateNewsFragment() {
         try {
-            Log.d(TAG, "openCreateNewsFragment: Открытие фрагмента создания новости")
             supportFragmentManager.beginTransaction()
                 .replace(R.id.fragment_container, CreateNewsFragment())
                 .addToBackStack("create_news")
@@ -829,7 +888,6 @@ class MainActivity : AppCompatActivity() {
 
     fun openEditNewsFragment(newsItem: NewsItem) {
         try {
-            Log.d(TAG, "openEditNewsFragment: Открытие фрагмента редактирования новости")
             val fragment = CreateNewsFragment.newInstance(newsItem)
             supportFragmentManager.beginTransaction()
                 .replace(R.id.fragment_container, fragment)
@@ -842,7 +900,6 @@ class MainActivity : AppCompatActivity() {
 
     fun openFullScreenImage(imageUrl: String) {
         try {
-            Log.d(TAG, "openFullScreenImage: Открытие полноэкранного изображения")
             supportFragmentManager.beginTransaction()
                 .replace(R.id.fragment_container, FullScreenImageFragment.newInstance(imageUrl))
                 .addToBackStack("fullscreen_image")
@@ -854,7 +911,6 @@ class MainActivity : AppCompatActivity() {
 
     fun onNewsCreated() {
         try {
-            Log.d(TAG, "onNewsCreated: Новость создана")
             Toast.makeText(this, "Новость опубликована!", Toast.LENGTH_SHORT).show()
             supportFragmentManager.popBackStack("create_news", 1)
             switchToNewsTab()
@@ -865,21 +921,27 @@ class MainActivity : AppCompatActivity() {
 
     private fun switchToNewsTab() {
         try {
-            Log.d(TAG, "switchToNewsTab: Переключение на вкладку новостей")
-            val homeFragment = HomeFragment().apply {
-                arguments = Bundle().apply {
-                    putBoolean("open_news_tab", true)
-                }
-            }
-            loadFragment(homeFragment, HOME_FRAGMENT_TAG)
+            switchToFragment(HOME_FRAGMENT_TAG) { HomeFragment() }
             binding.bottomNavigation.selectedItemId = R.id.nav_home
         } catch (e: Exception) {
             Log.e(TAG, "Error switching to news tab", e)
         }
     }
 
+    private fun redirectToAuth() {
+        startActivity(Intent(this, AuthActivity::class.java))
+        finish()
+    }
+
     override fun onDestroy() {
         Log.d(TAG, "MainActivity destroyed")
+        // Очищаем все отложенные задачи
+        handler.removeCallbacksAndMessages(null)
+        // Очищаем кэш фрагментов
+        fragmentCache.clear()
+        // Сбрасываем флаги запуска
+        isLocationServiceStarting.set(false)
+        isStepServiceStarting.set(false)
         super.onDestroy()
     }
 }

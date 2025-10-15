@@ -1,10 +1,12 @@
 package com.example.chatapp.step
 
+import android.app.AlarmManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.ContentValues.TAG
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -15,6 +17,7 @@ import android.hardware.SensorManager
 import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
+import android.os.SystemClock
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.chatapp.R
@@ -76,6 +79,9 @@ class StepCounterService : Service(), SensorEventListener {
         super.onCreate()
         Log.d("StepCounterService", "Сервис создан")
 
+        // СОХРАНЯЕМ СОСТОЯНИЕ ЧЕРЕЗ APPLICATION КЛАСС - ВАЖНО ДЛЯ ПЕРЕЗАПУСКА
+        saveServiceState(true)
+
         val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
         wakeLock = powerManager.newWakeLock(
             PowerManager.PARTIAL_WAKE_LOCK,
@@ -94,6 +100,8 @@ class StepCounterService : Service(), SensorEventListener {
 
         if (stepCounterSensor == null) {
             Log.e("StepCounterService", "Датчик шагов недоступен")
+            // Даже если датчика нет, сохраняем состояние сервиса
+            saveServiceState(false)
             stopSelf()
         } else {
             sensorManager.registerListener(
@@ -110,6 +118,27 @@ class StepCounterService : Service(), SensorEventListener {
         lastMilestoneNotified = sharedPreferences.getInt("last_milestone", 0)
 
         startPeriodicDataSync()
+
+        Log.d("StepCounterService", "Сервис полностью инициализирован и запущен")
+    }
+
+    /**
+     * Сохраняет состояние сервиса для автоматического перезапуска после перезагрузки
+     */
+    private fun saveServiceState(isRunning: Boolean) {
+        try {
+            (application as? StepCounterApp)?.saveServiceState("step", isRunning)
+            Log.d("StepCounterService", "Состояние сервиса сохранено: step = $isRunning")
+        } catch (e: Exception) {
+            Log.e("StepCounterService", "Ошибка сохранения состояния сервиса", e)
+            // Резервное сохранение в SharedPreferences
+            val prefs = getSharedPreferences("service_prefs", Context.MODE_PRIVATE)
+            prefs.edit().apply {
+                putBoolean("step_service_active", isRunning)
+                putLong("last_service_state_change", System.currentTimeMillis())
+                apply()
+            }
+        }
     }
 
     private fun createNotificationChannels() {
@@ -145,6 +174,34 @@ class StepCounterService : Service(), SensorEventListener {
         }
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        Log.w(TAG, "onTaskRemoved: Step service removed, scheduling restart...")
+        scheduleRestart()
+        super.onTaskRemoved(rootIntent)
+    }
+
+    private fun scheduleRestart() {
+        try {
+            val restartIntent = Intent(applicationContext, StepCounterService::class.java)
+            val restartPendingIntent = PendingIntent.getService(
+                applicationContext,
+                2,
+                restartIntent,
+                PendingIntent.FLAG_ONE_SHOT or PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            alarmManager.set(
+                AlarmManager.ELAPSED_REALTIME,
+                SystemClock.elapsedRealtime() + 3000, // 3 секунды
+                restartPendingIntent
+            )
+            Log.d("StepCounterService", "Перезапуск запланирован через 3 секунды")
+        } catch (e: Exception) {
+            Log.e("StepCounterService", "Ошибка планирования перезапуска", e)
+        }
+    }
+
     private fun createInitialNotification(): Notification {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Счетчик шагов")
@@ -172,6 +229,7 @@ class StepCounterService : Service(), SensorEventListener {
             }
         }
     }
+
 
     private suspend fun processNewSteps(totalSteps: Float) {
         withContext(Dispatchers.IO) {
@@ -450,17 +508,37 @@ class StepCounterService : Service(), SensorEventListener {
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
     override fun onDestroy() {
-        super.onDestroy()
-        sensorManager.unregisterListener(this)
-        scheduledExecutor?.shutdown()
-        if (wakeLock.isHeld) {
-            wakeLock.release()
+        Log.d("StepCounterService", "onDestroy: Остановка сервиса")
+
+        // СОХРАНЯЕМ СОСТОЯНИЕ ПЕРЕД УНИЧТОЖЕНИЕМ - ВАЖНО ДЛЯ ПЕРЕЗАПУСКА
+        saveServiceState(false)
+
+        try {
+            sensorManager.unregisterListener(this)
+            scheduledExecutor?.shutdown()
+            if (wakeLock.isHeld) {
+                wakeLock.release()
+            }
+            serviceScope.cancel()
+            Log.d("StepCounterService", "Ресурсы сервиса освобождены")
+        } catch (e: Exception) {
+            Log.e("StepCounterService", "Ошибка при остановке сервиса", e)
+        } finally {
+            super.onDestroy()
+            Log.d("StepCounterService", "Сервис уничтожен")
         }
-        serviceScope.cancel()
-        Log.d("StepCounterService", "Сервис уничтожен")
     }
 
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d("StepCounterService", "onStartCommand: Сервис получает команду")
+
+        // Немедленно запускаем основные операции
+        serviceScope.launch {
+            // Принудительная синхронизация при старте
+            forceFullDataSync()
+        }
+
         return START_REDELIVER_INTENT
     }
 }

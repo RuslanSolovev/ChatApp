@@ -78,6 +78,7 @@ class RouteTrackerFragment : Fragment() {
     private var smoothingEnabled = true
 
     private var isFirstLaunch = true
+    private var isFragmentDestroyed = false
 
     companion object {
         private const val TAG = "RouteTrackerFragment"
@@ -115,6 +116,43 @@ class RouteTrackerFragment : Fragment() {
         checkAndStartTracking()
     }
 
+    override fun onDestroyView() {
+        super.onDestroyView()
+        isFragmentDestroyed = true
+        dailyCleanupRunnable?.let { dailyCleanupHandler.removeCallbacks(it) }
+        removeLocationListener()
+        removeTrackingStatusListener()
+        clearRoute()
+        Log.d(TAG, "Fragment view destroyed")
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        isFragmentDestroyed = true
+        dailyCleanupRunnable?.let { dailyCleanupHandler.removeCallbacks(it) }
+        Log.d(TAG, "Fragment destroyed")
+    }
+
+    override fun onStart() {
+        super.onStart()
+        mapView.onStart()
+        MapKitFactory.getInstance().onStart()
+
+        Log.d(TAG, "Fragment started, запускаем слушатели")
+        startLocationListener()
+        setupTrackingStatusListener()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        mapView.onStop()
+        MapKitFactory.getInstance().onStop()
+
+        Log.d(TAG, "Fragment stopped, останавливаем слушатели")
+        removeLocationListener()
+        removeTrackingStatusListener()
+    }
+
     private fun initViews(view: View) {
         tvDistance = view.findViewById(R.id.Distance)
         tvTime = view.findViewById(R.id.tvTime)
@@ -130,7 +168,8 @@ class RouteTrackerFragment : Fragment() {
     }
 
     private fun setupMap() {
-        mapView = MapView(requireContext())
+        val context = context ?: return
+        mapView = MapView(context)
         val mapContainer = view?.findViewById<ViewGroup>(R.id.mapContainer)
         mapContainer?.removeAllViews()
         mapContainer?.addView(mapView)
@@ -191,7 +230,7 @@ class RouteTrackerFragment : Fragment() {
         val userId = auth.currentUser?.uid
         if (userId == null) {
             Log.e(TAG, "Пользователь не авторизован")
-            Toast.makeText(context, "Ошибка: пользователь не авторизован", Toast.LENGTH_LONG).show()
+            showSafeToast("Ошибка: пользователь не авторизован", Toast.LENGTH_LONG)
             return
         }
 
@@ -200,6 +239,8 @@ class RouteTrackerFragment : Fragment() {
         database.child("tracking_status").child(userId)
             .addListenerForSingleValueEvent(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
+                    if (isFragmentDestroyed || !isAdded) return
+
                     val isTracking = snapshot.getValue(Boolean::class.java) ?: false
                     Log.d(TAG, "Статус трекинга из БД: $isTracking")
 
@@ -210,13 +251,14 @@ class RouteTrackerFragment : Fragment() {
                         Log.d(TAG, "Трекинг уже активен, начинаем слушать обновления")
                         startLocationListener()
                         if (isFirstLaunch) {
-                            Toast.makeText(context, "Отслеживание активно", Toast.LENGTH_SHORT).show()
+                            showSafeToast("Отслеживание активно")
                             isFirstLaunch = false
                         }
                     }
                 }
 
                 override fun onCancelled(error: DatabaseError) {
+                    if (isFragmentDestroyed || !isAdded) return
                     Log.e(TAG, "Ошибка проверки статуса трекинга: ${error.message}")
                     startAutomaticTracking()
                 }
@@ -226,12 +268,13 @@ class RouteTrackerFragment : Fragment() {
     private fun startAutomaticTracking() {
         Log.d(TAG, "Запускаем автоматическое отслеживание")
 
-        LocationServiceManager.startLocationService(requireContext())
+        val context = context ?: return
+        LocationServiceManager.startLocationService(context)
         startLocationListener()
         setTrackingStatus(true)
 
         if (isFirstLaunch) {
-            Toast.makeText(context, "Автоматическое отслеживание запущено", Toast.LENGTH_SHORT).show()
+            showSafeToast("Автоматическое отслеживание запущено")
             isFirstLaunch = false
         }
     }
@@ -249,6 +292,8 @@ class RouteTrackerFragment : Fragment() {
 
         userLocationsListener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
+                if (isFragmentDestroyed || !isAdded) return
+
                 Log.d(TAG, "Получены новые данные локации из Firebase")
 
                 val location = snapshot.getValue(UserLocation::class.java)
@@ -266,6 +311,7 @@ class RouteTrackerFragment : Fragment() {
             }
 
             override fun onCancelled(error: DatabaseError) {
+                if (isFragmentDestroyed || !isAdded) return
                 Log.e(TAG, "Ошибка слушателя локаций: ${error.message}")
             }
         }
@@ -280,6 +326,8 @@ class RouteTrackerFragment : Fragment() {
         trackingStatusListener = database.child("tracking_status").child(userId)
             .addValueEventListener(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
+                    if (isFragmentDestroyed || !isAdded) return
+
                     val isTracking = snapshot.getValue(Boolean::class.java) ?: false
                     Log.d(TAG, "Статус трекинга изменен: $isTracking")
 
@@ -290,6 +338,7 @@ class RouteTrackerFragment : Fragment() {
                 }
 
                 override fun onCancelled(error: DatabaseError) {
+                    if (isFragmentDestroyed || !isAdded) return
                     Log.e(TAG, "Ошибка слушателя статуса трекинга: ${error.message}")
                 }
             })
@@ -468,12 +517,6 @@ class RouteTrackerFragment : Fragment() {
         val lastLocation = locationList.last()
         val timeDiff = location.timestamp - lastLocation.timestamp
 
-        // ВРЕМЕННО УБИРАЕМ СТРОГУЮ ПРОВЕРКУ ДЛЯ ТЕСТА
-        // if (timeDiff < MIN_TIME_DIFF || timeDiff > MAX_TIME_DIFF) {
-        //     Log.w(TAG, "Невалидная разница времени: $timeDiff мс")
-        //     return false
-        // }
-
         return true
     }
 
@@ -554,12 +597,13 @@ class RouteTrackerFragment : Fragment() {
 
     private fun setupButtons() {
         btnClear.setOnClickListener {
-            AlertDialog.Builder(requireContext())
+            val context = context ?: return@setOnClickListener
+            AlertDialog.Builder(context)
                 .setTitle("Подтверждение")
                 .setMessage("Вы уверены, что хотите очистить сегодняшний маршрут?")
                 .setPositiveButton("Да") { _, _ ->
                     clearTodayRoute()
-                    Toast.makeText(context, "Маршрут очищен", Toast.LENGTH_SHORT).show()
+                    showSafeToast("Маршрут очищен")
                 }
                 .setNegativeButton("Отмена", null)
                 .show()
@@ -609,8 +653,9 @@ class RouteTrackerFragment : Fragment() {
 
             if (startMarker == null && routePoints.isNotEmpty()) {
                 Log.d(TAG, "Добавляем стартовый маркер")
+                val context = context ?: return
                 startMarker = mapView.map.mapObjects.addPlacemark(routePoints.first()).apply {
-                    setIcon(ImageProvider.fromResource(requireContext(), R.drawable.ic_location),
+                    setIcon(ImageProvider.fromResource(context, R.drawable.ic_location),
                         IconStyle().setScale(1.0f))
                     setText("Старт")
                     zIndex = 20f
@@ -621,8 +666,9 @@ class RouteTrackerFragment : Fragment() {
                 mapView.map.mapObjects.remove(it)
                 Log.d(TAG, "Удален старый конечный маркер")
             }
+            val context = context ?: return
             endMarker = mapView.map.mapObjects.addPlacemark(routePoints.last()).apply {
-                setIcon(ImageProvider.fromResource(requireContext(), R.drawable.ic_marker),
+                setIcon(ImageProvider.fromResource(context, R.drawable.ic_marker),
                     IconStyle().setScale(1.0f))
                 setText("Текущая позиция")
                 zIndex = 20f
@@ -672,7 +718,7 @@ class RouteTrackerFragment : Fragment() {
             if (isMidnight()) {
                 Log.d(TAG, "Обнаружена полночь, очищаем маршрут")
                 clearTodayRoute()
-                Toast.makeText(context, "Автоматическая очистка дневного маршрута", Toast.LENGTH_LONG).show()
+                showSafeToast("Автоматическая очистка дневного маршрута", Toast.LENGTH_LONG)
             }
 
             dailyCleanupHandler.postDelayed(dailyCleanupRunnable!!, 60000)
@@ -706,6 +752,11 @@ class RouteTrackerFragment : Fragment() {
             .endAt(endOfDay.toDouble())
             .addListenerForSingleValueEvent(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
+                    if (isFragmentDestroyed || !isAdded) {
+                        Log.d(TAG, "Фрагмент не прикреплен, пропускаем обновление UI")
+                        return
+                    }
+
                     Log.d(TAG, "Получены данные истории маршрута. Детей: ${snapshot.childrenCount}")
 
                     val locations = mutableListOf<UserLocation>()
@@ -720,7 +771,6 @@ class RouteTrackerFragment : Fragment() {
                         Log.d(TAG, "Загружено ${locations.size} точек маршрута")
                         locations.sortBy { it.timestamp }
 
-                        // ПРОСТАЯ ОТРИСОВКА БЕЗ ФИЛЬТРАЦИИ ДЛЯ ТЕСТА
                         val points = locations.map { Point(it.lat, it.lng) }
                         routePoints.clear()
                         routePoints.addAll(points)
@@ -733,64 +783,23 @@ class RouteTrackerFragment : Fragment() {
                         recalculateStatsFromAllLocations()
                         adjustCameraToRoute(points)
 
-                        Toast.makeText(context, "Загружен маршрут (${points.size} точек)", Toast.LENGTH_SHORT).show()
+                        showSafeToast("Загружен маршрут (${points.size} точек)")
                     } else {
                         Log.d(TAG, "Нет данных маршрута за сегодня")
-                        Toast.makeText(context, "Нет данных маршрута за сегодня", Toast.LENGTH_SHORT).show()
+                        showSafeToast("Нет данных маршрута за сегодня")
                     }
                 }
 
                 override fun onCancelled(error: DatabaseError) {
+                    if (isFragmentDestroyed || !isAdded) {
+                        Log.d(TAG, "Фрагмент не прикреплен, пропускаем обработку ошибки")
+                        return
+                    }
+
                     Log.e(TAG, "Ошибка загрузки маршрута: ${error.message}")
-                    Toast.makeText(context, "Ошибка загрузки маршрута", Toast.LENGTH_SHORT).show()
+                    showSafeToast("Ошибка загрузки маршрута")
                 }
             })
-    }
-
-    private fun applyHistoricalDataFiltering(locations: List<UserLocation>): List<UserLocation> {
-        if (locations.size < 2) return locations
-
-        Log.d(TAG, "Начинаем фильтрацию ${locations.size} точек")
-
-        val filtered = mutableListOf<UserLocation>()
-        filtered.add(locations.first())
-
-        var skippedCount = 0
-
-        for (i in 1 until locations.size) {
-            val prev = filtered.last()
-            val curr = locations[i]
-
-            val distance = calculateDistance(
-                Point(prev.lat, prev.lng),
-                Point(curr.lat, curr.lng)
-            )
-
-            val timeDiff = curr.timestamp - prev.timestamp
-
-            // УСЛАБЛЕННЫЕ УСЛОВИЯ ФИЛЬТРАЦИИ:
-            if (distance >= 0.5 && // Уменьшил минимальное расстояние
-                timeDiff in 500..60000L) { // Расширил временной диапазон
-
-                val speed = if (timeDiff > 0) distance / (timeDiff / 1000.0) else 0.0
-
-                // Более мягкая проверка скорости
-                if (speed <= MAX_VALID_SPEED_MPS) {
-                    filtered.add(curr)
-                    Log.d(TAG, "Точка добавлена: расстояние=$distance м, время=$timeDiff мс, скорость=${String.format("%.2f", speed)} м/с")
-                } else {
-                    skippedCount++
-                    Log.d(TAG, "Точка пропущена по скорости: $speed м/с")
-                }
-            } else {
-                skippedCount++
-                Log.d(TAG, "Точка пропущена: расстояние=$distance м, время=$timeDiff мс")
-            }
-        }
-
-        Log.d(TAG, "Фильтрация завершена. Оставлено точек: ${filtered.size}, пропущено: $skippedCount")
-
-        return filtered
     }
 
     private fun calculateDistance(p1: Point, p2: Point): Double {
@@ -903,9 +912,10 @@ class RouteTrackerFragment : Fragment() {
                 zIndex = 10f
             }
 
+            val context = context ?: return
             startMarker = mapView.map.mapObjects.addPlacemark(points.first()).apply {
                 setIcon(
-                    ImageProvider.fromResource(requireContext(), R.drawable.ic_location),
+                    ImageProvider.fromResource(context, R.drawable.ic_location),
                     IconStyle().setScale(1.0f)
                 )
                 setText("Старт")
@@ -914,7 +924,7 @@ class RouteTrackerFragment : Fragment() {
 
             endMarker = mapView.map.mapObjects.addPlacemark(points.last()).apply {
                 setIcon(
-                    ImageProvider.fromResource(requireContext(), R.drawable.ic_marker),
+                    ImageProvider.fromResource(context, R.drawable.ic_marker),
                     IconStyle().setScale(1.0f)
                 )
                 setText("Финиш")
@@ -1028,38 +1038,27 @@ class RouteTrackerFragment : Fragment() {
         Log.d(TAG, "Статус трекинга установлен: $isTracking")
     }
 
-    override fun onStart() {
-        super.onStart()
-        mapView.onStart()
-        MapKitFactory.getInstance().onStart()
+    /**
+     * Безопасный показ Toast с проверкой контекста и жизненного цикла
+     */
+    private fun showSafeToast(message: String, duration: Int = Toast.LENGTH_SHORT) {
+        try {
+            if (isFragmentDestroyed || !isAdded || context == null) {
+                Log.d(TAG, "Cannot show toast - fragment detached: $message")
+                return
+            }
 
-        Log.d(TAG, "Fragment started, запускаем слушатели")
-        startLocationListener()
-        setupTrackingStatusListener()
-    }
-
-    override fun onStop() {
-        super.onStop()
-        mapView.onStop()
-        MapKitFactory.getInstance().onStop()
-
-        Log.d(TAG, "Fragment stopped, останавливаем слушатели")
-        removeLocationListener()
-        removeTrackingStatusListener()
-    }
-
-    override fun onDestroyView() {
-        super.onDestroyView()
-        dailyCleanupRunnable?.let { dailyCleanupHandler.removeCallbacks(it) }
-        removeLocationListener()
-        removeTrackingStatusListener()
-        clearRoute()
-        Log.d(TAG, "Fragment view destroyed")
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        dailyCleanupRunnable?.let { dailyCleanupHandler.removeCallbacks(it) }
-        Log.d(TAG, "Fragment destroyed")
+            activity?.runOnUiThread {
+                try {
+                    if (isAdded && context != null) {
+                        Toast.makeText(requireContext(), message, duration).show()
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error showing toast on UI thread", e)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in showSafeToast", e)
+        }
     }
 }

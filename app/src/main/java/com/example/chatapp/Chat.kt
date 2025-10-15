@@ -13,6 +13,9 @@ data class Chat(
     val createdAt: Long = System.currentTimeMillis(),
     val lastMessageSenderId: String? = null,
     val lastMessageSenderName: String? = null,
-    val lastMessageText: String? = null
+    val lastMessageText: String? = null,
 
+    val avatarUrl: String? = null,
+    val lastMessageTime: Long? = null,
+    val messages: Map<String, Message>? = null
 )

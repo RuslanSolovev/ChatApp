@@ -21,6 +21,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 
 class FeedFragment : Fragment() {
 
@@ -32,10 +33,20 @@ class FeedFragment : Fragment() {
 
     private var hasFetchedExternalNewsOnThisResume = false
     private var fetchJob: Job? = null
-    private var isFirstLoad = true // Флаг первого открытия
+    private var isFirstLoad = true
+    private var isLoading = false
+
+    // НОВЫЕ ПЕРЕМЕННЫЕ ДЛЯ КЭШИРОВАНИЯ
+    private var lastLoadTime: Long = 0
+    private var isFragmentVisible = false
+    private var shouldReloadOnResume = false
+    private val CACHE_DURATION = 5 * 60 * 1000L // 5 минут кэширования
+    private val FORCE_RELOAD_DURATION = 10 * 60 * 1000L // 10 минут для принудительной перезагрузки
+    private var currentNewsCount = 0
 
     companion object {
         private const val TAG = "FeedFragment"
+        private const val LOADING_DELAY = 500L
     }
 
     override fun onCreateView(
@@ -54,27 +65,42 @@ class FeedFragment : Fragment() {
 
         setupRecyclerView()
         setupSwipeRefresh()
-        loadNews()
         setupFab()
 
-        binding.progressBar.visibility = View.VISIBLE
+        // Проверяем, нужно ли загружать заново или использовать кэш
+        if (shouldReloadFromScratch()) {
+            Log.d(TAG, "Loading news from scratch")
+            binding.progressBar.visibility = View.VISIBLE
+            loadNewsOptimized()
+        } else {
+            Log.d(TAG, "Using cached data, only background refresh")
+            // Данные уже есть в адаптере, просто тихое обновление
+            loadCachedNewsWithBackgroundRefresh()
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        Log.d(TAG, "onResume: called")
+        Log.d(TAG, "onResume: called, isFragmentVisible: $isFragmentVisible, lastLoad: ${if (lastLoadTime == 0L) "never" else "${(System.currentTimeMillis() - lastLoadTime) / 1000} sec ago"}")
 
-        if (!hasFetchedExternalNewsOnThisResume) {
-            Log.d(TAG, "onResume: Initiating fetchExternalNews")
-            fetchExternalNews()
+        isFragmentVisible = true
+
+        if (!hasFetchedExternalNewsOnThisResume && !isFirstLoad) {
+            Log.d(TAG, "onResume: Background refresh only")
+            lifecycleScope.launch {
+                refreshNewsQuietly()
+            }
             hasFetchedExternalNewsOnThisResume = true
         } else {
-            Log.d(TAG, "onResume: External news already fetched for this session.")
             binding.progressBar.visibility = View.GONE
+        }
 
-            // Если это не первая загрузка, просто скроллим к началу
-            if (!isFirstLoad) {
-                scrollToTop()
+        // Если был запрос на перезагрузку при возвращении
+        if (shouldReloadOnResume) {
+            Log.d(TAG, "onResume: Performing requested reload")
+            shouldReloadOnResume = false
+            lifecycleScope.launch {
+                reloadIfNeeded()
             }
         }
 
@@ -83,13 +109,64 @@ class FeedFragment : Fragment() {
 
     override fun onPause() {
         super.onPause()
+        Log.d(TAG, "onPause: fragment becoming invisible")
+        isFragmentVisible = false
         fetchJob?.cancel()
+        isLoading = false
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
         fetchJob?.cancel()
         _binding = null
+    }
+
+    /**
+     * Определяет, нужно ли загружать данные с нуля
+     */
+    private fun shouldReloadFromScratch(): Boolean {
+        return isFirstLoad ||
+                lastLoadTime == 0L ||
+                System.currentTimeMillis() - lastLoadTime > FORCE_RELOAD_DURATION ||
+                !::newsAdapter.isInitialized ||
+                newsAdapter.itemCount == 0
+    }
+
+    /**
+     * Загрузка с использованием кэшированных данных + фоновая синхронизация
+     */
+    private fun loadCachedNewsWithBackgroundRefresh() {
+        binding.progressBar.visibility = View.GONE
+
+        // Если в адаптере уже есть данные, просто запускаем фоновое обновление
+        if (::newsAdapter.isInitialized && newsAdapter.itemCount > 0) {
+            Log.d(TAG, "loadCachedNewsWithBackgroundRefresh: Using existing ${newsAdapter.itemCount} items")
+            updateUIState(false)
+            lifecycleScope.launch {
+                refreshNewsQuietly()
+            }
+        } else {
+            // Если данных нет, загружаем как обычно
+            binding.progressBar.visibility = View.VISIBLE
+            loadNewsOptimized()
+        }
+    }
+
+    /**
+     * Перезагружает данные только если прошло достаточно времени
+     */
+    private suspend fun reloadIfNeeded() {
+        val timeSinceLastLoad = System.currentTimeMillis() - lastLoadTime
+        if (timeSinceLastLoad > CACHE_DURATION) {
+            Log.d(TAG, "reloadIfNeeded: Cache expired, reloading (${timeSinceLastLoad/1000} sec old)")
+            refreshNewsWithProgress()
+        } else {
+            Log.d(TAG, "reloadIfNeeded: Cache still fresh (${timeSinceLastLoad/1000} sec old)")
+            // Показываем сообщение, что данные актуальны
+            withContext(Dispatchers.Main) {
+                showMessage("Новости актуальны")
+            }
+        }
     }
 
     private fun setupRecyclerView() {
@@ -107,12 +184,10 @@ class FeedFragment : Fragment() {
             adapter = newsAdapter
             setHasFixedSize(true)
 
-            // ПРОСТЕЙШАЯ логика скролла - только FAB
             addOnScrollListener(object : RecyclerView.OnScrollListener() {
                 override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
                     super.onScrolled(recyclerView, dx, dy)
 
-                    // ТОЛЬКО FAB логика - больше ничего
                     if (dy > 10) {
                         binding.fabAddNews.hide()
                     } else if (dy < -10) {
@@ -120,6 +195,131 @@ class FeedFragment : Fragment() {
                     }
                 }
             })
+        }
+    }
+
+    /**
+     * Оптимизированная загрузка новостей - сначала локальные, потом внешние
+     */
+    private fun loadNewsOptimized() {
+        lifecycleScope.launch {
+            try {
+                // Шаг 1: Быстрая загрузка локальных новостей
+                loadLocalNewsFast()
+
+                // Шаг 2: Фоновая загрузка внешних новостей с задержкой
+                delay(LOADING_DELAY)
+                loadExternalNewsInBackground()
+
+                lastLoadTime = System.currentTimeMillis()
+                currentNewsCount = newsAdapter.itemCount
+
+            } catch (e: Exception) {
+                Log.e(TAG, "loadNewsOptimized: Error", e)
+                withContext(Dispatchers.Main) {
+                    updateUIState(true)
+                    showMessage("Ошибка загрузки новостей")
+                }
+            }
+        }
+    }
+
+    private suspend fun loadLocalNewsFast() {
+        try {
+            newsRepository.getNewsFlow().collectLatest { news ->
+                withContext(Dispatchers.Main) {
+                    // Обновляем адаптер только если данных нет или они устарели
+                    if (newsAdapter.itemCount == 0 || shouldUpdateAdapter(news)) {
+                        newsAdapter.submitList(news.toMutableList()) {
+                            updateUIState(news.isEmpty())
+                            binding.progressBar.visibility = View.GONE
+                            currentNewsCount = news.size
+                            Log.d(TAG, "loadLocalNewsFast: Loaded ${news.size} local items")
+                        }
+                    } else {
+                        binding.progressBar.visibility = View.GONE
+                        Log.d(TAG, "loadLocalNewsFast: Using cached data, ${newsAdapter.itemCount} items")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "loadLocalNewsFast: Error", e)
+            withContext(Dispatchers.Main) {
+                binding.progressBar.visibility = View.GONE
+                updateUIState(true)
+            }
+        }
+    }
+
+    /**
+     * Проверяет, нужно ли обновлять адаптер новыми данными
+     */
+    private fun shouldUpdateAdapter(newNews: List<NewsItem>): Boolean {
+        if (newsAdapter.itemCount != newNews.size) return true
+
+        // Если количество совпадает, проверяем есть ли реально новые новости
+        val currentIds = newsAdapter.currentList.map { it.id }.toSet()
+        val newIds = newNews.map { it.id }.toSet()
+
+        return currentIds != newIds || System.currentTimeMillis() - lastLoadTime > CACHE_DURATION
+    }
+
+    private suspend fun loadExternalNewsInBackground() {
+        if (isLoading) return
+
+        isLoading = true
+        try {
+            Log.d(TAG, "loadExternalNewsInBackground: Starting background fetch")
+
+            val newNews = withContext(Dispatchers.IO) {
+                newsFetcher.fetchExternalNews()
+            }
+
+            withContext(Dispatchers.Main) {
+                if (newNews.isNotEmpty()) {
+                    newsAdapter.addNewsToTop(newNews)
+                    lastLoadTime = System.currentTimeMillis()
+                    currentNewsCount = newsAdapter.itemCount
+                    Log.d(TAG, "loadExternalNewsInBackground: Added ${newNews.size} new items, total: $currentNewsCount")
+
+                    if (isFirstLoad) {
+                        showMessage("Добавлено ${newNews.size} новых новостей")
+                    } else {
+
+                    }
+                } else {
+                    Log.d(TAG, "loadExternalNewsInBackground: No new news")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "loadExternalNewsInBackground: Error", e)
+        } finally {
+            isLoading = false
+        }
+    }
+
+    private suspend fun refreshNewsQuietly() {
+        if (isLoading) return
+
+        try {
+            Log.d(TAG, "refreshNewsQuietly: Silent refresh")
+
+            val newNews = withContext(Dispatchers.IO) {
+                newsFetcher.fetchExternalNews()
+            }
+
+            withContext(Dispatchers.Main) {
+                if (newNews.isNotEmpty()) {
+                    newsAdapter.addNewsToTop(newNews)
+                    lastLoadTime = System.currentTimeMillis()
+                    currentNewsCount = newsAdapter.itemCount
+                    Log.d(TAG, "refreshNewsQuietly: Added ${newNews.size} items silently, total: $currentNewsCount")
+                } else {
+                    Log.d(TAG, "refreshNewsQuietly: No new news in silent refresh")
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "refreshNewsQuietly: Error", e)
         }
     }
 
@@ -155,18 +355,20 @@ class FeedFragment : Fragment() {
     }
 
     private fun updateUIState(isEmpty: Boolean) {
-        if (isEmpty) {
-            binding.rvNews.visibility = View.GONE
-            binding.tvEmpty.visibility = View.VISIBLE
-            binding.tvHint.visibility = View.VISIBLE
-        } else {
-            binding.rvNews.visibility = View.VISIBLE
-            binding.tvEmpty.visibility = View.GONE
-            binding.tvHint.visibility = View.GONE
+        with(binding) {
+            if (isEmpty) {
+                rvNews.visibility = View.GONE
+                tvEmpty.visibility = View.VISIBLE
+                tvHint.visibility = View.VISIBLE
+            } else {
+                rvNews.visibility = View.VISIBLE
+                tvEmpty.visibility = View.GONE
+                tvHint.visibility = View.GONE
+            }
+            progressBar.visibility = View.GONE
+            progressBarBottom.visibility = View.GONE
+            swipeRefreshLayout.isRefreshing = false
         }
-        binding.progressBar.visibility = View.GONE
-        binding.progressBarBottom.visibility = View.GONE
-        binding.swipeRefreshLayout.isRefreshing = false
     }
 
     private fun setupSwipeRefresh() {
@@ -191,8 +393,6 @@ class FeedFragment : Fragment() {
             showNewsDetails(newsItem)
         }
     }
-
-
 
     private fun openExternalLink(url: String) {
         val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
@@ -229,8 +429,9 @@ class FeedFragment : Fragment() {
             .setTitle("Удаление новости")
             .setMessage("Вы уверены, что хотите удалить эту новость?")
             .setPositiveButton("Удалить") { dialog, _ ->
-                newsRepository.deleteNews(newsItem.id)
-                showMessage("Новость удалена")
+                lifecycleScope.launch {
+                    deleteNewsAsync(newsItem.id)
+                }
                 dialog.dismiss()
             }
             .setNegativeButton("Отмена") { dialog, _ ->
@@ -240,14 +441,20 @@ class FeedFragment : Fragment() {
             .show()
     }
 
-    private fun loadNews() {
-        lifecycleScope.launch {
-            newsRepository.getNewsFlow().collectLatest { news ->
-                newsAdapter.submitList(news.toMutableList()) {
-                    updateUIState(news.isEmpty())
-                    Log.d(TAG, "loadNews: Submitted list with ${news.size} items")
-                    binding.progressBar.visibility = View.GONE
-                }
+    private suspend fun deleteNewsAsync(newsId: String) {
+        try {
+            withContext(Dispatchers.IO) {
+                newsRepository.deleteNews(newsId)
+            }
+            withContext(Dispatchers.Main) {
+                showMessage("Новость удалена")
+                // Обновляем счетчик
+                currentNewsCount = newsAdapter.itemCount
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "deleteNewsAsync: Error", e)
+            withContext(Dispatchers.Main) {
+                showMessage("Ошибка удаления новости")
             }
         }
     }
@@ -257,7 +464,6 @@ class FeedFragment : Fragment() {
             (activity as? MainActivity)?.openCreateNewsFragment()
         }
 
-        // Добавляем скролл к началу по клику на FAB
         binding.fabAddNews.setOnLongClickListener {
             scrollToTop()
             showMessage("Прокрутка к началу")
@@ -268,29 +474,35 @@ class FeedFragment : Fragment() {
     }
 
     private fun fetchExternalNews() {
+        if (isLoading) return
+
         fetchJob?.cancel()
+        isLoading = true
 
         fetchJob = lifecycleScope.launch {
             try {
                 Log.d(TAG, "fetchExternalNews: Starting...")
 
-                binding.progressBar.visibility = View.VISIBLE
-                binding.tvHint.visibility = View.GONE
+                withContext(Dispatchers.Main) {
+                    binding.progressBar.visibility = View.VISIBLE
+                    binding.tvHint.visibility = View.GONE
+                }
 
-                val newNews = newsFetcher.fetchExternalNews()
+                val newNews = withContext(Dispatchers.IO) {
+                    newsFetcher.fetchExternalNews()
+                }
 
-                if (newNews.isNotEmpty()) {
-                    Log.d(TAG, "fetchExternalNews: Received ${newNews.size} new news items")
+                withContext(Dispatchers.Main) {
+                    if (newNews.isNotEmpty()) {
+                        Log.d(TAG, "fetchExternalNews: Received ${newNews.size} new news items")
 
-                    withContext(Dispatchers.Main) {
                         if (::newsAdapter.isInitialized) {
                             newsAdapter.addNewsToTop(newNews)
+                            currentNewsCount = newsAdapter.itemCount
                         }
                         showMessage("Добавлено ${newNews.size} новых новостей")
-                    }
-                } else {
-                    Log.d(TAG, "fetchExternalNews: No new news available")
-                    withContext(Dispatchers.Main) {
+                    } else {
+                        Log.d(TAG, "fetchExternalNews: No new news available")
                         showMessage("Новых новостей пока нет")
                     }
                 }
@@ -310,23 +522,84 @@ class FeedFragment : Fragment() {
                         binding.tvHint.visibility = View.VISIBLE
                     }
                 }
+                isLoading = false
             }
         }
     }
 
     private fun showMessage(message: String) {
-        Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+        if (isAdded && !isRemoving) {
+            Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+        }
     }
 
     fun refreshNews() {
         hasFetchedExternalNewsOnThisResume = false
-        fetchExternalNews()
+        lifecycleScope.launch {
+            refreshNewsWithProgress()
+        }
 
         binding.swipeRefreshLayout.postDelayed({
             if (binding.swipeRefreshLayout.isRefreshing) {
                 binding.swipeRefreshLayout.isRefreshing = false
             }
         }, 2000)
+    }
+
+    private suspend fun refreshNewsWithProgress() {
+        try {
+            withContext(Dispatchers.Main) {
+                binding.progressBar.visibility = View.VISIBLE
+            }
+
+            val newNews = withContext(Dispatchers.IO) {
+                newsFetcher.fetchExternalNews()
+            }
+
+            withContext(Dispatchers.Main) {
+                if (newNews.isNotEmpty()) {
+                    newsAdapter.addNewsToTop(newNews)
+                    lastLoadTime = System.currentTimeMillis()
+                    currentNewsCount = newsAdapter.itemCount
+                    showMessage("Обновлено ${newNews.size} новостей")
+                } else {
+                    showMessage("Новых новостей нет")
+                }
+                binding.progressBar.visibility = View.GONE
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "refreshNewsWithProgress: Error", e)
+            withContext(Dispatchers.Main) {
+                binding.progressBar.visibility = View.GONE
+                showMessage("Ошибка обновления")
+            }
+        }
+    }
+
+    /**
+     * Внешний метод для принудительной перезагрузки при возвращении на фрагмент
+     */
+    fun requestReloadOnNextResume() {
+        shouldReloadOnResume = true
+        Log.d(TAG, "requestReloadOnNextResume: Reload scheduled for next resume")
+    }
+
+    /**
+     * Получает информацию о кэше для отладки
+     */
+    fun getCacheInfo(): String {
+        return """
+            FeedFragment Cache Info:
+            ----------------------
+            Last load: ${if (lastLoadTime == 0L) "Never" else "${(System.currentTimeMillis() - lastLoadTime) / 1000} sec ago"}
+            Items in adapter: ${if (::newsAdapter.isInitialized) newsAdapter.itemCount else "N/A"}
+            Current news count: $currentNewsCount
+            Is loading: $isLoading
+            Should reload on resume: $shouldReloadOnResume
+            Fragment visible: $isFragmentVisible
+            Is first load: $isFirstLoad
+            Has fetched this session: $hasFetchedExternalNewsOnThisResume
+        """.trimIndent()
     }
 
     fun getNewsFetcherStats(): String {
@@ -346,9 +619,15 @@ class FeedFragment : Fragment() {
 
     fun forceClearKnownLinks() {
         if (::newsFetcher.isInitialized) {
-            newsFetcher.clearAllKnownLinks()
-            showMessage("Известные ссылки очищены")
-            refreshNews()
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO) {
+                    newsFetcher.clearAllKnownLinks()
+                }
+                withContext(Dispatchers.Main) {
+                    showMessage("Известные ссылки очищены")
+                    refreshNews()
+                }
+            }
         }
     }
 
@@ -359,21 +638,45 @@ class FeedFragment : Fragment() {
             Has fetched this session: $hasFetchedExternalNewsOnThisResume
             Fetch job active: ${fetchJob?.isActive == true}
             Is first load: $isFirstLoad
+            Is loading: $isLoading
+            Last load time: ${if (lastLoadTime == 0L) "Never" else "${(System.currentTimeMillis() - lastLoadTime) / 1000}s ago"}
         """.trimIndent()
     }
 
     fun addTestNews() {
-        val testNews = NewsItem(
-            id = "test_${System.currentTimeMillis()}",
-            content = "Тестовая новость - ${System.currentTimeMillis()}",
-            timestamp = System.currentTimeMillis(),
-            authorId = "test_user",
-            authorName = "Тестовый пользователь",
-            authorAvatarUrl = null,
-            imageUrl = null,
-            isExternal = false
-        )
-        newsAdapter.addNewsItem(testNews)
-        showMessage("Тестовая новость добавлена")
+        lifecycleScope.launch {
+            val testNews = NewsItem(
+                id = "test_${System.currentTimeMillis()}",
+                content = "Тестовая новость - ${System.currentTimeMillis()}",
+                timestamp = System.currentTimeMillis(),
+                authorId = "test_user",
+                authorName = "Тестовый пользователь",
+                authorAvatarUrl = null,
+                imageUrl = null,
+                isExternal = false
+            )
+
+            try {
+                withContext(Dispatchers.IO) {
+                    newsRepository.addNews(testNews)
+                }
+                withContext(Dispatchers.Main) {
+                    showMessage("Тестовая новость добавлена")
+                    currentNewsCount = newsAdapter.itemCount
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "addTestNews: Error", e)
+                withContext(Dispatchers.Main) {
+                    showMessage("Ошибка добавления тестовой новости")
+                }
+            }
+        }
+    }
+
+    /**
+     * Метод для скролла к началу (вызывается из MainActivity)
+     */
+    fun scrollNewsToTop() {
+        scrollToTopIfNeeded()
     }
 }

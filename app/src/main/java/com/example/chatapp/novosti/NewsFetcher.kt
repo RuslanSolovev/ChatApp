@@ -19,8 +19,8 @@ class NewsFetcher(
 ) {
     companion object {
         private const val TAG = "NewsFetcher"
-        private const val RSS_URL = "https://lenta.ru/rss/news"
-        private const val LENTA_LOGO_URL = "https://lenta.ru/favicon.ico"
+        private const val RSS_URL = "https://lenta.ru/rss/news "
+        private const val LENTA_LOGO_URL = "https://lenta.ru/favicon.ico "
         private const val EXTERNAL_NEWS_COLOR = "#FFFFFF"
         private const val TIMEOUT_SECONDS = 15L
         private const val MAX_NEWS_TO_PARSE = 50
@@ -135,7 +135,7 @@ class NewsFetcher(
     suspend fun fetchExternalNews(): List<NewsItem> {
         return withContext(Dispatchers.IO) {
             try {
-                Log.d(TAG, "fetchExternalNews: Starting fetch process...")
+                Log.d(TAG, "fetchExternalNews: Starting async fetch process...")
                 Log.d(TAG, "fetchExternalNews: Currently known links count: ${knownLinksWithTime.size}")
 
                 val request = Request.Builder().url(RSS_URL).build()
@@ -153,66 +153,9 @@ class NewsFetcher(
                     emptyList()
                 }
 
-                Log.d(TAG, "fetchExternalNews: Parsed ${parsedNews.size} news items from RSS.")
+                Log.d(TAG, "fetchExternalNews: Parsed ${parsedNews.size} news items from RSS")
 
-                val currentTime = System.currentTimeMillis()
-                val newNewsToSave = mutableListOf<NewsItem>()
-                var newLinksAdded = 0
-
-                for (newsItem in parsedNews) {
-                    if (newsItem.externalLink != null) {
-                        val normalizedLink = newsItem.externalLink.trim().lowercase()
-
-                        val isDuplicate = knownLinksWithTime.any { (link, _) ->
-                            link.trim().lowercase() == normalizedLink
-                        }
-
-                        if (!isDuplicate) {
-                            newNewsToSave.add(newsItem)
-                            knownLinksWithTime[newsItem.externalLink] = currentTime
-                            newLinksAdded++
-                            Log.d(TAG, "fetchExternalNews: NEW news: ${newsItem.content.take(50)}...")
-                        } else {
-                            knownLinksWithTime[newsItem.externalLink] = currentTime
-                            Log.d(TAG, "fetchExternalNews: DUPLICATE (updating timestamp): ${newsItem.content.take(50)}...")
-                        }
-                    }
-                }
-
-                Log.d(TAG, "fetchExternalNews: Identified ${newNewsToSave.size} new news items to save.")
-                Log.d(TAG, "fetchExternalNews: Added $newLinksAdded new links to known links")
-
-                val resultNews = if (newNewsToSave.isNotEmpty()) {
-                    val styledNews = newNewsToSave.map { news ->
-                        news.copy(
-                            source = "Lenta.ru",
-                            sourceLogoUrl = LENTA_LOGO_URL,
-                            backgroundColor = EXTERNAL_NEWS_COLOR,
-                            id = "ext_${System.currentTimeMillis()}_${news.externalLink.hashCode()}"
-                        )
-                    }
-
-                    Log.d(TAG, "fetchExternalNews: Adding ${styledNews.size} styled news items to repository...")
-
-                    styledNews.forEach { news ->
-                        newsRepository.addNews(news)
-                    }
-
-                    saveKnownLinksToPrefs()
-
-                    if (newLinksAdded > 10) {
-                        cleanupOldLinks()
-                    }
-
-                    styledNews
-                } else {
-                    Log.d(TAG, "fetchExternalNews: No new unique news items to add.")
-                    saveKnownLinksToPrefs()
-                    emptyList()
-                }
-
-                Log.d(TAG, "fetchExternalNews: Fetch process finished. Returning ${resultNews.size} new items")
-                resultNews
+                processAndSaveNews(parsedNews)
 
             } catch (e: SocketTimeoutException) {
                 Log.e(TAG, "fetchExternalNews: Network timeout occurred", e)
@@ -224,6 +167,74 @@ class NewsFetcher(
                 Log.e(TAG, "fetchExternalNews: Unexpected error during fetch", e)
                 emptyList()
             }
+        }
+    }
+
+    private suspend fun processAndSaveNews(parsedNews: List<NewsItem>): List<NewsItem> {
+        val currentTime = System.currentTimeMillis()
+        val newNewsToSave = mutableListOf<NewsItem>()
+        var newLinksAdded = 0
+
+        for (newsItem in parsedNews) {
+            if (newsItem.externalLink != null) {
+                val normalizedLink = newsItem.externalLink.trim().lowercase()
+
+                val isDuplicate = knownLinksWithTime.any { (link, _) ->
+                    link.trim().lowercase() == normalizedLink
+                }
+
+                if (!isDuplicate) {
+                    val styledItem = newsItem.copy(
+                        source = "Lenta.ru",
+                        sourceLogoUrl = LENTA_LOGO_URL,
+                        backgroundColor = EXTERNAL_NEWS_COLOR,
+                        id = "ext_${System.currentTimeMillis()}_${newsItem.externalLink.hashCode()}"
+                    )
+                    newNewsToSave.add(styledItem)
+                    knownLinksWithTime[newsItem.externalLink] = currentTime
+                    newLinksAdded++
+                    Log.d(TAG, "fetchExternalNews: NEW news: ${styledItem.content.take(50)}...")
+                } else {
+                    knownLinksWithTime[newsItem.externalLink] = currentTime
+                    Log.d(TAG, "fetchExternalNews: DUPLICATE (updating timestamp): ${newsItem.content.take(50)}...")
+                }
+            }
+        }
+
+        Log.d(TAG, "fetchExternalNews: Identified ${newNewsToSave.size} new news items to save")
+        Log.d(TAG, "fetchExternalNews: Added $newLinksAdded new links to known links")
+
+        if (newNewsToSave.isNotEmpty()) {
+            // Асинхронное сохранение всех новостей
+            saveNewsToRepository(newNewsToSave)
+
+            // Сохраняем обновлённый список известных ссылок
+            saveKnownLinksToPrefs()
+
+            if (newLinksAdded > 10) {
+                cleanupOldLinks()
+            }
+
+            return newNewsToSave
+        } else {
+            Log.d(TAG, "fetchExternalNews: No new unique news items to add")
+            saveKnownLinksToPrefs()
+            return emptyList()
+        }
+    }
+
+    private suspend fun saveNewsToRepository(newsList: List<NewsItem>) {
+        try {
+            newsList.forEach { news ->
+                try {
+                    newsRepository.addNews(news)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error saving news item: ${news.id}", e)
+                }
+            }
+            Log.d(TAG, "saveNewsToRepository: Successfully added ${newsList.size} news items to repository")
+        } catch (e: Exception) {
+            Log.e(TAG, "saveNewsToRepository: Error saving news batch", e)
         }
     }
 
