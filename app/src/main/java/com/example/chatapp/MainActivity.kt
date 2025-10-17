@@ -30,13 +30,13 @@ import com.example.chatapp.fragments.*
 import com.example.chatapp.location.LocationServiceManager
 import com.example.chatapp.location.LocationUpdateService
 import com.example.chatapp.location.LocationPagerFragment
-import com.example.chatapp.managers.ServiceRestartManager
 import com.example.chatapp.models.User
 import com.example.chatapp.mozgi.ui.CategoriesActivity
 import com.example.chatapp.muzika.ui.MusicMainActivity
 import com.example.chatapp.novosti.CreateNewsFragment
 import com.example.chatapp.novosti.FullScreenImageFragment
 import com.example.chatapp.novosti.NewsItem
+import com.example.chatapp.step.StepCounterApp
 import com.example.chatapp.step.StepCounterFragment
 import com.example.chatapp.step.StepCounterService
 import com.example.chatapp.step.StepCounterServiceWorker
@@ -156,7 +156,8 @@ class MainActivity : AppCompatActivity() {
                 return
             }
 
-            checkAndRestoreServicesAfterCrash()
+            // ЗАПУСКАЕМ ПЕРЕЗАПУСК СЕРВИСОВ ПОСЛЕ КРАША СРАЗУ
+            restartServicesAfterCrash()
 
             binding = ActivityMainBinding.inflate(layoutInflater)
             setContentView(binding.root)
@@ -175,7 +176,6 @@ class MainActivity : AppCompatActivity() {
             // Отложенная инициализация сервисов
             if (savedInstanceState == null && isFirstLaunch) {
                 Log.d(TAG, "onCreate: Первый запуск, проверка разрешений")
-                // Запускаем с небольшой задержкой для стабильности UI
                 handler.postDelayed({
                     checkAndRequestMainPermissions()
                 }, 1000)
@@ -190,6 +190,64 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "Critical error in onCreate", e)
             showErrorAndFinish("Ошибка запуска приложения")
+        }
+    }
+
+    /**
+     * УНИВЕРСАЛЬНЫЙ перезапуск сервисов после краша
+     */
+    private fun restartServicesAfterCrash() {
+        lifecycleScope.launch {
+            try {
+                val prefs = getSharedPreferences("service_prefs", Context.MODE_PRIVATE)
+                val wasCrash = prefs.getBoolean("was_crash", false)
+
+                if (wasCrash) {
+                    Log.w(TAG, "Обнаружен краш приложения, перезапускаем сервисы...")
+
+                    // Используем метод из Application для универсального перезапуска
+                    (application as? StepCounterApp)?.restartServicesAfterCrash()
+
+                    // Сбрасываем флаг краша
+                    prefs.edit().putBoolean("was_crash", false).apply()
+
+                    Log.d(TAG, "Перезапуск сервисов после краша инициирован")
+                } else {
+                    Log.d(TAG, "Краш не обнаружен, стандартный запуск")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка при перезапуске сервисов после краша", e)
+            }
+        }
+    }
+
+    /**
+     * Установка обработчика непойманных исключений
+     */
+    private fun setupExceptionHandler() {
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            try {
+                // Сохраняем информацию о краше и состоянии сервисов
+                val prefs = getSharedPreferences("service_prefs", Context.MODE_PRIVATE)
+                val editor = prefs.edit()
+
+                // Сохраняем текущее состояние сервисов перед крашем
+                val stepApp = application as? StepCounterApp
+                editor.putBoolean("step_service_active", stepApp?.getServiceState("step") == true)
+                editor.putBoolean("location_tracking_active", stepApp?.getServiceState("location") == true)
+                editor.putBoolean("was_crash", true)
+                editor.putLong("last_crash_time", System.currentTimeMillis())
+                editor.apply()
+
+                Log.e(TAG, "Uncaught exception, saving crash state", throwable)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in exception handler", e)
+            } finally {
+                // Вызываем стандартный обработчик
+                defaultHandler?.uncaughtException(thread, throwable)
+            }
         }
     }
 
@@ -281,57 +339,6 @@ class MainActivity : AppCompatActivity() {
             proceedWithMainInitialization()
         }
     }
-
-
-
-
-
-    private fun checkAndRestoreServicesAfterCrash() {
-        lifecycleScope.launch {
-            try {
-                val prefs = getSharedPreferences("service_prefs", Context.MODE_PRIVATE)
-                val wasCrash = prefs.getBoolean("was_crash", false)
-
-                if (wasCrash) {
-                    Log.w(TAG, "App crashed previously, restoring services...")
-                    ServiceRestartManager.restartAllServices(this@MainActivity)
-
-                    // Сбрасываем флаг краша
-                    prefs.edit().putBoolean("was_crash", false).apply()
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error checking crash recovery", e)
-            }
-        }
-    }
-
-    /**
-     * Установка обработчика непойманных исключений
-     */
-    private fun setupExceptionHandler() {
-        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
-
-        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            try {
-                // Сохраняем информацию о краше
-                val prefs = getSharedPreferences("service_prefs", Context.MODE_PRIVATE)
-                prefs.edit().putBoolean("was_crash", true).apply()
-
-                Log.e(TAG, "Uncaught exception, saving crash state", throwable)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error in exception handler", e)
-            } finally {
-                // Вызываем стандартный обработчик
-                defaultHandler?.uncaughtException(thread, throwable)
-            }
-        }
-    }
-
-
-
-
-
-
 
     private fun requestNextAdditionalPermission() {
         try {
@@ -500,11 +507,134 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
-        // Упрощенная проверка трекинга
-        if (auth.currentUser != null) {
-            LocationServiceManager.isTrackingActive(this) { isTracking ->
-                Log.d(TAG, "onResume: Статус трекинга - $isTracking")
+
+        Log.d(TAG, "onResume: Activity становится активной, запускаем сервисы...")
+
+        try {
+            // 1. ЗАПУСКАЕМ СЕРВИСЫ КОГДА ACTIVITY АКТИВНА
+            val stepCounterApp = application as? StepCounterApp
+            if (stepCounterApp != null) {
+                Log.d(TAG, "onResume: Запускаем сервисы через StepCounterApp...")
+                stepCounterApp.startServicesFromActivity()
+            } else {
+                Log.e(TAG, "onResume: StepCounterApp is null, запускаем сервисы напрямую")
+                // Fallback: запускаем сервисы напрямую
+                startServicesDirectly()
             }
+
+            // 2. ПРОВЕРЯЕМ СТАТУС ТРЕКИНГА
+            if (auth.currentUser != null) {
+                Log.d(TAG, "onResume: Пользователь авторизован, проверяем статус трекинга...")
+                LocationServiceManager.isTrackingActive(this) { isTracking ->
+                    Log.d(TAG, "onResume: Статус трекинга - $isTracking")
+
+                    // Если трекинг активен но сервис не запущен - запускаем
+                    if (isTracking && !LocationServiceManager.isServiceRunning(this@MainActivity)) {
+                        Log.w(TAG, "onResume: Трекинг активен но сервис не запущен, запускаем...")
+                        startLocationUpdateService()
+                    }
+                }
+
+                // 3. ПРОВЕРЯЕМ СОСТОЯНИЕ СЕРВИСОВ
+                checkServicesState()
+            } else {
+                Log.w(TAG, "onResume: Пользователь не авторизован, сервисы не запускаем")
+            }
+
+            // 4. ОБНОВЛЯЕМ ДАННЫЕ ПОЛЬЗОВАТЕЛЯ
+            loadCurrentUserData()
+
+            Log.d(TAG, "onResume: Все операции завершены успешно")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "onResume: Критическая ошибка при запуске сервисов", e)
+            // Показываем уведомление пользователю
+            showServiceStartErrorNotification()
+        }
+    }
+
+    /**
+     * Прямой запуск сервисов (fallback)
+     */
+    private fun startServicesDirectly() {
+        lifecycleScope.launch {
+            try {
+                Log.d(TAG, "startServicesDirectly: Прямой запуск сервисов...")
+
+                // Проверяем разрешения перед запуском
+                if (hasLocationPermissions()) {
+                    Log.d(TAG, "startServicesDirectly: Разрешения есть, запускаем location service")
+                    startLocationUpdateService()
+                } else {
+                    Log.w(TAG, "startServicesDirectly: Нет разрешений на локацию")
+                }
+
+                if (hasStepPermissions()) {
+                    Log.d(TAG, "startServicesDirectly: Разрешения есть, запускаем step service")
+                    startStepCounterService()
+                } else {
+                    Log.w(TAG, "startServicesDirectly: Нет разрешений на шагомер")
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "startServicesDirectly: Ошибка прямого запуска сервисов", e)
+            }
+        }
+    }
+
+    /**
+     * Проверяет состояние сервисов
+     */
+    private fun checkServicesState() {
+        lifecycleScope.launch {
+            try {
+                val stepCounterApp = application as? StepCounterApp
+                val isStepActive = stepCounterApp?.getServiceState("step") ?: false
+                val isLocationActive = stepCounterApp?.getServiceState("location") ?: false
+
+                Log.d(TAG, "checkServicesState: Step service active: $isStepActive, Location service active: $isLocationActive")
+
+                // Если сервисы должны быть активны но не запущены - пытаемся запустить
+                if (!isStepActive && shouldStepServiceBeActive()) {
+                    Log.w(TAG, "checkServicesState: Step service должен быть активен но не запущен")
+                    startStepCounterService()
+                }
+
+                if (!isLocationActive && shouldLocationServiceBeActive()) {
+                    Log.w(TAG, "checkServicesState: Location service должен быть активен но не запущен")
+                    startLocationUpdateService()
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "checkServicesState: Ошибка проверки состояния сервисов", e)
+            }
+        }
+    }
+
+    /**
+     * Проверяет должен ли быть активен сервис шагомера
+     */
+    private fun shouldStepServiceBeActive(): Boolean {
+        val prefs = getSharedPreferences("service_prefs", Context.MODE_PRIVATE)
+        return prefs.getBoolean("step_service_should_be_active", true) // По умолчанию true
+    }
+
+    /**
+     * Проверяет должен ли быть активен сервис локации
+     */
+    private fun shouldLocationServiceBeActive(): Boolean {
+        val prefs = getSharedPreferences("service_prefs", Context.MODE_PRIVATE)
+        return prefs.getBoolean("location_service_should_be_active", false) // По умолчанию false
+    }
+
+    /**
+     * Показывает уведомление об ошибке запуска сервисов
+     */
+    private fun showServiceStartErrorNotification() {
+        try {
+            Toast.makeText(this, "Ошибка запуска фоновых сервисов", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Log.e(TAG, "showServiceStartErrorNotification: Ошибка показа уведомления", e)
         }
     }
 

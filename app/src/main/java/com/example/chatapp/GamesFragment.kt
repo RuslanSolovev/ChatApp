@@ -11,6 +11,7 @@ import com.example.chatapp.AdditionGameMenuActivity
 import com.example.chatapp.GuessNumberMenuActivity
 import com.example.chatapp.R
 import com.example.chatapp.chess.ChessActivity
+import com.example.chatapp.igra_strotegiy.StrategyGameActivity
 import com.example.chatapp.pamyat.MemoryGameActivity
 
 class GamesFragment : Fragment() {
@@ -47,6 +48,13 @@ class GamesFragment : Fragment() {
 
         cardMemoryGame.setOnClickListener {
             startActivity(Intent(requireContext(), MemoryGameActivity::class.java))
+        }
+
+        // Находим карточку "Стратегия"
+        val cardStrategyGame = view.findViewById<CardView>(R.id.card_strategy_game)
+
+        cardStrategyGame.setOnClickListener {
+            startActivity(Intent(requireContext(), StrategyGameActivity::class.java))
         }
     }
 }

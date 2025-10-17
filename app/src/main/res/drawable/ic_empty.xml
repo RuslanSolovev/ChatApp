@@ -1,0 +1,18 @@
+<!-- res/drawable/ic_empty.xml -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Зелёный фон — трава -->
+    <path
+        android:fillColor="#8BC34A"
+        android:pathData="M0,0h24v24H0z" />
+
+    <!-- Белые точки — травинки -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M4,4L6,6M18,18L20,20M8,16L10,18M16,8L18,10" />
+
+</vector>

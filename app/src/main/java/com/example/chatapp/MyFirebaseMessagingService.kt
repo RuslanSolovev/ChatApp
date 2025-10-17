@@ -5,12 +5,21 @@ import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 
 class MyFirebaseMessagingService : FirebaseMessagingService() {
+
+    companion object {
+        private const val TAG = "MyFirebaseMessaging"
+    }
+
     override fun onNewToken(token: String) {
-        Log.d("FCM_TOKEN", "Refreshed token: $token")
+        Log.d(TAG, "Refreshed FCM token: $token")
         // OneSignal автоматически обрабатывает токен
+        // Не нужно делать ничего дополнительного
     }
 
     override fun onMessageReceived(remoteMessage: RemoteMessage) {
-        // Пустая реализация - OneSignal будет обрабатывать уведомления
+        Log.d(TAG, "Received FCM message from: ${remoteMessage.from}")
+
+        // OneSignal будет обрабатывать уведомления
+        // Эта реализация оставлена пустой чтобы избежать дублирования
     }
 }

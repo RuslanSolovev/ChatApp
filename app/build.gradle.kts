@@ -139,8 +139,13 @@ dependencies {
     // Yandex MapKit
     implementation("com.yandex.android:maps.mobile:4.5.1-full")
 
+    implementation("org.danilopianini:gson-extras:0.2.1")
+
     // OneSignal
     implementation("com.onesignal:OneSignal:[4.8.5, 4.99.99]")
+
+    implementation ("com.google.code.gson:gson:2.10.1")
+
     // PhotoView
     implementation("com.github.chrisbanes:PhotoView:2.3.0")
     // Glide

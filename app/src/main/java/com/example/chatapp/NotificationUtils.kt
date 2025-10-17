@@ -1,6 +1,7 @@
 package com.example.chatapp.utils
 
 import android.content.Context
+import android.os.Handler
 import android.util.Log
 import com.example.chatapp.NotificationRequest
 import com.example.chatapp.api.RetrofitInstance
@@ -19,14 +20,13 @@ object NotificationUtils {
     private const val TAG = "NotificationUtils"
 
     // Используйте реальные значения из панели OneSignal
-    private const val ONESIGNAL_APP_ID = "0083de8f-7ca0-4824-ac88-9c037278237e" // Из панели OneSignal
-    // ОБЯЗАТЕЛЬНО обновите на ваш НОВЫЙ ключ!
-    private const val REST_API_KEY = "os_v2_app_acb55d34ubecjleitqbxe6bdp3mc7ojm7hjujbeirfw6zvgcpcsks5bjjiq7xcwuqkqg4ma2abp3nzdfcvjjwibtirx6d4vgr4wmyya"
+    private const val ONESIGNAL_APP_ID = "0083de8f-7ca0-4824-ac88-9c037278237e"
+
+    // ВАЖНО: Обновите на ваш реальный REST API Key из OneSignal
+    private const val REST_API_KEY = "YOUR_REST_API_KEY_HERE" // ЗАМЕНИТЕ НА РЕАЛЬНЫЙ КЛЮЧ!
 
     /**
-     * Получает Player ID от OneSignal SDK и сохраняет его в Firebase Realtime Database
-     * для текущего авторизованного пользователя.
-     * Должен вызываться после успешной инициализации OneSignal и Firebase Auth.
+     * Сохраняет Player ID в Firebase с защитой от дублирования
      */
     fun saveCurrentUserOneSignalIdToDatabase(context: Context) {
         val currentUserId = FirebaseAuth.getInstance().currentUser?.uid
@@ -36,7 +36,21 @@ object NotificationUtils {
         }
 
         try {
-            // Проверяем, доступен ли класс OneSignal (на случай, если SDK не подключен правильно)
+            // Отложенная проверка чтобы избежать блокировки
+            Handler().postDelayed({
+                getOneSignalIdSafely(currentUserId)
+            }, 1000)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Unexpected error while scheduling OneSignal ID save", e)
+        }
+    }
+
+    /**
+     * Безопасное получение OneSignal ID
+     */
+    private fun getOneSignalIdSafely(userId: String) {
+        try {
             val oneSignalClass = Class.forName("com.onesignal.OneSignal")
 
             // Пытаемся получить DeviceState (для новых версий OneSignal 4.x)
@@ -49,176 +63,158 @@ object NotificationUtils {
                     val oneSignalId = getUserIdMethod.invoke(deviceState) as? String
 
                     if (!oneSignalId.isNullOrEmpty()) {
-                        saveIdToFirebase(currentUserId, oneSignalId)
+                        saveIdToFirebase(userId, oneSignalId)
                         return
-                    } else {
-                        Log.w(TAG, "OneSignal UserId is null or empty for user $currentUserId")
                     }
-                } else {
-                    Log.w(TAG, "OneSignal DeviceState is null for user $currentUserId")
                 }
             } catch (e1: Exception) {
-                Log.d(TAG, "Method getDeviceState not found or failed for user $currentUserId, trying getPermissionSubscriptionState", e1)
-
-                // Пытаемся получить PermissionSubscriptionState (для старых версий OneSignal 3.x)
-                try {
-                    val getPermissionSubscriptionStateMethod = oneSignalClass.getMethod("getPermissionSubscriptionState")
-                    val permissionState = getPermissionSubscriptionStateMethod.invoke(null)
-
-                    if (permissionState != null) {
-                        val getSubscriptionStatusMethod = permissionState.javaClass.getMethod("getSubscriptionStatus")
-                        val subscriptionStatus = getSubscriptionStatusMethod.invoke(permissionState)
-
-                        if (subscriptionStatus != null) {
-                            val getUserIdMethod = subscriptionStatus.javaClass.getMethod("getUserId")
-                            val oneSignalId = getUserIdMethod.invoke(subscriptionStatus) as? String
-
-                            if (!oneSignalId.isNullOrEmpty()) {
-                                saveIdToFirebase(currentUserId, oneSignalId)
-                                return
-                            } else {
-                                Log.w(TAG, "OneSignal UserId from SubscriptionStatus is null or empty for user $currentUserId")
-                            }
-                        } else {
-                            Log.w(TAG, "OneSignal SubscriptionStatus is null for user $currentUserId")
-                        }
-                    } else {
-                        Log.w(TAG, "OneSignal PermissionSubscriptionState is null for user $currentUserId")
-                    }
-                } catch (e2: Exception) {
-                    Log.e(TAG, "Failed to get OneSignal ID using both methods for user $currentUserId", e2)
-                }
+                Log.d(TAG, "Method getDeviceState failed, trying legacy method")
             }
+
+            // Legacy метод для старых версий
+            try {
+                val getPermissionSubscriptionStateMethod = oneSignalClass.getMethod("getPermissionSubscriptionState")
+                val permissionState = getPermissionSubscriptionStateMethod.invoke(null)
+
+                if (permissionState != null) {
+                    val getSubscriptionStatusMethod = permissionState.javaClass.getMethod("getSubscriptionStatus")
+                    val subscriptionStatus = getSubscriptionStatusMethod.invoke(permissionState)
+
+                    if (subscriptionStatus != null) {
+                        val getUserIdMethod = subscriptionStatus.javaClass.getMethod("getUserId")
+                        val oneSignalId = getUserIdMethod.invoke(subscriptionStatus) as? String
+
+                        if (!oneSignalId.isNullOrEmpty()) {
+                            saveIdToFirebase(userId, oneSignalId)
+                            return
+                        }
+                    }
+                }
+            } catch (e2: Exception) {
+                Log.e(TAG, "Both OneSignal ID methods failed", e2)
+            }
+
+            Log.w(TAG, "Could not retrieve OneSignal ID for user $userId")
+
         } catch (e: ClassNotFoundException) {
-            Log.e(TAG, "OneSignal SDK not found. Please make sure it's added to your project dependencies.", e)
+            Log.e(TAG, "OneSignal SDK not found", e)
         } catch (e: Exception) {
-            Log.e(TAG, "Unexpected error while getting OneSignal ID for user $currentUserId", e)
+            Log.e(TAG, "Unexpected error while getting OneSignal ID", e)
         }
     }
 
     /**
-     * Сохраняет полученный OneSignal ID в Firebase.
+     * Сохраняет полученный OneSignal ID в Firebase с проверкой
      */
     private fun saveIdToFirebase(userId: String, oneSignalId: String) {
         val database = FirebaseDatabase.getInstance().reference
-        // Проверяем, отличается ли новый ID от существующего
+
         database.child("users").child(userId).child("oneSignalId")
             .get()
             .addOnSuccessListener { snapshot ->
                 val currentId = snapshot.getValue(String::class.java)
                 if (currentId != oneSignalId) {
-                    // Если ID новый или отличается, обновляем его в базе данных
                     database.child("users").child(userId).child("oneSignalId")
                         .setValue(oneSignalId)
                         .addOnSuccessListener {
                             Log.d(TAG, "OneSignal ID ($oneSignalId) успешно сохранен для пользователя $userId")
-                            LogUtils.d("OneSignal ID ($oneSignalId) успешно сохранен для пользователя $userId")
                         }
                         .addOnFailureListener { e ->
                             Log.e(TAG, "Ошибка сохранения OneSignal ID для пользователя $userId", e)
-                            LogUtils.e("Ошибка сохранения OneSignal ID для пользователя $userId", e)
                         }
                 } else {
-                    Log.d(TAG, "OneSignal ID для пользователя $userId уже актуален ($oneSignalId)")
-                    LogUtils.d("OneSignal ID для пользователя $userId уже актуален ($oneSignalId)")
+                    Log.d(TAG, "OneSignal ID для пользователя $userId уже актуален")
                 }
             }
             .addOnFailureListener { e ->
-                Log.e(TAG, "Ошибка проверки текущего OneSignal ID для пользователя $userId", e)
-                LogUtils.e("Ошибка проверки текущего OneSignal ID для пользователя $userId", e)
-                // В случае ошибки чтения все равно пытаемся записать
+                Log.e(TAG, "Ошибка проверки текущего OneSignal ID", e)
+                // Резервная запись
                 database.child("users").child(userId).child("oneSignalId")
                     .setValue(oneSignalId)
                     .addOnFailureListener { e2 ->
-                        Log.e(TAG, "Ошибка сохранения OneSignal ID (резервная попытка) для пользователя $userId", e2)
-                        LogUtils.e("Ошибка сохранения OneSignal ID (резервная попытка) для пользователя $userId", e2)
+                        Log.e(TAG, "Резервное сохранение OneSignal ID также не удалось", e2)
                     }
             }
     }
 
     /**
-     * Отправляет философскую цитату текущему пользователю через OneSignal API.
-     *
-     * @param context Контекст приложения.
+     * Отправляет философскую цитату с защитой от ошибок
      */
     fun sendPhilosophyQuoteNotification(context: Context) {
         val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: run {
-            LogUtils.e("Пользователь не авторизован для отправки философской цитаты")
+            Log.e(TAG, "Пользователь не авторизован для отправки философской цитаты")
             return
         }
 
-        // Получаем oneSignalId текущего пользователя из Firebase
+        // Проверяем API ключ
+        if (REST_API_KEY == "YOUR_REST_API_KEY_HERE") {
+            Log.e(TAG, "REST_API_KEY не настроен. Уведомление не отправлено.")
+            return
+        }
+
         FirebaseDatabase.getInstance().reference
             .child("users").child(currentUserId).child("oneSignalId")
             .addListenerForSingleValueEvent(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     val oneSignalId = snapshot.getValue(String::class.java)
                     if (!oneSignalId.isNullOrBlank()) {
-                        try {
-                            val randomQuote = PhilosophyQuotes.getRandomQuote()
-                            val authHeader = "key $REST_API_KEY"
-
-                            val notification = NotificationRequest(
-                                app_id = ONESIGNAL_APP_ID,
-                                include_player_ids = listOf(oneSignalId),
-                                contents = mapOf("en" to randomQuote.text),
-                                headings = mapOf("en" to "💭 Мудрая мысль от ${randomQuote.author}"),
-                                android_channel_id = "292588fb-8a77-4b57-8566-b8bb9552ff68",
-                                small_icon = "res://drawable/ic_notification",
-                                data = mapOf(
-                                    "type" to "philosophy_quote",
-                                    "author" to randomQuote.author
-                                )
-                            )
-
-                            LogUtils.d("Отправка философской цитаты пользователю $currentUserId ($oneSignalId): ${randomQuote.text}")
-
-                            val call = RetrofitInstance.oneSignalApi.sendNotification(
-                                authHeader,
-                                notification
-                            )
-                            call.enqueue(object : Callback<ResponseBody> {
-                                override fun onResponse(
-                                    call: Call<ResponseBody>,
-                                    response: Response<ResponseBody>
-                                ) {
-                                    if (response.isSuccessful) {
-                                        LogUtils.d("Философская цитата успешно отправлена пользователю $currentUserId")
-                                    } else {
-                                        LogUtils.e("Ошибка отправки философской цитаты пользователю $currentUserId: ${response.code()}")
-                                        response.errorBody()?.string()?.let {
-                                            LogUtils.e("Текст ошибки: $it")
-                                        }
-                                    }
-                                }
-
-                                override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
-                                    LogUtils.e("Сетевая ошибка при отправке философской цитаты пользователю $currentUserId: ${t.message}", t)
-                                }
-                            })
-
-                        } catch (e: Exception) {
-                            LogUtils.e("Ошибка создания уведомления с философской цитатой для пользователя $currentUserId", e)
-                        }
+                        sendQuoteNotification(oneSignalId, currentUserId)
                     } else {
-                        LogUtils.e("OneSignal ID пуст для пользователя $currentUserId. Философская цитата не отправлена.")
+                        Log.e(TAG, "OneSignal ID пуст для пользователя $currentUserId")
                     }
                 }
 
                 override fun onCancelled(error: DatabaseError) {
-                    LogUtils.e("Ошибка получения OneSignal ID для пользователя $currentUserId при отправке философской цитаты: ${error.message}")
+                    Log.e(TAG, "Ошибка получения OneSignal ID: ${error.message}")
                 }
             })
     }
 
     /**
-     * Отправляет push-уведомление о новом сообщении в чате через OneSignal API.
-     *
-     * @param context Контекст приложения.
-     * @param userId UserID получателя уведомления.
-     * @param messageText Основной текст уведомления (текст сообщения).
-     * @param senderName Имя отправителя сообщения.
-     * @param chatId ID чата (передается в данных уведомления).
+     * Отправка уведомления с цитатой
+     */
+    private fun sendQuoteNotification(oneSignalId: String, userId: String) {
+        try {
+            val randomQuote = PhilosophyQuotes.getRandomQuote()
+            val authHeader = "key $REST_API_KEY"
+
+            val notification = NotificationRequest(
+                app_id = ONESIGNAL_APP_ID,
+                include_player_ids = listOf(oneSignalId),
+                contents = mapOf("en" to randomQuote.text),
+                headings = mapOf("en" to "💭 Мудрая мысль от ${randomQuote.author}"),
+                android_channel_id = "292588fb-8a77-4b57-8566-b8bb9552ff68",
+                small_icon = "ic_notification",
+                data = mapOf(
+                    "type" to "philosophy_quote",
+                    "author" to randomQuote.author
+                )
+            )
+
+            Log.d(TAG, "Отправка философской цитаты пользователю $userId")
+
+            val call = RetrofitInstance.oneSignalApi.sendNotification(authHeader, notification)
+            call.enqueue(object : Callback<ResponseBody> {
+                override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
+                    if (response.isSuccessful) {
+                        Log.d(TAG, "Философская цитата успешно отправлена")
+                    } else {
+                        Log.e(TAG, "Ошибка отправки цитаты: ${response.code()}")
+                    }
+                }
+
+                override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
+                    Log.e(TAG, "Сетевая ошибка при отправке цитаты: ${t.message}")
+                }
+            })
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка создания уведомления с цитатой", e)
+        }
+    }
+
+    /**
+     * Отправляет уведомление о новом сообщении
      */
     fun sendChatNotification(
         context: Context,
@@ -227,7 +223,10 @@ object NotificationUtils {
         senderName: String,
         chatId: String
     ) {
-        val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        if (REST_API_KEY == "YOUR_REST_API_KEY_HERE") {
+            Log.e(TAG, "REST_API_KEY не настроен. Уведомление не отправлено.")
+            return
+        }
 
         FirebaseDatabase.getInstance().reference
             .child("users").child(userId).child("oneSignalId")
@@ -235,72 +234,66 @@ object NotificationUtils {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     val oneSignalId = snapshot.getValue(String::class.java)
                     if (!oneSignalId.isNullOrBlank()) {
-                        try {
-                            val authHeader = "key $REST_API_KEY"
-
-                            val notification = NotificationRequest(
-                                app_id = ONESIGNAL_APP_ID,
-                                include_player_ids = listOf(oneSignalId),
-                                contents = mapOf("en" to messageText),
-                                headings = mapOf("en" to "Новое сообщение от $senderName"),
-                                android_channel_id = "292588fb-8a77-4b57-8566-b8bb9552ff68",
-                                small_icon = "res://drawable/ic_notification", // Используйте ресурс Android
-                                data = mapOf(
-                                    "type" to "chat_message", // Тип уведомления
-                                    "chatId" to chatId,
-                                    "senderId" to currentUserId,
-                                    "senderName" to senderName
-                                )
-                            )
-
-                            LogUtils.d("Sending OneSignal notification to $userId ($oneSignalId): $notification")
-
-                            val call = RetrofitInstance.oneSignalApi.sendNotification(
-                                authHeader,
-                                notification
-                            )
-                            call.enqueue(object : Callback<ResponseBody> {
-                                override fun onResponse(
-                                    call: Call<ResponseBody>,
-                                    response: Response<ResponseBody>
-                                ) {
-                                    if (response.isSuccessful) {
-                                        LogUtils.d("Уведомление о сообщении успешно отправлено пользователю $userId ($oneSignalId)")
-                                    } else {
-                                        LogUtils.e("Ошибка отправки уведомления о сообщении пользователю $userId ($oneSignalId): ${response.code()}")
-                                        response.errorBody()?.string()?.let {
-                                            LogUtils.e("Текст ошибки: $it")
-                                        }
-                                    }
-                                }
-
-                                override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
-                                    LogUtils.e("Сетевая ошибка при отправке уведомления о сообщении пользователю $userId ($oneSignalId): ${t.message}", t)
-                                }
-                            })
-
-                        } catch (e: Exception) {
-                            LogUtils.e("Ошибка создания уведомления о сообщении для пользователя $userId", e)
-                        }
+                        sendChatNotificationInternal(oneSignalId, userId, messageText, senderName, chatId)
                     } else {
-                        LogUtils.e("OneSignal ID пуст для пользователя $userId. Уведомление о сообщении не отправлено.")
+                        Log.e(TAG, "OneSignal ID пуст для пользователя $userId")
                     }
                 }
 
                 override fun onCancelled(error: DatabaseError) {
-                    LogUtils.e("Ошибка получения OneSignal ID для пользователя $userId при отправке сообщения: ${error.message}")
+                    Log.e(TAG, "Ошибка получения OneSignal ID: ${error.message}")
                 }
             })
     }
 
+    private fun sendChatNotificationInternal(
+        oneSignalId: String,
+        userId: String,
+        messageText: String,
+        senderName: String,
+        chatId: String
+    ) {
+        try {
+            val authHeader = "key $REST_API_KEY"
+
+            val notification = NotificationRequest(
+                app_id = ONESIGNAL_APP_ID,
+                include_player_ids = listOf(oneSignalId),
+                contents = mapOf("en" to messageText),
+                headings = mapOf("en" to "Новое сообщение от $senderName"),
+                android_channel_id = "292588fb-8a77-4b57-8566-b8bb9552ff68",
+                small_icon = "ic_notification",
+                data = mapOf(
+                    "type" to "chat_message",
+                    "chatId" to chatId,
+                    "senderName" to senderName
+                )
+            )
+
+            Log.d(TAG, "Отправка уведомления о сообщении пользователю $userId")
+
+            val call = RetrofitInstance.oneSignalApi.sendNotification(authHeader, notification)
+            call.enqueue(object : Callback<ResponseBody> {
+                override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
+                    if (response.isSuccessful) {
+                        Log.d(TAG, "Уведомление о сообщении успешно отправлено")
+                    } else {
+                        Log.e(TAG, "Ошибка отправки уведомления: ${response.code()}")
+                    }
+                }
+
+                override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
+                    Log.e(TAG, "Сетевая ошибка при отправке уведомления: ${t.message}")
+                }
+            })
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка создания уведомления о сообщении", e)
+        }
+    }
+
     /**
-     * Отправляет push-уведомление о приглашении в шахматную игру через OneSignal API.
-     *
-     * @param context Контекст приложения.
-     * @param userId UserID получателя уведомления (приглашенного игрока).
-     * @param messageText Основной текст уведомления.
-     * @param inviterName Имя пользователя, отправившего приглашение.
-     * @param gameId ID шахматной игры (для передачи в данные уведомления).
+     * Отправляет уведомление о приглашении в шахматы
      */
     fun sendChessInvitationNotification(
         context: Context,
@@ -309,81 +302,72 @@ object NotificationUtils {
         inviterName: String,
         gameId: String
     ) {
-        val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: return
+        if (REST_API_KEY == "YOUR_REST_API_KEY_HERE") {
+            Log.e(TAG, "REST_API_KEY не настроен. Уведомление не отправлено.")
+            return
+        }
 
-        // Получаем oneSignalId получателя из Firebase
         FirebaseDatabase.getInstance().reference
             .child("users").child(userId).child("oneSignalId")
             .addListenerForSingleValueEvent(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     val oneSignalId = snapshot.getValue(String::class.java)
                     if (!oneSignalId.isNullOrBlank()) {
-                        try {
-                            // Формируем заголовок Authorization
-                            val authHeader = "key $REST_API_KEY"
-
-                            // Создаем объект запроса уведомления
-                            val notification = NotificationRequest(
-                                app_id = ONESIGNAL_APP_ID,
-                                include_player_ids = listOf(oneSignalId), // Отправляем конкретному пользователю
-                                headings = mapOf("en" to "Приглашение в шахматы"), // Заголовок
-                                contents = mapOf("en" to messageText), // Основной текст
-                                // Можно настроить другой канал, если нужно
-                                android_channel_id = "292588fb-8a77-4b57-8566-b8bb9552ff68", // Используйте существующий или создайте новый в OneSignal
-                                small_icon = "res://drawable/ic_notification", // Используйте ресурс Android
-                                // Добавляем данные, которые можно будет получить при открытии уведомления
-                                data = mapOf(
-                                    "type" to "chess_invitation", // Тип уведомления
-                                    "gameId" to gameId,
-                                    "inviterId" to currentUserId,
-                                    "inviterName" to inviterName
-                                )
-                                // Опционально: можно добавить кнопки "Принять"/"Отклонить" через action buttons
-                                // buttons = listOf(
-                                //     mapOf("id" to "accept", "text" to "Принять", "icon" to "res://drawable/ic_check"),
-                                //     mapOf("id" to "decline", "text" to "Отклонить", "icon" to "res://drawable/ic_close")
-                                // )
-                            )
-
-                            LogUtils.d("Отправка OneSignal уведомления о приглашении пользователю $userId ($oneSignalId): $notification")
-
-                            // Отправляем запрос через Retrofit
-                            val call = RetrofitInstance.oneSignalApi.sendNotification(
-                                authHeader,
-                                notification
-                            )
-                            call.enqueue(object : Callback<ResponseBody> {
-                                override fun onResponse(
-                                    call: Call<ResponseBody>,
-                                    response: Response<ResponseBody>
-                                ) {
-                                    if (response.isSuccessful) {
-                                        LogUtils.d("Уведомление о приглашении успешно отправлено пользователю $userId ($oneSignalId)")
-                                    } else {
-                                        LogUtils.e("Ошибка отправки уведомления о приглашении пользователю $userId ($oneSignalId): ${response.code()}")
-                                        response.errorBody()?.string()?.let {
-                                            LogUtils.e("Текст ошибки: $it")
-                                        }
-                                    }
-                                }
-
-                                override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
-                                    LogUtils.e("Сетевая ошибка при отправке уведомления о приглашении пользователю $userId ($oneSignalId): ${t.message}", t)
-                                }
-                            })
-
-                        } catch (e: Exception) {
-                            LogUtils.e("Ошибка создания уведомления о приглашении для пользователя $userId", e)
-                        }
+                        sendChessNotificationInternal(oneSignalId, userId, messageText, inviterName, gameId)
                     } else {
-                        // oneSignalId отсутствует или пуст
-                        LogUtils.e("OneSignal ID пуст для пользователя $userId. Уведомление о приглашении не отправлено.")
+                        Log.e(TAG, "OneSignal ID пуст для пользователя $userId")
                     }
                 }
 
                 override fun onCancelled(error: DatabaseError) {
-                    LogUtils.e("Ошибка получения OneSignal ID для пользователя $userId при отправке приглашения: ${error.message}")
+                    Log.e(TAG, "Ошибка получения OneSignal ID: ${error.message}")
                 }
             })
+    }
+
+    private fun sendChessNotificationInternal(
+        oneSignalId: String,
+        userId: String,
+        messageText: String,
+        inviterName: String,
+        gameId: String
+    ) {
+        try {
+            val authHeader = "key $REST_API_KEY"
+
+            val notification = NotificationRequest(
+                app_id = ONESIGNAL_APP_ID,
+                include_player_ids = listOf(oneSignalId),
+                headings = mapOf("en" to "Приглашение в шахматы"),
+                contents = mapOf("en" to messageText),
+                android_channel_id = "292588fb-8a77-4b57-8566-b8bb9552ff68",
+                small_icon = "ic_notification",
+                data = mapOf(
+                    "type" to "chess_invitation",
+                    "gameId" to gameId,
+                    "inviterName" to inviterName
+                )
+            )
+
+            Log.d(TAG, "Отправка уведомления о приглашении пользователю $userId")
+
+            val call = RetrofitInstance.oneSignalApi.sendNotification(authHeader, notification)
+            call.enqueue(object : Callback<ResponseBody> {
+                override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
+                    if (response.isSuccessful) {
+                        Log.d(TAG, "Уведомление о приглашении успешно отправлено")
+                    } else {
+                        Log.e(TAG, "Ошибка отправки уведомления о приглашении: ${response.code()}")
+                    }
+                }
+
+                override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
+                    Log.e(TAG, "Сетевая ошибка при отправке уведомления о приглашении: ${t.message}")
+                }
+            })
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка создания уведомления о приглашении", e)
+        }
     }
 }

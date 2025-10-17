@@ -1,0 +1,26 @@
+<!-- res/drawable/ic_mine.xml -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Горы -->
+    <path
+        android:fillColor="#8D6E63"
+        android:pathData="M4,16L12,8L20,16" />
+
+    <!-- Вход в шахту -->
+    <path
+        android:fillColor="#4E342E"
+        android:pathData="M10,14h4v4h-4z" />
+
+    <!-- Кирка -->
+    <path
+        android:fillColor="#FF9800"
+        android:pathData="M12,12L14,14M12,12L10,14" />
+    <path
+        android:fillColor="#FF9800"
+        android:pathData="M12,12L12,10" />
+
+</vector>

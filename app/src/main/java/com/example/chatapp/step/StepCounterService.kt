@@ -1,12 +1,6 @@
 package com.example.chatapp.step
 
-import android.app.AlarmManager
-import android.app.Notification
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
-import android.app.Service
-import android.content.ContentValues.TAG
+import android.app.*
 import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
@@ -14,14 +8,12 @@ import android.hardware.Sensor
 import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
-import android.os.Build
-import android.os.IBinder
-import android.os.PowerManager
-import android.os.SystemClock
+import android.os.*
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.chatapp.R
 import com.example.chatapp.activities.MainActivity
+import com.example.chatapp.location.LocationUpdateService.Companion.ACTION_START
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
 import kotlinx.coroutines.*
@@ -33,6 +25,7 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 import kotlin.math.max
+import java.util.concurrent.atomic.AtomicBoolean // <-- Добавляем AtomicBoolean
 
 class StepCounterService : Service(), SensorEventListener {
     private val firebaseDatabaseReference = FirebaseDatabase.getInstance().reference
@@ -46,29 +39,63 @@ class StepCounterService : Service(), SensorEventListener {
     private var lastTotalStepsCount = 0f
     private var lastSyncTime = 0L
     private var scheduledExecutor: ScheduledExecutorService? = null
-    private var lastMilestoneNotified = 0 // Последний отпразднованный рубеж
+    private var lastMilestoneNotified = 0
+
+    // Атомарный флаг для управления состоянием
+    private val isRunning = AtomicBoolean(false) // <-- Добавляем флаг
 
     // Корутин скоуп для фоновых задач сервиса
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     companion object {
+        private const val TAG = "StepCounterService"
         private const val NOTIFICATION_ID = 12345
-        private const val MILESTONE_NOTIFICATION_ID = 12346 // Фиксированный ID для уведомлений о достижениях
+        private const val MILESTONE_NOTIFICATION_ID = 12346
         private const val CHANNEL_ID = "step_counter_channel"
         private const val MILESTONE_CHANNEL_ID = "step_milestone_channel"
         const val ACTION_STEPS_UPDATED = "com.example.chatapp.ACTION_STEPS_UPDATED"
         private const val SYNC_INTERVAL_MINUTES = 5L
         private const val MIN_TIME_BETWEEN_STEPS_MS = 300L
         private const val BOOT_TIME_THRESHOLD_MS = 5000L
-        private const val WAKE_LOCK_TIMEOUT = 10 * 60 * 1000L // 10 minutes
-        private const val MILESTONE_STEP = 1000 // Уведомление каждые 1000 шагов
+        private const val WAKE_LOCK_TIMEOUT = 10 * 60 * 1000L
+        private const val MILESTONE_STEP = 1000
 
         fun startService(context: Context) {
-            val serviceIntent = Intent(context, StepCounterService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(serviceIntent)
-            } else {
-                context.startService(serviceIntent)
+            try {
+                Log.d(TAG, "Starting step counter service...")
+
+                val serviceIntent = Intent(context, StepCounterService::class.java).apply {
+                    action = ACTION_START
+                }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(serviceIntent)
+                } else {
+                    context.startService(serviceIntent)
+                }
+
+                Log.d(TAG, "Step counter service start command sent")
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to start step counter service", e)
+                // Не вызываем saveServiceState(false) здесь, так как это может быть вызвано из ForegroundServiceLauncher
+                // Лучше обработать это в onStartCommand или onCreate
+            }
+        }
+
+        // Метод для сохранения состояния в StepCounterApp
+        private fun saveServiceState(context: Context, isActive: Boolean) {
+            try {
+                (context.applicationContext as? StepCounterApp)?.saveServiceState("step", isActive)
+                Log.d(TAG, "Service state saved via StepCounterApp: step = $isActive")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving service state via StepCounterApp", e)
+                // Резервный способ сохранения
+                val prefs = context.getSharedPreferences("service_prefs", Context.MODE_PRIVATE)
+                prefs.edit().apply {
+                    putBoolean("step_service_active", isActive)
+                    putLong("last_service_state_change", System.currentTimeMillis())
+                    apply()
+                }
             }
         }
     }
@@ -77,61 +104,126 @@ class StepCounterService : Service(), SensorEventListener {
 
     override fun onCreate() {
         super.onCreate()
-        Log.d("StepCounterService", "Сервис создан")
+        Log.d(TAG, "Сервис создан")
 
-        // СОХРАНЯЕМ СОСТОЯНИЕ ЧЕРЕЗ APPLICATION КЛАСС - ВАЖНО ДЛЯ ПЕРЕЗАПУСКА
-        saveServiceState(true)
-
-        val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-        wakeLock = powerManager.newWakeLock(
-            PowerManager.PARTIAL_WAKE_LOCK,
-            "StepCounterService::lock"
-        ).apply {
-            setReferenceCounted(false)
-        }
-
-        sharedPreferences = getSharedPreferences("step_prefs", Context.MODE_PRIVATE)
-        notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        createNotificationChannels()
-        startForeground(NOTIFICATION_ID, createInitialNotification())
-
-        sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
-        stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
-
-        if (stepCounterSensor == null) {
-            Log.e("StepCounterService", "Датчик шагов недоступен")
-            // Даже если датчика нет, сохраняем состояние сервиса
-            saveServiceState(false)
-            stopSelf()
-        } else {
-            sensorManager.registerListener(
-                this,
-                stepCounterSensor,
-                SensorManager.SENSOR_DELAY_NORMAL
+        try {
+            // ИНИЦИАЛИЗИРУЕМ WakeLock
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = powerManager.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "StepCounterService::WakeLock"
             )
-            Log.d("StepCounterService", "Датчик шагов зарегистрирован")
+            wakeLock.setReferenceCounted(false)
+
+            // ЗАХВАТЫВАЕМ WakeLock С ТАЙМАУТОМ
+            if (!wakeLock.isHeld) {
+                wakeLock.acquire(WAKE_LOCK_TIMEOUT)
+                Log.d(TAG, "WakeLock acquired")
+            }
+
+            sharedPreferences = getSharedPreferences("step_prefs", Context.MODE_PRIVATE)
+            notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            createNotificationChannels()
+
+            // ЗАПУСКАЕМ В FOREGROUND СРАЗУ - ЭТО ВАЖНО ДЛЯ ANDROID 12+
+            startForeground(NOTIFICATION_ID, createInitialNotification())
+
+            sensorManager = getSystemService(Context.SENSOR_SERVICE) as SensorManager
+            stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
+
+            if (stepCounterSensor == null) {
+                Log.e(TAG, "Датчик шагов недоступен")
+                showSensorUnavailableNotification()
+                // Останавливаем сервис если датчик недоступен
+                stopSelf()
+                return // Важно выйти, чтобы не продолжать инициализацию
+            } else {
+                // РЕГИСТРИРУЕМ ДАТЧИК БЕЗ ТАЙМАУТА - ПОСТОЯННО
+                val success = sensorManager.registerListener(
+                    this,
+                    stepCounterSensor,
+                    SensorManager.SENSOR_DELAY_NORMAL
+                )
+                if (success) {
+                    Log.d(TAG, "Датчик шагов зарегистрирован ПОСТОЯННО")
+                } else {
+                    Log.e(TAG, "Не удалось зарегистрировать датчик шагов")
+                    showSensorUnavailableNotification()
+                    stopSelf()
+                    return // Важно выйти
+                }
+            }
+
+            // ВОССТАНАВЛИВАЕМ СОСТОЯНИЕ
+            initialStepsCount = sharedPreferences.getFloat("initial_step_count", 0f)
+            lastTotalStepsCount = sharedPreferences.getFloat("last_total_steps", 0f)
+            lastSyncTime = sharedPreferences.getLong("last_sync_time", 0L)
+            lastMilestoneNotified = sharedPreferences.getInt("last_milestone", 0)
+
+            // НЕ запускаем синхронизацию и не устанавливаем флаг здесь
+            // startPeriodicDataSync() // <-- УБРАТЬ ИЗ onCreate
+
+            Log.d(TAG, "Сервис частично инициализирован, ожидаем onStartCommand")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при создании сервиса", e)
+            saveServiceState(this, false)
+            stopSelf()
         }
-
-        initialStepsCount = sharedPreferences.getFloat("initial_step_count", 0f)
-        lastTotalStepsCount = sharedPreferences.getFloat("last_total_steps", 0f)
-        lastSyncTime = sharedPreferences.getLong("last_sync_time", 0L)
-        lastMilestoneNotified = sharedPreferences.getInt("last_milestone", 0)
-
-        startPeriodicDataSync()
-
-        Log.d("StepCounterService", "Сервис полностью инициализирован и запущен")
     }
 
-    /**
-     * Сохраняет состояние сервиса для автоматического перезапуска после перезагрузки
-     */
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d(TAG, "onStartCommand: Сервис получает команду")
+
+        // Устанавливаем флаг ДО выполнения других операций
+        if (isRunning.compareAndSet(false, true)) {
+            Log.d(TAG, "onStartCommand: Запускаем основную логику сервиса")
+            // СОХРАНЯЕМ СОСТОЯНИЕ ЧЕРЕЗ StepCounterApp
+            saveServiceState(this, true)
+
+            startPeriodicDataSync()
+
+            // ОБНОВЛЯЕМ УВЕДОМЛЕНИЕ чтобы показать что сервис активен
+            updateNotificationWithSteps(getTodaySteps())
+
+            // ЗАПУСКАЕМ СИНХРОНИЗАЦИЮ С ЗАДЕРЖКОЙ чтобы избежать ANR
+            serviceScope.launch {
+                delay(5000)
+                forceFullDataSync()
+            }
+        } else {
+            Log.d(TAG, "onStartCommand: Сервис уже запущен")
+            // Если уже запущен, всё равно показываем уведомление, чтобы система не убила сервис
+            startForeground(NOTIFICATION_ID, createInitialNotification())
+            updateNotificationWithSteps(getTodaySteps())
+        }
+
+        return START_STICKY
+    }
+
+    private fun getTodaySteps(): Int {
+        val todayDateKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+        return sharedPreferences.getInt(todayDateKey, 0)
+    }
+
+    private fun showSensorUnavailableNotification() {
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Счетчик шагов")
+            .setContentText("Датчик шагов недоступен")
+            .setSmallIcon(R.drawable.ic_walk)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .build()
+        notificationManager.notify(NOTIFICATION_ID, notification)
+    }
+
+    // Метод для сохранения состояния внутри сервиса
     private fun saveServiceState(isRunning: Boolean) {
         try {
             (application as? StepCounterApp)?.saveServiceState("step", isRunning)
-            Log.d("StepCounterService", "Состояние сервиса сохранено: step = $isRunning")
+            Log.d(TAG, "Состояние сервиса сохранено: step = $isRunning")
         } catch (e: Exception) {
-            Log.e("StepCounterService", "Ошибка сохранения состояния сервиса", e)
-            // Резервное сохранение в SharedPreferences
+            Log.e(TAG, "Ошибка сохранения состояния через StepCounterApp", e)
             val prefs = getSharedPreferences("service_prefs", Context.MODE_PRIVATE)
             prefs.edit().apply {
                 putBoolean("step_service_active", isRunning)
@@ -143,7 +235,6 @@ class StepCounterService : Service(), SensorEventListener {
 
     private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // Основной канал для сервиса
             val serviceChannel = NotificationChannel(
                 CHANNEL_ID,
                 "Счетчик шагов",
@@ -153,9 +244,9 @@ class StepCounterService : Service(), SensorEventListener {
                 setShowBadge(false)
                 enableVibration(false)
                 setSound(null, null)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
 
-            // Канал для мотивационных уведомлений
             val milestoneChannel = NotificationChannel(
                 MILESTONE_CHANNEL_ID,
                 "Достижения в ходьбе",
@@ -165,8 +256,6 @@ class StepCounterService : Service(), SensorEventListener {
                 setShowBadge(true)
                 enableVibration(true)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-                // Устанавливаем легкую вибрацию для уведомлений о достижениях
-                vibrationPattern = longArrayOf(0, 200, 100, 200)
             }
 
             notificationManager.createNotificationChannel(serviceChannel)
@@ -176,7 +265,10 @@ class StepCounterService : Service(), SensorEventListener {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         Log.w(TAG, "onTaskRemoved: Step service removed, scheduling restart...")
+
+        // ПЕРЕЗАПУСКАЕМ СЕРВИС ДАЖЕ НА ANDROID 12+ - МЫ FOREGROUND SERVICE
         scheduleRestart()
+
         super.onTaskRemoved(rootIntent)
     }
 
@@ -193,12 +285,12 @@ class StepCounterService : Service(), SensorEventListener {
             val alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
             alarmManager.set(
                 AlarmManager.ELAPSED_REALTIME,
-                SystemClock.elapsedRealtime() + 3000, // 3 секунды
+                SystemClock.elapsedRealtime() + 5000,
                 restartPendingIntent
             )
-            Log.d("StepCounterService", "Перезапуск запланирован через 3 секунды")
+            Log.d(TAG, "Перезапуск запланирован через 5 секунд")
         } catch (e: Exception) {
-            Log.e("StepCounterService", "Ошибка планирования перезапуска", e)
+            Log.e(TAG, "Ошибка планирования перезапуска", e)
         }
     }
 
@@ -211,12 +303,17 @@ class StepCounterService : Service(), SensorEventListener {
             .setOngoing(true)
             .setShowWhen(false)
             .setOnlyAlertOnce(true)
-            .setCategory(Notification.CATEGORY_SERVICE)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
     }
 
     override fun onSensorChanged(event: SensorEvent?) {
+        // Проверяем флаг isRunning перед обработкой
+        if (!isRunning.get()) {
+            Log.d(TAG, "onSensorChanged: Сервис остановлен, пропускаем")
+            return
+        }
+
         event?.let { sensorEvent ->
             if (sensorEvent.sensor.type == Sensor.TYPE_STEP_COUNTER) {
                 val currentTime = System.currentTimeMillis()
@@ -230,8 +327,13 @@ class StepCounterService : Service(), SensorEventListener {
         }
     }
 
-
     private suspend fun processNewSteps(totalSteps: Float) {
+        // Проверяем флаг isRunning в корутине
+        if (!isRunning.get()) {
+            Log.d(TAG, "processNewSteps: Сервис остановлен, пропускаем")
+            return
+        }
+
         withContext(Dispatchers.IO) {
             try {
                 checkAndResetForNewDay()
@@ -244,7 +346,7 @@ class StepCounterService : Service(), SensorEventListener {
                     abs(systemBootTime - lastBootTime) > BOOT_TIME_THRESHOLD_MS ||
                     totalSteps < lastTotalStepsCount
                 ) {
-                    Log.d("StepCounterService", "Сброс счетчика шагов. Всего: $totalSteps, Последние: $lastTotalStepsCount")
+                    Log.d(TAG, "Сброс счетчика шагов. Всего: $totalSteps")
                     initialStepsCount = totalSteps
                     lastTotalStepsCount = totalSteps
 
@@ -259,27 +361,31 @@ class StepCounterService : Service(), SensorEventListener {
 
                 val stepsDifference = totalSteps - lastTotalStepsCount
                 if (stepsDifference > 0) {
-                    Log.d("StepCounterService", "Обнаружены новые шаги: $stepsDifference")
+                    Log.d(TAG, "Обнаружены новые шаги: $stepsDifference")
                     addStepsToStatistics(stepsDifference.toInt())
                     lastTotalStepsCount = totalSteps
                     sharedPreferences.edit().putFloat("last_total_steps", totalSteps).apply()
 
-                    forceFullDataSync()
+                    // ОБНОВЛЯЕМ УВЕДОМЛЕНИЕ СРАЗУ
+                    updateNotificationWithSteps(getTodaySteps())
                 }
             } catch (e: Exception) {
-                Log.e("StepCounterService", "Ошибка в processNewSteps", e)
+                Log.e(TAG, "Ошибка в processNewSteps", e)
             }
         }
     }
 
     private fun checkAndResetForNewDay() {
+        // Проверяем флаг isRunning перед выполнением
+        if (!isRunning.get()) {
+            Log.d(TAG, "checkAndResetForNewDay: Сервис остановлен, пропускаем")
+            return
+        }
         val calendar = Calendar.getInstance()
         val todayDateKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(calendar.time)
 
         val lastProcessedDate = sharedPreferences.getString("last_processed_date", "")
         if (lastProcessedDate != todayDateKey) {
-            // Сброс счетчика рубежей при новом дне
-            sharedPreferences.edit().putInt("last_milestone", 0).apply()
             lastMilestoneNotified = 0
 
             val currentMonth = SimpleDateFormat("yyyy-MM", Locale.getDefault()).format(Date())
@@ -292,13 +398,19 @@ class StepCounterService : Service(), SensorEventListener {
             sharedPreferences.edit()
                 .putString("last_processed_date", todayDateKey)
                 .putString("last_month", currentMonth)
+                .putInt("last_milestone", 0)
                 .apply()
 
-            Log.d("StepCounterService", "Новый день: $todayDateKey, сброс счетчика рубежей")
+            Log.d(TAG, "Новый день: $todayDateKey, сброс счетчика рубежей")
         }
     }
 
     private fun addStepsToStatistics(newSteps: Int) {
+        // Проверяем флаг isRunning перед выполнением
+        if (!isRunning.get()) {
+            Log.d(TAG, "addStepsToStatistics: Сервис остановлен, пропускаем")
+            return
+        }
         val todayDateKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
         val currentStepsToday = sharedPreferences.getInt(todayDateKey, 0) + newSteps
 
@@ -315,56 +427,44 @@ class StepCounterService : Service(), SensorEventListener {
         // Проверка достижения рубежа
         checkMilestoneAchievement(currentStepsToday)
 
+        // СИНХРОНИЗИРУЕМ С FIREBASE
         serviceScope.launch {
             synchronizeWithFirebase(todayDateKey, currentStepsToday)
         }
     }
 
     private fun checkMilestoneAchievement(currentSteps: Int) {
+        // Проверяем флаг isRunning перед выполнением
+        if (!isRunning.get()) {
+            Log.d(TAG, "checkMilestoneAchievement: Сервис остановлен, пропускаем")
+            return
+        }
         val currentMilestone = (currentSteps / MILESTONE_STEP) * MILESTONE_STEP
 
-        // Проверяем, достигли ли мы нового рубежа (1000, 2000, 3000 и т.д.)
         if (currentMilestone > lastMilestoneNotified && currentMilestone >= MILESTONE_STEP) {
             showMilestoneNotification(currentMilestone)
             lastMilestoneNotified = currentMilestone
             sharedPreferences.edit().putInt("last_milestone", currentMilestone).apply()
-            Log.d("StepCounterService", "Достигнут рубеж: $currentMilestone шагов")
+            Log.d(TAG, "Достигнут рубеж: $currentMilestone шагов")
         }
     }
 
     private fun showMilestoneNotification(milestone: Int) {
-        // ФИЛОСОФСКИЕ МОТИВАЦИОННЫЕ СООБЩЕНИЯ
+        // Проверяем флаг isRunning перед выполнением
+        if (!isRunning.get()) {
+            Log.d(TAG, "showMilestoneNotification: Сервис остановлен, пропускаем")
+            return
+        }
         val messages = arrayOf(
             "«Путь в тысячу шагов начинается с первого» - и вы уже на $milestone! 🏛️",
             "$milestone шагов к мудрости пройдено. Продолжайте движение, философ! 📜",
             "С каждым шагом вы приближаетесь к гармонии. Уже $milestone на пути! ⚖️",
             "Как говорили стоики: «Преодолей себя!» Вы прошли $milestone шагов! 🏔️",
-            "$milestone шагов - это $milestone моментов осознанности. Вы в потоке! 🧘‍♂️",
-            "По Сократу: «Познай себя через движение». Вы на пути - $milestone шагов! 🔍",
-            "Ваши $milestone шагов - это диалог души с телом. Продолжайте беседу! 💭",
-            "Аристотель бы одобрил: $milestone шагов к совершенной форме! 🏛️",
-            "«Бытие определяется движением» - и ваше бытие уже $milestone шагов! 🌌",
-            "Платон улыбнулся бы: $milestone шагов к миру идей через мир тела! ✨",
-            "Стоики гордились бы вашей дисциплиной: $milestone шагов! 💪",
-            "По Конфуцию: «Дорога в тысячу ли начинается с первого шага» - у вас $milestone! 🛣️",
-            "Ваши $milestone шагов - это медитация в движении. Продолжайте! 🧠",
-            "Ницше сказал бы: «Стань тем, кто ты есть!» Через $milestone шагов! 🔥",
-            "$milestone шагов к атараксии - душевному спокойствию через движение! 🌊",
-            "По Гераклиту: «Всё течёт, всё меняется» - и вы прошли $milestone шагов! 🌊",
-            "Сенека бы отметил: $milestone шагов к добродетели через заботу о себе! 🎭",
-            "Ваши $milestone шагов - это воплощение «Познай самого себя»! 🏺",
-            "По Лао-цзы: «Путь в тысячу ли начинается под ногами» - у вас $milestone! 🐉",
-            "$milestone шагов к катарсису через физическое очищение! 🌬️",
-            "Эпикур улыбнулся: $milestone шагов к умеренному удовольствию! 🍇",
-            "По Декарту: «Я двигаюсь, значит, существую» - $milestone раз! 🤔",
-            "Ваши $milestone шагов - это практика настоящего момента! ⏳",
-            "Марк Аврелий бы записал: «Сегодня я сделал $milestone шагов к совершенству»! 📖",
-            "Пифагор бы оценил: $milestone - прекрасное число на пути к гармонии! 🔢"
+            "$milestone шагов - это $milestone моментов осознанности. Вы в потоке! 🧘‍♂️"
         )
 
         val randomMessage = messages.random()
 
-        // Создаем интент для открытия приложения при нажатии на уведомление
         val intent = Intent(this, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
             putExtra("open_step_counter", true)
@@ -377,7 +477,6 @@ class StepCounterService : Service(), SensorEventListener {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Создаем билдер уведомления БЕЗ категории (убрали проблемный код)
         val notification = NotificationCompat.Builder(this, MILESTONE_CHANNEL_ID)
             .setContentTitle("Философское достижение!")
             .setContentText(randomMessage)
@@ -385,17 +484,38 @@ class StepCounterService : Service(), SensorEventListener {
             .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .setStyle(NotificationCompat.BigTextStyle().bigText(randomMessage))
-            .setOnlyAlertOnce(true)
             .build()
 
-        // Используем фиксированный ID, чтобы обновлять уведомление, а не создавать новое
         notificationManager.notify(MILESTONE_NOTIFICATION_ID, notification)
-        Log.d("StepCounterService", "Показано философское уведомление: $milestone шагов")
+    }
+
+    private fun updateNotificationWithSteps(steps: Int) {
+        // Проверяем флаг isRunning перед выполнением
+        if (!isRunning.get()) {
+            Log.d(TAG, "updateNotificationWithSteps: Сервис остановлен, пропускаем")
+            return
+        }
+        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
+            .setContentTitle("Счетчик шагов")
+            .setContentText("Сегодня: $steps шагов")
+            .setSmallIcon(R.drawable.ic_walk)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .setShowWhen(false)
+            .setOnlyAlertOnce(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .build()
+
+        notificationManager.notify(NOTIFICATION_ID, notification)
     }
 
     private suspend fun synchronizeWithFirebase(date: String, steps: Int) {
+        // Проверяем флаг isRunning в корутине
+        if (!isRunning.get()) {
+            Log.d(TAG, "synchronizeWithFirebase: Сервис остановлен, пропускаем")
+            return
+        }
         try {
             FirebaseAuth.getInstance().currentUser?.let { user ->
                 firebaseDatabaseReference
@@ -405,102 +525,53 @@ class StepCounterService : Service(), SensorEventListener {
                     .child(date)
                     .setValue(steps)
                     .await()
-                Log.d("StepCounterService", "Шаги синхронизированы: $steps за $date")
+                Log.d(TAG, "Шаги синхронизированы: $steps за $date")
                 lastSyncTime = System.currentTimeMillis()
                 sharedPreferences.edit().putLong("last_sync_time", lastSyncTime).apply()
-
-                withContext(Dispatchers.Main) {
-                    updateNotificationWithSteps(steps)
-                    notifyUIUpdate(date, steps)
-                }
             }
         } catch (exception: Exception) {
-            Log.e("StepCounterService", "Ошибка синхронизации: ${exception.message}", exception)
-            delay(30000)
-            synchronizeWithFirebase(date, steps)
-        }
-    }
-
-    private fun updateNotificationWithSteps(steps: Int) {
-        val notification = NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("Счетчик шагов")
-            .setContentText("Сегодня: $steps шагов")
-            .setSmallIcon(R.drawable.ic_walk)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOngoing(true)
-            .setShowWhen(false)
-            .setOnlyAlertOnce(true)
-            .setCategory(Notification.CATEGORY_SERVICE)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-            .build()
-
-        notificationManager.notify(NOTIFICATION_ID, notification)
-    }
-
-    private fun notifyUIUpdate(date: String, steps: Int) {
-        try {
-            val updateIntent = Intent(ACTION_STEPS_UPDATED).apply {
-                putExtra("date", date)
-                putExtra("steps", steps)
-            }
-            sendBroadcast(updateIntent)
-
-            (application as? StepCounterApp)?.updateStepsInViewModel(steps)
-        } catch (e: Exception) {
-            Log.e("StepCounterService", "Ошибка при уведомлении UI", e)
+            Log.e(TAG, "Ошибка синхронизации: ${exception.message}")
         }
     }
 
     private fun startPeriodicDataSync() {
+        // Проверяем флаг isRunning перед выполнением
+        if (!isRunning.get()) {
+            Log.d(TAG, "startPeriodicDataSync: Сервис остановлен, пропускаем")
+            return
+        }
         scheduledExecutor = Executors.newSingleThreadScheduledExecutor()
         scheduledExecutor?.scheduleWithFixedDelay({
-            Log.d("StepCounterService", "Выполнение периодической синхронизации данных")
-            serviceScope.launch {
-                forceFullDataSync()
+            Log.d(TAG, "Выполнение периодической синхронизации данных")
+            if (isRunning.get()) { // Проверка внутри задачи планировщика
+                serviceScope.launch {
+                    forceFullDataSync()
+                }
+            } else {
+                Log.d(TAG, "Планировщик: Сервис остановлен, прерываем задачу")
             }
         }, SYNC_INTERVAL_MINUTES, SYNC_INTERVAL_MINUTES, TimeUnit.MINUTES)
     }
 
     private suspend fun forceFullDataSync() {
+        // Проверяем флаг isRunning в корутине
+        if (!isRunning.get()) {
+            Log.d(TAG, "forceFullDataSync: Сервис остановлен, пропускаем")
+            return
+        }
         withContext(Dispatchers.IO) {
             try {
-                Log.d("StepCounterService", "Принудительная полная синхронизация данных")
+                Log.d(TAG, "Принудительная полная синхронизация данных")
                 val todayDateKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
                 val todaySteps = sharedPreferences.getInt(todayDateKey, 0)
 
                 if (todaySteps > 0) {
                     synchronizeWithFirebase(todayDateKey, todaySteps)
+                } else {
+                    Log.d(TAG, "forceFullDataSync: Сегодня шагов нет, пропускаем")
                 }
-
-                synchronizeHistoricalData()
             } catch (e: Exception) {
-                Log.e("StepCounterService", "Ошибка в forceFullDataSync", e)
-            }
-        }
-    }
-
-    private suspend fun synchronizeHistoricalData() {
-        withContext(Dispatchers.IO) {
-            try {
-                val allEntries = sharedPreferences.all
-                FirebaseAuth.getInstance().currentUser?.let { user ->
-                    val batchUpdates = hashMapOf<String, Any>()
-
-                    allEntries.forEach { entry ->
-                        if (entry.key is String && (entry.key as String).matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
-                            val date = entry.key as String
-                            val steps = entry.value as? Int ?: 0
-                            batchUpdates["users/${user.uid}/stepsData/$date"] = steps
-                        }
-                    }
-
-                    if (batchUpdates.isNotEmpty()) {
-                        firebaseDatabaseReference.updateChildren(batchUpdates).await()
-                        Log.d("StepCounterService", "Исторические данные синхронизированы")
-                    }
-                }
-            } catch (exception: Exception) {
-                Log.e("StepCounterService", "Ошибка исторической синхронизации: ${exception.message}", exception)
+                Log.e(TAG, "Ошибка в forceFullDataSync", e)
             }
         }
     }
@@ -508,37 +579,29 @@ class StepCounterService : Service(), SensorEventListener {
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {}
 
     override fun onDestroy() {
-        Log.d("StepCounterService", "onDestroy: Остановка сервиса")
+        Log.d(TAG, "onDestroy: Остановка сервиса")
 
-        // СОХРАНЯЕМ СОСТОЯНИЕ ПЕРЕД УНИЧТОЖЕНИЕМ - ВАЖНО ДЛЯ ПЕРЕЗАПУСКА
+        // СОХРАНЯЕМ СОСТОЯНИЕ
         saveServiceState(false)
+        isRunning.set(false) // Устанавливаем флаг в false
 
         try {
+            // ОТПИСЫВАЕМСЯ ОТ ДАТЧИКА
             sensorManager.unregisterListener(this)
-            scheduledExecutor?.shutdown()
+            scheduledExecutor?.shutdownNow()
+
+            // ОСВОБОЖДАЕМ WakeLock БЕЗОПАСНО
             if (wakeLock.isHeld) {
                 wakeLock.release()
+                Log.d(TAG, "WakeLock released")
             }
+
             serviceScope.cancel()
-            Log.d("StepCounterService", "Ресурсы сервиса освобождены")
+            Log.d(TAG, "Ресурсы сервиса освобождены")
         } catch (e: Exception) {
-            Log.e("StepCounterService", "Ошибка при остановке сервиса", e)
+            Log.e(TAG, "Ошибка при остановке сервиса", e)
         } finally {
             super.onDestroy()
-            Log.d("StepCounterService", "Сервис уничтожен")
         }
-    }
-
-
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d("StepCounterService", "onStartCommand: Сервис получает команду")
-
-        // Немедленно запускаем основные операции
-        serviceScope.launch {
-            // Принудительная синхронизация при старте
-            forceFullDataSync()
-        }
-
-        return START_REDELIVER_INTENT
     }
 }
