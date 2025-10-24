@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="#2196F3" android:state_checked="true"/> <!-- Синий Material -->
+    <item android:color="#757575" android:state_checked="false"/> <!-- Серый Material -->
+    <item android:color="#1976D2" android:state_pressed="true"/> <!-- Темно-синий -->
+    <item android:color="#2196F3"/>
+</selector>

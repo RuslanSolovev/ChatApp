@@ -4,6 +4,12 @@
 
     <!-- Разрешения для запуска при загрузке -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+
+    <!-- Только для Android 11 (API 30) и ниже -->
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <!-- Для Android 12+ (API 31+) -->
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
 
     <!-- Базовые разрешения -->
     <uses-permission android:name="android.permission.INTERNET" />

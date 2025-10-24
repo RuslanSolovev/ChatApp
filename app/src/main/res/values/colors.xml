@@ -110,4 +110,13 @@
 
     <color name="alarm_text_emergency">#FFFFFF</color>
 
+    <color name="nav_item_blue">#000000</color>
+    <color name="nav_item_blue2">#03DAC5</color>
+
+
+        <color name="primaryColor">#1CE215</color>
+        <color name="primaryDarkColor">#15B210</color>
+
+
+
 </resources>

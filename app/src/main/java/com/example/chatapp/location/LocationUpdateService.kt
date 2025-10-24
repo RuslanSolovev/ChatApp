@@ -8,627 +8,615 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
 import android.location.Location
+import android.location.LocationManager
+import android.net.Uri
 import android.os.*
+import android.provider.Settings
 import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
 import com.example.chatapp.R
 import com.example.chatapp.models.UserLocation
-import com.example.chatapp.step.StepCounterApp
 import com.google.android.gms.location.*
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
-import com.yandex.mapkit.geometry.Point
 import kotlinx.coroutines.*
 import kotlinx.coroutines.tasks.await
-import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
-import kotlin.math.*
+import kotlin.math.abs
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.pow
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 class LocationUpdateService : Service() {
 
     private lateinit var fusedLocationClient: FusedLocationProviderClient
     private lateinit var locationCallback: LocationCallback
     private lateinit var handler: Handler
+    private lateinit var wakeLock: PowerManager.WakeLock
 
     private val database = FirebaseDatabase.getInstance().reference
     private val auth = FirebaseAuth.getInstance()
 
-    // Атомарные флаги для управления состоянием
     private val isRunning = AtomicBoolean(false)
-    private val isServiceStarting = AtomicBoolean(false)
     private val isLocationUpdatesActive = AtomicBoolean(false)
 
-    // Данные локации
     private var lastLocation: Location? = null
-    private var lastKnownAccuracy: Float = 50f
-    private var retryCount = 0
-
-    // Для отслеживания поворотов
     private var currentColorIndex = 0
-    private val routePoints = CopyOnWriteArrayList<Point>()
-    private val previousBearings = CopyOnWriteArrayList<Double>()
+    private val routeColors = listOf(Color.BLUE, Color.RED, Color.GREEN, Color.MAGENTA, Color.CYAN)
 
-    // Корутин скоуп для фоновых задач сервиса
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     companion object {
         const val TAG = "LocationUpdateService"
-        const val NOTIFICATION_CHANNEL_ID = "location_service_channel"
+        const val NOTIFICATION_CHANNEL_ID = "location_tracker_channel"
         const val NOTIFICATION_ID = 1
-        const val ACTION_START = "com.example.chatapp.action.START_LOCATION_SERVICE"
-        const val ACTION_STOP = "com.example.chatapp.action.STOP_LOCATION_SERVICE"
+        const val ACTION_START = "START_LOCATION_TRACKING"
+        const val ACTION_STOP = "STOP_LOCATION_TRACKING"
 
-        // ОПТИМИЗИРОВАННЫЕ настройки локации для ПОСТОЯННОГО отслеживания
-        private const val LOCATION_UPDATE_INTERVAL = 30000L // 30 секунд
-        private const val FASTEST_UPDATE_INTERVAL = 15000L // 15 секунд
-        private const val MAX_UPDATE_DELAY = 45000L // 45 секунд
-        private const val MIN_ACCURACY = 150f
-        private const val MIN_DISTANCE = 30f
-        private const val MAX_SPEED = 80.0
+        // Более консервативные настройки для фильтрации GPS "прыжков"
+        private const val LOCATION_UPDATE_INTERVAL = 15000L // 15 секунд
+        private const val FASTEST_UPDATE_INTERVAL = 10000L   // 10 секунд
+        private const val MIN_DISTANCE = 15f               // 15 метров
+        private const val MAX_ACCURACY = 50f               // Максимальная погрешность в метрах
+        private const val MAX_SPEED = 27.78f               // 100 км/ч в м/с
 
-        // ОПТИМИЗИРОВАННЫЕ настройки повторных попыток
-        private const val MAX_RETRY_COUNT = 2
-        private const val RETRY_DELAY_BASE = 10000L
-
-        // Настройки поворотов
-        private const val TURN_ANGLE_THRESHOLD = 110.0
-        private const val MAX_ROUTE_POINTS = 30
-
-        private val ROUTE_COLORS = listOf(
-            Color.BLUE,
-            Color.RED,
-            Color.GREEN,
-            Color.MAGENTA,
-            Color.CYAN
-        )
-
-        // Флаг для отслеживания запущенного сервиса
-        @Volatile
-        private var isServiceRunningGlobally = false
-
-        @Synchronized
-        fun setServiceRunning(running: Boolean) {
-            isServiceRunningGlobally = running
+        fun startService(context: Context) {
+            Log.d(TAG, "🚀 Запуск сервиса локации")
+            val intent = Intent(context, LocationUpdateService::class.java).apply {
+                action = ACTION_START
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
         }
 
-        @Synchronized
-        fun isServiceRunning(): Boolean {
-            return isServiceRunningGlobally
+        fun stopService(context: Context) {
+            Log.d(TAG, "🛑 Остановка сервиса локации")
+            val intent = Intent(context, LocationUpdateService::class.java).apply {
+                action = ACTION_STOP
+            }
+            context.startService(intent)
         }
     }
 
     override fun onCreate() {
         super.onCreate()
-        Log.d(TAG, "onCreate: Быстрая инициализация сервиса...")
-
+        Log.d(TAG, "📍 Создание сервиса")
+        checkBatteryOptimization()
+        acquireWakeLock()
         handler = Handler(Looper.getMainLooper())
         createNotificationChannel()
         fusedLocationClient = LocationServices.getFusedLocationProviderClient(this)
-
-        // ИНИЦИАЛИЗИРУЕМ КОЛБЭК СРАЗУ - ЭТО ВАЖНО!
-        createLocationCallbackFast()
-
-        Log.d(TAG, "onCreate: Сервис инициализирован")
+        createLocationCallback()
+        Log.d(TAG, "✅ Сервис создан")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TAG, "onStartCommand: Вызван с action=${intent?.action}")
+        Log.d(TAG, "🎯 Команда: ${intent?.action}")
 
         when (intent?.action) {
             ACTION_START -> {
-                if (isServiceStarting.getAndSet(true)) {
-                    Log.w(TAG, "onStartCommand: Сервис уже запускается, пропускаем")
-                    return START_STICKY
-                }
-
-                if (isServiceRunning()) {
-                    Log.w(TAG, "onStartCommand: Сервис уже запущен глобально, пропускаем")
-                    isServiceStarting.set(false)
-                    return START_STICKY
-                }
-
                 if (!isRunning.get()) {
-                    Log.d(TAG, "onStartCommand: Быстрый запуск сервиса в foreground")
-                    startForegroundServiceFast()
+                    Log.d(TAG, "🔄 Запуск нового сервиса")
+                    startForegroundService()
                 } else {
-                    Log.d(TAG, "onStartCommand: Сервис уже запущен локально")
-                    isServiceStarting.set(false)
+                    Log.d(TAG, "✅ Сервис уже запущен, обновляем настройки")
+                    // Перезапускаем обновления локации
+                    serviceScope.launch {
+                        setupLocationUpdates()
+                    }
                 }
             }
             ACTION_STOP -> {
-                Log.d(TAG, "onStartCommand: Получена команда STOP")
-                serviceScope.launch {
-                    stopLocationTrackingFast()
-                }
+                Log.d(TAG, "🛑 Команда остановки сервиса")
+                stopLocationTracking()
                 stopSelf()
             }
             else -> {
-                Log.d(TAG, "onStartCommand: Перезапуск системой, быстрая проверка статуса")
-                // ПРИ ПЕРЕЗАПУСКЕ СИСТЕМОЙ ПЫТАЕМСЯ ЗАПУСТИТЬСЯ
-                if (!isRunning.get() && !isServiceStarting.get()) {
-                    Log.d(TAG, "onStartCommand: Перезапуск сервиса системой")
-                    startForegroundServiceFast()
-                }
+                Log.w(TAG, "⚠️ Неизвестная команда: ${intent?.action}")
             }
         }
 
         return START_STICKY
     }
 
-    /**
-     * ОПТИМИЗИРОВАННЫЙ запуск сервиса
-     */
-    private fun startForegroundServiceFast() {
-        Log.d(TAG, "startForegroundServiceFast: Начало быстрого запуска")
+    private fun checkBatteryOptimization() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            val isIgnoringOptimizations = powerManager.isIgnoringBatteryOptimizations(packageName)
+
+            Log.d(TAG, "🔋 Battery optimization ignored: $isIgnoringOptimizations")
+
+            if (!isIgnoringOptimizations) {
+                Log.w(TAG, "⚠️ BATTERY OPTIMIZATION IS ENABLED - LOCATION MAY BE INTERRUPTED!")
+                showBatteryOptimizationNotification()
+            } else {
+                Log.d(TAG, "✅ Battery optimization is disabled - good!")
+            }
+        }
+    }
+
+    private fun acquireWakeLock() {
         try {
-            // УСТАНАВЛИВАЕМ ФЛАГ ПЕРВЫМ ДЕЛОМ!
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            wakeLock = powerManager.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK or
+                        PowerManager.ACQUIRE_CAUSES_WAKEUP,
+                "LocationTracker::WakeLock"
+            )
+            wakeLock.setReferenceCounted(true)
+            wakeLock.acquire(10 * 60 * 1000L)
+            Log.d(TAG, "🔋 WakeLock получен")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Ошибка получения WakeLock", e)
+        }
+    }
+
+    private fun startForegroundService() {
+        Log.d(TAG, "🚀 Запуск foreground сервиса")
+        try {
             isRunning.set(true)
 
-            // БЫСТРОЕ сохранение состояния
-            saveServiceState(true)
-            setServiceRunning(true)
-
-            val notification = buildFastNotification()
-            startForeground(NOTIFICATION_ID, notification)
-
-            // ЗАПУСКАЕМ ВСЕ ПАРАЛЛЕЛЬНО
+            // Сразу обновляем статус трекинга
             serviceScope.launch {
-                // Параллельный запуск обновлений локации и обновления статуса
-                val jobs = listOf(
-                    async { setupLocationUpdatesFast() },
-                    async { updateTrackingStatus(true) }
-                )
-                jobs.awaitAll()
-
-                // СБРАСЫВАЕМ ФЛАГ ЗАПУСКА ПОСЛЕ УСПЕШНОЙ ИНИЦИАЛИЗАЦИИ
-                isServiceStarting.set(false)
+                updateTrackingStatus(true)
             }
 
-            Log.d(TAG, "startForegroundServiceFast: Сервис успешно запущен")
+            val notification = buildNotification()
+            startForeground(NOTIFICATION_ID, notification)
+
+            // Запускаем все задачи
+            serviceScope.launch {
+                Log.d(TAG, "🎯 Начинаем настройку сервиса...")
+                setupLocationUpdates()
+                requestSingleLocation() // Немедленный запрос локации
+            }
+
+            Log.d(TAG, "✅ Foreground сервис запущен")
 
         } catch (e: Exception) {
-            Log.e(TAG, "startForegroundServiceFast: Ошибка запуска сервиса", e)
-            // ПРИ ОШИБКЕ СБРАСЫВАЕМ ФЛАГИ
-            isRunning.set(false)
-            isServiceStarting.set(false)
-            saveServiceState(false)
-            setServiceRunning(false)
-            stopSelf()
+            Log.e(TAG, "❌ Ошибка запуска сервиса", e)
+            stopLocationTracking()
         }
     }
 
-    /**
-     * ОПТИМИЗИРОВАННАЯ настройка получения обновлений локации
-     * УБИРАЕМ ПРОВЕРКУ isRunning - она уже выполнена в вызывающем коде
-     */
-    @SuppressLint("MissingPermission")
-    private fun setupLocationUpdatesFast() {
-        Log.d(TAG, "setupLocationUpdatesFast: БЫСТРАЯ настройка")
+    private fun buildNotification(): Notification {
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+        val pendingIntent = PendingIntent.getActivity(
+            this, 0, launchIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
 
-        // УБИРАЕМ ПРОВЕРКУ isRunning - МЫ УЖЕ ЗДЕСЬ ЗНАЧИТ СЕРВИС ЗАПУЩЕН
-
-        // ПАРАЛЛЕЛЬНЫЕ проверки вместо последовательных
-        if (!hasForegroundLocationPermissions()) {
-            Log.w(TAG, "setupLocationUpdatesFast: Нет разрешений. Останавливаем сервис.")
-            handlePermissionErrorFast()
-            return
-        }
-
-        val userId = auth.currentUser?.uid
-        if (userId == null) {
-            Log.w(TAG, "setupLocationUpdatesFast: Пользователь не авторизован. Останавливаем сервис.")
-            handleAuthErrorFast()
-            return
-        }
-
-        Log.d(TAG, "setupLocationUpdatesFast: Проверки пройдены - запускаем локацию")
-
-        // ОПТИМИЗИРОВАННАЯ инициализация
-        initializeLocationUpdatesFast(userId)
+        return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setContentTitle("📍 Отслеживание маршрута")
+            .setContentText("Активно - поиск локации...")
+            .setSmallIcon(R.drawable.ic_location)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setOngoing(true)
+            .setCategory(Notification.CATEGORY_SERVICE)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setContentIntent(pendingIntent)
+            .build()
     }
 
-    /**
-     * БЫСТРАЯ инициализация обновлений локации
-     */
     @SuppressLint("MissingPermission")
-    private fun initializeLocationUpdatesFast(userId: String) {
+    private fun setupLocationUpdates() {
+        Log.d(TAG, "🎯 Настройка обновлений локации")
+
+        if (!hasLocationPermissions()) {
+            Log.e(TAG, "❌ НЕТ РАЗРЕШЕНИЙ НА ЛОКАЦИЮ!")
+            showPermissionNotification()
+            updateNotification("Нет разрешений на локацию")
+            return
+        }
+
+        if (!isLocationEnabled()) {
+            Log.e(TAG, "❌ Локация отключена в системе")
+            showLocationDisabledNotification()
+            updateNotification("Локация отключена")
+            return
+        }
+
+        Log.d(TAG, "✅ Разрешения есть, локация включена")
+
         try {
-            // 1. Удаляем старый callback БЫСТРО
-            removePreviousLocationCallbackFast()
+            // Удаляем старый callback
+            removeLocationUpdates()
 
-            // 2. Создаем ПОСТОЯННЫЙ location request БЕЗ ТАЙМАУТОВ
-            val locationRequest = createContinuousLocationRequest()
+            val locationRequest = LocationRequest.Builder(
+                Priority.PRIORITY_HIGH_ACCURACY,
+                LOCATION_UPDATE_INTERVAL
+            )
+                .setMinUpdateIntervalMillis(FASTEST_UPDATE_INTERVAL)
+                .setMinUpdateDistanceMeters(MIN_DISTANCE)
+                .setWaitForAccurateLocation(true)
+                .setMaxUpdateDelayMillis(5000) // Максимальная задержка
+                .build()
 
-            Log.d(TAG, "initializeLocationUpdatesFast: Запрашиваем ПОСТОЯННЫЕ обновления...")
+            Log.d(TAG, "📍 Запрос обновлений локации: интервал $LOCATION_UPDATE_INTERVAL мс")
 
-            // 3. ЗАПУСКАЕМ ПОСТОЯННОЕ ОБНОВЛЕНИЕ
             fusedLocationClient.requestLocationUpdates(
                 locationRequest,
                 locationCallback,
                 Looper.getMainLooper()
-            ).addOnCompleteListener { task ->
-                if (task.isSuccessful) {
-                    Log.d(TAG, "initializeLocationUpdatesFast: ПОСТОЯННЫЕ обновления запущены")
-                    isLocationUpdatesActive.set(true)
-                    retryCount = 0
-
-                    // ЗАПУСКАЕМ В ФОНЕ чтобы не блокировать
-                    serviceScope.launch {
-                        requestSingleLocationUpdateFast()
-                    }
-                } else {
-                    Log.e(TAG, "initializeLocationUpdatesFast: Ошибка запуска", task.exception)
-                    handleLocationUpdatesErrorFast()
-                }
+            ).addOnSuccessListener {
+                Log.d(TAG, "✅ Обновления локации ЗАПУЩЕНЫ")
+                isLocationUpdatesActive.set(true)
+                updateNotification("Отслеживание активно")
+            }.addOnFailureListener { e ->
+                Log.e(TAG, "❌ Ошибка запуска обновлений локации", e)
+                updateNotification("Ошибка локации")
+                handleLocationError()
             }
 
         } catch (e: Exception) {
-            Log.e(TAG, "initializeLocationUpdatesFast: Критическая ошибка", e)
-            handleCriticalErrorFast()
+            Log.e(TAG, "❌ Критическая ошибка настройки локации", e)
+            updateNotification("Ошибка настройки")
+            handleLocationError()
         }
     }
 
-    /**
-     * ПОСТОЯННЫЙ location request для непрерывного отслеживания
-     */
-    private fun createContinuousLocationRequest(): LocationRequest {
-        return LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, LOCATION_UPDATE_INTERVAL)
-            .setIntervalMillis(LOCATION_UPDATE_INTERVAL)
-            .setMinUpdateIntervalMillis(FASTEST_UPDATE_INTERVAL)
-            .setMaxUpdateDelayMillis(MAX_UPDATE_DELAY)
-            .setWaitForAccurateLocation(false)
-            .setMinUpdateDistanceMeters(MIN_DISTANCE)
-            .build()
-    }
-
-    /**
-     * БЫСТРЫЙ запрос единичной локации
-     */
-    @SuppressLint("MissingPermission")
-    private suspend fun requestSingleLocationUpdateFast() {
-        withContext(Dispatchers.IO) {
-            try {
-                if (!isRunning.get() || !hasForegroundLocationPermissions()) return@withContext
-
-                val immediateRequest = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 5000)
-                    .setMaxUpdates(1)
-                    .setWaitForAccurateLocation(false)
-                    .build()
-
-                val location = withTimeoutOrNull(5000) {
-                    suspendCoroutine<Location?> { continuation ->
-                        val tempCallback = object : LocationCallback() {
-                            override fun onLocationResult(locationResult: LocationResult) {
-                                continuation.resume(locationResult.lastLocation)
-                                fusedLocationClient.removeLocationUpdates(this)
-                            }
-                        }
-
-                        fusedLocationClient.requestLocationUpdates(
-                            immediateRequest,
-                            tempCallback,
-                            Looper.getMainLooper()
-                        )
-
-                        handler.postDelayed({
-                            if (continuation.context.isActive) {
-                                continuation.resume(null)
-                                fusedLocationClient.removeLocationUpdates(tempCallback)
-                            }
-                        }, 5000)
-                    }
-                }
-
-                location?.let {
-                    processLocationFast(it)
-                    Log.d(TAG, "requestSingleLocationUpdateFast: Получена быстрая локация")
-                }
-
-            } catch (e: Exception) {
-                Log.e(TAG, "requestSingleLocationUpdateFast: Ошибка", e)
-            }
-        }
-    }
-
-    /**
-     * Создание callback для обработки обновлений локации
-     */
-    private fun createLocationCallbackFast() {
+    private fun createLocationCallback() {
         locationCallback = object : LocationCallback() {
             override fun onLocationResult(locationResult: LocationResult) {
                 if (!isRunning.get()) {
-                    Log.d(TAG, "onLocationResult: Сервис остановлен, игнорируем локации")
+                    Log.w(TAG, "⚠️ Сервис не запущен, игнорируем локацию")
                     return
                 }
 
                 val location = locationResult.lastLocation
                 if (location != null) {
-                    Log.d(TAG, "onLocationResult: Получена новая локация: ${location.latitude}, ${location.longitude}")
+                    Log.d(TAG, "📍 Получена новая локация: ${location.latitude}, ${location.longitude}, accuracy: ${location.accuracy}")
 
-                    lastKnownAccuracy = location.accuracy
-                    if (retryCount > 0) {
-                        Log.d(TAG, "onLocationResult: Получена локация, сбрасываем retryCount")
-                        retryCount = 0
-                    }
-
-                    // Обрабатываем локацию в фоне
-                    serviceScope.launch {
-                        processLocationFast(location)
+                    if (isValidLocation(location)) {
+                        Log.d(TAG, "✅ Локация прошла валидацию")
+                        updateNotification("Локация: ${"%.6f".format(location.latitude)}, ${"%.6f".format(location.longitude)}")
+                        serviceScope.launch {
+                            processNewLocation(location)
+                        }
+                    } else {
+                        Log.w(TAG, "⚠️ Локация не прошла валидацию")
+                        updateNotification("Невалидная локация")
                     }
                 } else {
-                    Log.w(TAG, "onLocationResult: locationResult.lastLocation is null")
+                    Log.w(TAG, "⚠️ Локация null в callback")
+                    updateNotification("Локация не получена")
                 }
             }
 
             override fun onLocationAvailability(availability: LocationAvailability) {
-                Log.d(TAG, "onLocationAvailability: Доступность - ${availability.isLocationAvailable}")
-
+                Log.d(TAG, "📡 Доступность локации: ${availability.isLocationAvailable}")
                 if (!availability.isLocationAvailable) {
-                    Log.w(TAG, "onLocationAvailability: Сервисы геолокации временно недоступны")
+                    Log.w(TAG, "⚠️ Локация временно недоступна")
+                    updateNotification("Локация недоступна")
+
+                    // Пытаемся восстановить соединение
+                    handler.postDelayed({
+                        if (isRunning.get() && !availability.isLocationAvailable) {
+                            Log.d(TAG, "🔄 Попытка восстановления локации...")
+                            serviceScope.launch {
+                                setupLocationUpdates()
+                            }
+                        }
+                    }, 2000)
                 } else {
-                    Log.d(TAG, "onLocationAvailability: Сервисы геолокации доступны")
-                    retryCount = 0
+                    Log.d(TAG, "✅ Локация снова доступна")
+                    updateNotification("Поиск локации...")
                 }
             }
         }
     }
 
-    /**
-     * ОПТИМИЗИРОВАННАЯ обработка полученной локации
-     */
-    private suspend fun processLocationFast(location: Location) {
-        try {
-            if (!isRunning.get()) {
-                Log.d(TAG, "processLocationFast: Сервис остановлен, пропускаем обработку")
-                return
-            }
+    private fun isValidLocation(location: Location): Boolean {
+        val currentTime = System.currentTimeMillis()
 
-            // УПРОЩЕННАЯ проверка валидности локации
-            if (isLocationValidFast(location)) {
-                val newPoint = Point(location.latitude, location.longitude)
-
-                // Быстрая проверка поворота
-                checkAndUpdateTurnColorFast(newPoint)
-
-                // Обновляем данные в Firebase
-                updateUserLocationInFirebaseFast(
-                    location.latitude,
-                    location.longitude,
-                    ROUTE_COLORS[currentColorIndex],
-                    location.accuracy
-                )
-
-                // Быстрое обновление состояния
-                withContext(Dispatchers.Main) {
-                    lastLocation = location
-                    routePoints.add(newPoint)
-
-                    if (routePoints.size > MAX_ROUTE_POINTS) {
-                        routePoints.removeAt(0)
-                    }
-                }
-
-                Log.d(TAG, "processLocationFast: Локация успешно обработана")
-            } else {
-                Log.d(TAG, "processLocationFast: Локация не прошла валидацию")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "processLocationFast: Ошибка обработки локации", e)
-        }
-    }
-
-    /**
-     * УПРОЩЕННАЯ проверка валидности локации
-     */
-    private fun isLocationValidFast(newLocation: Location): Boolean {
-        if (newLocation.accuracy > MIN_ACCURACY * 2) {
-            Log.d(TAG, "isLocationValidFast: FALSE - Низкая точность (${newLocation.accuracy}м)")
+        // Базовые проверки
+        if (location.latitude == 0.0 || location.longitude == 0.0 ||
+            abs(location.latitude) > 90 || abs(location.longitude) > 180 ||
+            location.time > currentTime + 60000 || // Не из будущего
+            location.time < currentTime - 300000) { // Не старше 5 минут
+            Log.w(TAG, "⚠️ Локация невалидна: базовые проверки")
             return false
         }
 
-        lastLocation?.let { oldLocation ->
-            val distance = calculateDistanceFast(
-                oldLocation.latitude,
-                oldLocation.longitude,
-                newLocation.latitude,
-                newLocation.longitude
+        // Проверка точности
+        if (location.accuracy > MAX_ACCURACY) {
+            Log.w(TAG, "⚠️ Локация невалидна: низкая точность ${location.accuracy}")
+            return false
+        }
+
+        // Проверка скорости
+        if (location.hasSpeed() && location.speed > MAX_SPEED) {
+            Log.w(TAG, "⚠️ Локация невалидна: превышение скорости ${location.speed * 3.6} км/ч")
+            return false
+        }
+
+        // Проверка расстояния от предыдущей точки
+        lastLocation?.let { previous ->
+            val distance = calculateDistance(
+                previous.latitude, previous.longitude,
+                location.latitude, location.longitude
             )
-            val timeDiffSec = (newLocation.time - oldLocation.time) / 1000.0
+            val timeDiff = (location.time - previous.time) / 1000.0 // секунды
 
-            if (distance < MIN_DISTANCE && timeDiffSec < 15) {
-                Log.d(TAG, "isLocationValidFast: FALSE - Малое расстояние ($distance м)")
-                return false
-            }
+            if (timeDiff > 0) {
+                val speed = distance / timeDiff // м/с
 
-            if (timeDiffSec > 0) {
-                val speed = distance / timeDiffSec
+                // Максимальная скорость 100 км/ч (27.78 м/с)
                 if (speed > MAX_SPEED) {
-                    Log.d(TAG, "isLocationValidFast: FALSE - Высокая скорость (${"%.2f".format(speed)} м/с)")
+                    Log.w(TAG, "⚠️ Локация невалидна: скорость между точками ${String.format("%.1f", speed * 3.6)} км/ч")
+                    return false
+                }
+
+                // Максимальное расстояние за интервал (100 км/ч * 15 сек = 417 метров)
+                val maxPossibleDistance = MAX_SPEED * timeDiff
+                if (distance > maxPossibleDistance) {
+                    Log.w(TAG, "⚠️ Локация невалидна: расстояние $distance м превышает возможное $maxPossibleDistance м")
                     return false
                 }
             }
+        }
 
-            return true
+        Log.d(TAG, "✅ Локация прошла валидацию: accuracy=${location.accuracy}")
+        return true
+    }
+
+    private fun isRealisticMovement(newLocation: Location): Boolean {
+        lastLocation?.let { previous ->
+            val distance = calculateDistance(
+                previous.latitude, previous.longitude,
+                newLocation.latitude, newLocation.longitude
+            )
+            val timeDiff = (newLocation.time - previous.time) / 1000.0
+
+            if (timeDiff <= 0) return true
+
+            val speed = distance / timeDiff
+
+            // Для велосипеда и пеших прогулок - более строгие ограничения
+            val maxSpeed = when {
+                distance < 50 -> 10.0  // 36 км/ч для коротких дистанций
+                distance < 200 -> 15.0 // 54 км/ч для средних дистанций
+                else -> MAX_SPEED.toDouble() // Конвертируем Float в Double
+            }
+
+            if (speed > maxSpeed) {
+                Log.w(TAG, "🚫 Нереалистичное движение: ${String.format("%.1f", speed * 3.6)} км/ч")
+                return false
+            }
         }
 
         return true
     }
 
-    /**
-     * БЫСТРАЯ проверка и обновление цвета при повороте
-     */
-    private fun checkAndUpdateTurnColorFast(newPoint: Point) {
-        synchronized(routePoints) {
-            if (routePoints.size >= 2) {
-                try {
-                    val prevPoint1 = routePoints[routePoints.size - 2]
-                    val prevPoint2 = routePoints.last()
+    private suspend fun processNewLocation(location: Location) {
+        try {
+            // Дополнительная проверка на реалистичность
+            if (!isRealisticMovement(location)) {
+                Log.w(TAG, "📍 Локация отфильтрована как нереалистичная")
+                return
+            }
 
-                    val angle = calculateTurnAngleFast(prevPoint1, prevPoint2, newPoint)
-
-                    synchronized(previousBearings) {
-                        previousBearings.add(angle)
-
-                        if (previousBearings.size > 5) {
-                            previousBearings.removeAt(0)
-                        }
-
-                        val avgAngle = previousBearings.average()
-
-                        if (abs(avgAngle) >= TURN_ANGLE_THRESHOLD) {
-                            currentColorIndex = (currentColorIndex + 1) % ROUTE_COLORS.size
-                            Log.d(TAG, "checkAndUpdateTurnColorFast: Резкий поворот ${avgAngle.toInt()}°")
-                            previousBearings.clear()
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "checkAndUpdateTurnColorFast: Ошибка расчета поворота", e)
+            // Обновляем цвет при значительном перемещении (увеличиваем порог)
+            lastLocation?.let { oldLocation ->
+                val distance = calculateDistance(
+                    oldLocation.latitude, oldLocation.longitude,
+                    location.latitude, location.longitude
+                )
+                if (distance > 200) { // Более 200 метров - меняем цвет (было 100)
+                    currentColorIndex = (currentColorIndex + 1) % routeColors.size
+                    Log.d(TAG, "🎨 Смена цвета маршрута: ${routeColors[currentColorIndex]}")
                 }
             }
+
+            // Сохраняем в Firebase
+            saveLocationToFirebase(location)
+
+            lastLocation = location
+            Log.d(TAG, "✅ Локация обработана и сохранена")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Ошибка обработки локации", e)
         }
     }
 
-    /**
-     * ОПТИМИЗИРОВАННАЯ обработка ошибок
-     */
-    private fun handleLocationUpdatesErrorFast() {
-        if (!isRunning.get()) {
-            Log.d(TAG, "handleLocationUpdatesErrorFast: Сервис уже остановлен")
+    private suspend fun saveLocationToFirebase(location: Location) {
+        val userId = auth.currentUser?.uid
+        if (userId == null) {
+            Log.e(TAG, "❌ Пользователь не авторизован")
             return
         }
 
-        if (retryCount < MAX_RETRY_COUNT) {
-            retryCount++
-            val delay = RETRY_DELAY_BASE * retryCount
+        val locationData = hashMapOf(
+            "lat" to location.latitude,
+            "lng" to location.longitude,
+            "timestamp" to System.currentTimeMillis(),
+            "accuracy" to location.accuracy,
+            "color" to routeColors[currentColorIndex]
+        )
 
-            Log.w(TAG, "handleLocationUpdatesErrorFast: Повтор $retryCount/$MAX_RETRY_COUNT через ${delay}мс")
-
-            handler.postDelayed({
-                if (isRunning.get()) {
-                    setupLocationUpdatesFast()
-                }
-            }, delay)
-        } else {
-            Log.e(TAG, "handleLocationUpdatesErrorFast: Превышено кол-во попыток. Останавливаем.")
-            isServiceStarting.set(false)
-
-            serviceScope.launch {
-                stopLocationTrackingFast()
-            }
-        }
-    }
-
-    /**
-     * БЫСТРАЯ обработка критических ошибок
-     */
-    private fun handleCriticalErrorFast() {
-        Log.e(TAG, "handleCriticalErrorFast: Критическая ошибка, быстрая остановка")
-        isServiceStarting.set(false)
-
-        serviceScope.launch {
-            stopLocationTrackingFast()
-        }
-    }
-
-    /**
-     * ОПТИМИЗИРОВАННАЯ остановка трекинга локации
-     */
-    private suspend fun stopLocationTrackingFast() {
-        Log.d(TAG, "stopLocationTrackingFast: Быстрая остановка")
-
-        // СБРАСЫВАЕМ ФЛАГИ ПЕРВЫМ ДЕЛОМ!
-        isRunning.set(false)
-        isServiceStarting.set(false)
-
-        saveServiceState(false)
-        setServiceRunning(false)
-        removePreviousLocationCallbackFast()
-
-        // Последовательная очистка (быстрее и надежнее)
         try {
-            updateTrackingStatus(false)
-            clearCurrentLocationFast()
+            // Сохраняем в историю маршрута (никогда не очищается автоматически)
+            val historyKey = database.child("route_history").child(userId).push().key
+            if (historyKey != null) {
+                database.child("route_history")
+                    .child(userId)
+                    .child(historyKey)
+                    .setValue(locationData)
+                    .await()
+                Log.d(TAG, "✅ Локация сохранена в историю с ключом $historyKey")
+            }
+
+            // Также сохраняем для текущей сессии (можно очищать)
+            val sessionKey = database.child("user_locations").child(userId).push().key
+            if (sessionKey != null) {
+                database.child("user_locations")
+                    .child(userId)
+                    .child(sessionKey)
+                    .setValue(locationData)
+                    .await()
+                Log.d(TAG, "✅ Локация сохранена в сессию с ключом $sessionKey")
+            }
+
+            // Обновляем последнюю локацию для быстрого доступа
+            database.child("last_locations")
+                .child(userId)
+                .setValue(locationData)
+                .await()
+            Log.d(TAG, "✅ Последняя локация обновлена")
+
         } catch (e: Exception) {
-            Log.e(TAG, "stopLocationTrackingFast: Ошибка при очистке", e)
+            Log.e(TAG, "❌ Ошибка сохранения локации в Firebase", e)
         }
-
-        isLocationUpdatesActive.set(false)
-        lastLocation = null
-        routePoints.clear()
-        previousBearings.clear()
-
-        Log.d(TAG, "stopLocationTrackingFast: Трекинг полностью остановлен")
     }
 
-    /**
-     * Сохраняет состояние сервиса
-     */
-    private fun saveServiceState(isRunning: Boolean) {
+    @SuppressLint("MissingPermission")
+    private suspend fun requestSingleLocation() {
+        if (!hasLocationPermissions()) {
+            Log.e(TAG, "❌ Нет разрешений для единичного запроса")
+            return
+        }
+
+        Log.d(TAG, "🎯 Запрос единичной локации...")
+
         try {
-            (application as? StepCounterApp)?.saveServiceState("location", isRunning)
-            Log.d(TAG, "Состояние сервиса сохранено: location = $isRunning")
-        } catch (e: Exception) {
-            Log.e(TAG, "Ошибка сохранения состояния", e)
-            val prefs = getSharedPreferences("service_prefs", Context.MODE_PRIVATE)
-            prefs.edit().apply {
-                putBoolean("location_tracking_active", isRunning)
-                putLong("last_service_state_change", System.currentTimeMillis())
-                apply()
-            }
-        }
-    }
+            val location = withTimeoutOrNull(15000) {
+                suspendCoroutine<Location?> { continuation ->
+                    Log.d(TAG, "⏳ Ожидание единичной локации...")
 
-    /**
-     * ОПТИМИЗИРОВАННОЕ удаление предыдущего callback
-     */
-    private fun removePreviousLocationCallbackFast() {
-        if (::locationCallback.isInitialized) {
-            try {
-                fusedLocationClient.removeLocationUpdates(locationCallback)
-                Log.d(TAG, "removePreviousLocationCallbackFast: Callback удален")
-            } catch (e: Exception) {
-                Log.d(TAG, "removePreviousLocationCallbackFast: Callback уже удален")
-            }
-        }
-    }
+                    val tempCallback = object : LocationCallback() {
+                        override fun onLocationResult(locationResult: LocationResult) {
+                            val loc = locationResult.lastLocation
+                            Log.d(TAG, "📍 Единичная локация получена в callback: ${loc?.latitude}, ${loc?.longitude}")
+                            continuation.resume(loc)
+                            fusedLocationClient.removeLocationUpdates(this)
+                        }
 
-    private fun handlePermissionErrorFast() {
-        Log.e(TAG, "handlePermissionErrorFast: Нет разрешений на локацию")
-        serviceScope.launch {
-            stopLocationTrackingFast()
-        }
-        stopSelf()
-    }
-
-    private fun handleAuthErrorFast() {
-        Log.e(TAG, "handleAuthErrorFast: Пользователь не авторизован")
-        serviceScope.launch {
-            stopLocationTrackingFast()
-        }
-        stopSelf()
-    }
-
-    private fun checkTrackingStatusAndStartFast() {
-        val userId = auth.currentUser?.uid ?: return
-
-        serviceScope.launch {
-            try {
-                val snapshot = database.child("tracking_status").child(userId).get().await()
-                val isTracking = snapshot.getValue(Boolean::class.java) ?: false
-
-                if (isTracking && !isRunning.get() && !isServiceStarting.get() && !isServiceRunning()) {
-                    Log.d(TAG, "checkTrackingStatusAndStartFast: Восстанавливаем трекинг")
-                    withContext(Dispatchers.Main) {
-                        startForegroundServiceFast()
+                        override fun onLocationAvailability(availability: LocationAvailability) {
+                            Log.d(TAG, "📡 Доступность единичной локации: ${availability.isLocationAvailable}")
+                        }
                     }
+
+                    val immediateRequest = LocationRequest.Builder(
+                        Priority.PRIORITY_HIGH_ACCURACY,
+                        5000
+                    ).setMaxUpdates(1).build()
+
+                    fusedLocationClient.requestLocationUpdates(
+                        immediateRequest,
+                        tempCallback,
+                        Looper.getMainLooper()
+                    ).addOnSuccessListener {
+                        Log.d(TAG, "✅ Запрос единичной локации отправлен")
+                    }.addOnFailureListener { e ->
+                        Log.e(TAG, "❌ Ошибка запроса единичной локации", e)
+                        continuation.resume(null)
+                    }
+
+                    // Таймаут
+                    handler.postDelayed({
+                        if (continuation.context.isActive) {
+                            Log.w(TAG, "⚠️ Таймаут единичной локации")
+                            continuation.resume(null)
+                            fusedLocationClient.removeLocationUpdates(tempCallback)
+                        }
+                    }, 15000)
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "checkTrackingStatusAndStartFast: Ошибка проверки статуса", e)
             }
+
+            location?.let {
+                Log.d(TAG, "📍 Единичная локация получена: ${it.latitude}, ${it.longitude}")
+                processNewLocation(it)
+            } ?: run {
+                Log.w(TAG, "⚠️ Единичная локация не получена (таймаут или ошибка)")
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Ошибка запроса единичной локации", e)
         }
+    }
+
+    private fun stopLocationTracking() {
+        Log.d(TAG, "🛑 Остановка трекинга")
+
+        isRunning.set(false)
+        isLocationUpdatesActive.set(false)
+
+        removeLocationUpdates()
+
+        serviceScope.launch {
+            updateTrackingStatus(false)
+        }
+
+        releaseWakeLock()
+        serviceScope.cancel()
+
+        Log.d(TAG, "✅ Трекинг остановлен")
+    }
+
+    private fun removeLocationUpdates() {
+        try {
+            if (::locationCallback.isInitialized) {
+                fusedLocationClient.removeLocationUpdates(locationCallback)
+                Log.d(TAG, "✅ Location updates removed")
+            }
+        } catch (e: Exception) {
+            Log.d(TAG, "⚠️ Location updates already removed или не инициализирован")
+        }
+    }
+
+    private suspend fun updateTrackingStatus(isTracking: Boolean) {
+        val userId = auth.currentUser?.uid ?: return
+        try {
+            database.child("tracking_status").child(userId).setValue(isTracking).await()
+            Log.d(TAG, "✅ Статус трекинга обновлен: $isTracking")
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Ошибка обновления статуса трекинга", e)
+        }
+    }
+
+    private fun releaseWakeLock() {
+        try {
+            if (::wakeLock.isInitialized && wakeLock.isHeld) {
+                wakeLock.release()
+                Log.d(TAG, "🔋 WakeLock освобожден")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Ошибка освобождения WakeLock", e)
+        }
+    }
+
+    private fun hasLocationPermissions(): Boolean {
+        val hasFineLocation = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        val hasCoarseLocation = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        Log.d(TAG, "🔐 Проверка разрешений: FINE=$hasFineLocation, COARSE=$hasCoarseLocation")
+
+        return hasFineLocation || hasCoarseLocation
+    }
+
+    private fun isLocationEnabled(): Boolean {
+        val locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+        val gpsEnabled = locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)
+        val networkEnabled = locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)
+
+        Log.d(TAG, "📡 Проверка провайдеров локации: GPS=$gpsEnabled, NETWORK=$networkEnabled")
+
+        return gpsEnabled || networkEnabled
     }
 
     private fun createNotificationChannel() {
@@ -640,136 +628,96 @@ class LocationUpdateService : Service() {
             ).apply {
                 description = "Канал для сервиса отслеживания перемещений"
                 setShowBadge(false)
-                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-                enableVibration(false)
-                enableLights(false)
             }
-
             val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(channel)
-            Log.d(TAG, "createNotificationChannel: Канал уведомлений создан")
+            Log.d(TAG, "✅ Канал уведомлений создан")
         }
     }
 
-    private fun buildFastNotification(): Notification {
-        return NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
-            .setContentTitle("Отслеживание маршрута")
-            .setContentText("Сервис отслеживания активности работает")
+    private fun updateNotification(text: String) {
+        try {
+            val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+                .setContentTitle("📍 Отслеживание маршрута")
+                .setContentText(text)
+                .setSmallIcon(R.drawable.ic_location)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setOngoing(true)
+                .setCategory(Notification.CATEGORY_SERVICE)
+                .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                .build()
+
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.notify(NOTIFICATION_ID, notification)
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Ошибка обновления уведомления", e)
+        }
+    }
+
+    private fun showBatteryOptimizationNotification() {
+        val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setContentTitle("🔋 Оптимизация батареи")
+            .setContentText("Отключите оптимизацию для стабильной работы трекера")
             .setSmallIcon(R.drawable.ic_location)
-            .setPriority(NotificationCompat.PRIORITY_LOW)
-            .setOngoing(true)
-            .setCategory(Notification.CATEGORY_SERVICE)
-            .setSilent(true)
-            .setShowWhen(false)
-            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setAutoCancel(true)
             .build()
+
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(4, notification)
     }
 
-    private fun hasForegroundLocationPermissions(): Boolean {
-        return ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ||
-                ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+    private fun showPermissionNotification() {
+        val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setContentTitle("📍 Требуется разрешение")
+            .setContentText("Дайте разрешение на доступ к локации")
+            .setSmallIcon(R.drawable.ic_location)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
+
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(2, notification)
     }
 
-    private suspend fun updateUserLocationInFirebaseFast(lat: Double, lng: Double, color: Int, accuracy: Float) {
-        if (!isRunning.get()) return
+    private fun showLocationDisabledNotification() {
+        val notification = NotificationCompat.Builder(this, NOTIFICATION_CHANNEL_ID)
+            .setContentTitle("📍 Включите геолокацию")
+            .setContentText("Для работы трекера включите GPS")
+            .setSmallIcon(R.drawable.ic_location)
+            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .build()
 
-        val userId = auth.currentUser?.uid ?: return
-        val timestamp = System.currentTimeMillis()
-
-        val location = UserLocation(
-            lat = lat,
-            lng = lng,
-            timestamp = timestamp,
-            color = color,
-            accuracy = accuracy
-        )
-
-        try {
-            database.child("user_locations").child(userId).setValue(location).await()
-            Log.d(TAG, "updateUserLocationInFirebaseFast: Локация обновлена в Firebase")
-        } catch (e: Exception) {
-            Log.e(TAG, "updateUserLocationInFirebaseFast: Ошибка обновления Firebase", e)
-        }
+        val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        manager.notify(3, notification)
     }
 
-    private suspend fun updateTrackingStatus(isTracking: Boolean) {
-        val userId = auth.currentUser?.uid ?: return
-
-        try {
-            database.child("tracking_status").child(userId).setValue(isTracking).await()
-            Log.d(TAG, "updateTrackingStatus: Статус трекинга обновлен: $isTracking")
-        } catch (e: Exception) {
-            Log.e(TAG, "updateTrackingStatus: Ошибка обновления статуса", e)
-        }
+    private fun handleLocationError() {
+        Log.w(TAG, "🔄 Повторная попытка через 10 секунд")
+        handler.postDelayed({
+            if (isRunning.get()) {
+                Log.d(TAG, "🔄 Перезапуск обновлений локации...")
+                serviceScope.launch {
+                    setupLocationUpdates()
+                }
+            }
+        }, 10000)
     }
 
-    private suspend fun clearCurrentLocationFast() {
-        val userId = auth.currentUser?.uid ?: return
-
-        try {
-            database.child("user_locations").child(userId).removeValue().await()
-            Log.d(TAG, "clearCurrentLocationFast: Текущая локация очищена")
-        } catch (e: Exception) {
-            Log.e(TAG, "clearCurrentLocationFast: Ошибка очистки локации", e)
-        }
-    }
-
-    private fun calculateTurnAngleFast(p1: Point, p2: Point, p3: Point): Double {
-        val bearing1 = calculateBearingFast(p1, p2)
-        val bearing2 = calculateBearingFast(p2, p3)
-
-        var angle = bearing2 - bearing1
-        if (angle > 180) angle -= 360
-        if (angle < -180) angle += 360
-
-        return angle
-    }
-
-    private fun calculateBearingFast(from: Point, to: Point): Double {
-        val lat1 = Math.toRadians(from.latitude)
-        val lon1 = Math.toRadians(from.longitude)
-        val lat2 = Math.toRadians(to.latitude)
-        val lon2 = Math.toRadians(to.longitude)
-
-        val dLon = lon2 - lon1
-        val y = sin(dLon) * cos(lat2)
-        val x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
-
-        return (Math.toDegrees(atan2(y, x)) + 360) % 360
-    }
-
-    private fun calculateDistanceFast(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+    private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
         val earthRadius = 6371000.0
-
-        val lat1Rad = Math.toRadians(lat1)
-        val lat2Rad = Math.toRadians(lat2)
         val dLat = Math.toRadians(lat2 - lat1)
         val dLon = Math.toRadians(lon2 - lon1)
-
-        val a = sin(dLat / 2).pow(2) + cos(lat1Rad) * cos(lat2Rad) * sin(dLon / 2).pow(2)
+        val a = sin(dLat / 2).pow(2) + cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLon / 2).pow(2)
         val c = 2 * atan2(sqrt(a), sqrt(1 - a))
-
         return earthRadius * c
     }
 
     override fun onDestroy() {
-        Log.d(TAG, "onDestroy: Остановка сервиса")
-
-        try {
-            serviceScope.launch {
-                stopLocationTrackingFast()
-            }
-            handler.removeCallbacksAndMessages(null)
-            serviceScope.cancel()
-            Log.d(TAG, "onDestroy: Ресурсы освобождены")
-        } catch (e: Exception) {
-            Log.e(TAG, "onDestroy: Ошибка при остановке", e)
-        } finally {
-            super.onDestroy()
-        }
+        Log.d(TAG, "🗑️ Уничтожение сервиса")
+        stopLocationTracking()
+        handler.removeCallbacksAndMessages(null)
+        super.onDestroy()
     }
 
-    override fun onBind(intent: Intent?): IBinder? {
-        return null
-    }
+    override fun onBind(intent: Intent?): IBinder? = null
 }

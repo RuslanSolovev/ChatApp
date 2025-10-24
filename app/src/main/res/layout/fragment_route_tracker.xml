@@ -10,130 +10,315 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
-    <!-- Выдвижная шторка снизу -->
+    <!-- Выдвижная шторка слева -->
     <LinearLayout
         android:id="@+id/bottomSheet"
-        android:layout_width="match_parent"
-        android:layout_height="400dp"
+        android:layout_width="300dp"
+        android:layout_height="match_parent"
         android:orientation="vertical"
-        android:background="@android:color/white"
-        android:elevation="8dp"
-        app:layout_behavior="com.google.android.material.bottomsheet.BottomSheetBehavior">
-
-        <!-- Ручка для перетаскивания -->
-        <View
-            android:layout_width="40dp"
-            android:layout_height="4dp"
-            android:layout_gravity="center_horizontal"
-            android:layout_marginTop="8dp"
-            android:layout_marginBottom="8dp"
-            android:background="@drawable/bottom_sheet_drag_handle" />
+        android:background="@drawable/left_sheet_background"
+        android:elevation="24dp"
+        android:outlineProvider="bounds">
 
         <!-- Заголовок шторки -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Статистика маршрута"
-            android:textSize="20sp"
-            android:textStyle="bold"
-            android:gravity="center"
-            android:padding="8dp" />
-
-        <!-- Контент статистики -->
-        <LinearLayout
-            android:id="@+id/statsContent"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:padding="16dp">
-
-            <!-- Дистанция -->
-            <TextView
-                android:id="@+id/Distance"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                android:text="🛣️ Пройдено: 0 км"
-                android:textSize="16sp" />
-
-            <!-- Время -->
-            <TextView
-                android:id="@+id/tvTime"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                android:text="⏱️ Время: 0 мин"
-                android:textSize="16sp" />
-
-            <!-- Средняя скорость -->
-            <TextView
-                android:id="@+id/AvgSpeed"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                android:text="🚶 Ср. скорость: 0 км/ч"
-                android:textSize="16sp" />
-
-            <!-- Максимальная скорость -->
-            <TextView
-                android:id="@+id/MaxSpeed"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                android:text="💨 Макс. скорость: 0 км/ч"
-                android:textSize="16sp" />
-
-            <!-- Калории -->
-            <TextView
-                android:id="@+id/Calories"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                android:text="🔥 Калории: ~0"
-                android:textSize="16sp" />
-
-        </LinearLayout>
-
-        <!-- Кнопки управления -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:padding="16dp"
-            android:gravity="center"
-            android:weightSum="3">
+            android:gravity="center_vertical"
+            android:paddingStart="20dp"
+            android:paddingTop="16dp"
+            android:paddingEnd="16dp"
+            android:paddingBottom="16dp"
+            android:background="@drawable/header_gradient">
 
-            <Button
-                android:id="@+id/btnStartTracking"
+            <!-- Ручка для перетаскивания (вертикальная) -->
+            <View
+                android:layout_width="4dp"
+                android:layout_height="32dp"
+                android:layout_marginEnd="12dp"
+                android:background="@drawable/drag_handle_gradient" />
+
+            <TextView
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:layout_marginEnd="8dp"
-                android:text="Старт"
-                android:backgroundTint="@color/gray_600"
-                android:textColor="@color/white" />
+                android:text="Статистика маршрута"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:textColor="@android:color/white"
+                android:shadowColor="#80000000"
+                android:shadowDx="1"
+                android:shadowDy="1"
+                android:shadowRadius="2" />
 
-            <Button
-                android:id="@+id/btnStopTracking"
-                android:layout_width="0dp"
+            <!-- Кнопка закрытия -->
+            <ImageButton
+                android:id="@+id/btnCloseSheet"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/ic_close"
+                android:background="@drawable/circle_ripple"
+                app:tint="@android:color/white"
+                android:contentDescription="Закрыть" />
+
+        </LinearLayout>
+
+        <!-- Контент статистики с прокруткой -->
+        <ScrollView
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:padding="20dp"
+            android:overScrollMode="never">
+
+            <LinearLayout
+                android:id="@+id/statsContent"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="8dp"
-                android:layout_marginEnd="8dp"
-                android:text="Стоп"
-                android:backgroundTint="@color/red"
-                android:textColor="@color/white" />
+                android:orientation="vertical">
+
+                <!-- Дистанция -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="20dp">
+
+                    <TextView
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:text="🛣️"
+                        android:textSize="16sp"
+                        android:gravity="center" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:paddingStart="12dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Дистанция"
+                            android:textSize="12sp"
+                            android:textColor="#666666"
+                            android:textAllCaps="true"
+                            android:letterSpacing="0.05" />
+
+                        <TextView
+                            android:id="@+id/Distance"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="0 км"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            android:textColor="#333333" />
+
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- Время -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="20dp">
+
+                    <TextView
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:text="⏱️"
+                        android:textSize="16sp"
+                        android:gravity="center" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:paddingStart="12dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Время"
+                            android:textSize="12sp"
+                            android:textColor="#666666"
+                            android:textAllCaps="true"
+                            android:letterSpacing="0.05" />
+
+                        <TextView
+                            android:id="@+id/tvTime"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="0 мин"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            android:textColor="#333333" />
+
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- Средняя скорость -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="20dp">
+
+                    <TextView
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:text="🚶"
+                        android:textSize="16sp"
+                        android:gravity="center" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:paddingStart="12dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Средняя скорость"
+                            android:textSize="12sp"
+                            android:textColor="#666666"
+                            android:textAllCaps="true"
+                            android:letterSpacing="0.05" />
+
+                        <TextView
+                            android:id="@+id/AvgSpeed"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="0 км/ч"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            android:textColor="#333333" />
+
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- Максимальная скорость -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="20dp">
+
+                    <TextView
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:text="💨"
+                        android:textSize="16sp"
+                        android:gravity="center" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:paddingStart="12dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Макс. скорость"
+                            android:textSize="12sp"
+                            android:textColor="#666666"
+                            android:textAllCaps="true"
+                            android:letterSpacing="0.05" />
+
+                        <TextView
+                            android:id="@+id/MaxSpeed"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="0 км/ч"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            android:textColor="#333333" />
+
+                    </LinearLayout>
+                </LinearLayout>
+
+                <!-- Калории -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="20dp">
+
+                    <TextView
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:text="🔥"
+                        android:textSize="16sp"
+                        android:gravity="center" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:paddingStart="12dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Сожжено калорий"
+                            android:textSize="12sp"
+                            android:textColor="#666666"
+                            android:textAllCaps="true"
+                            android:letterSpacing="0.05" />
+
+                        <TextView
+                            android:id="@+id/Calories"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="0 ккал"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            android:textColor="#333333" />
+
+                    </LinearLayout>
+                </LinearLayout>
+
+            </LinearLayout>
+        </ScrollView>
+
+        <!-- Кнопки управления с отступом снизу -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingStart="20dp"
+            android:paddingTop="16dp"
+            android:paddingEnd="20dp"
+            android:paddingBottom="150dp"
+            android:background="@android:color/transparent">
 
             <Button
                 android:id="@+id/btnClear"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:layout_marginStart="8dp"
-                android:text="Очистить"
-                android:backgroundTint="@color/gray"
-                android:textColor="@color/white" />
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:text="Очистить маршрут"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:background="@drawable/button_brown_gradient"
+                android:textColor="@android:color/white"
+                android:stateListAnimator="@null"
+                android:elevation="4dp"
+                android:translationZ="4dp" />
 
         </LinearLayout>
 
@@ -142,12 +327,14 @@
     <!-- Кнопка для управления шторкой -->
     <ImageButton
         android:id="@+id/btnToggleSheet"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
         android:layout_gravity="top|end"
-        android:layout_margin="16dp"
-        android:background="@drawable/round_button_bg"
-        android:src="@drawable/ic_stats"
-        android:contentDescription="Показать статистику" />
+        android:layout_margin="20dp"
+        android:background="@drawable/fab_background"
+        android:src="@drawable/ic_create_new_playlist"
+        android:contentDescription="Показать статистику"
+        android:elevation="8dp"
+        android:translationZ="8dp" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

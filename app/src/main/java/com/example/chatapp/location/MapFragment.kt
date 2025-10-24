@@ -27,7 +27,6 @@ import com.bumptech.glide.request.transition.Transition
 import com.example.chatapp.R
 import com.example.chatapp.activities.ChatDetailActivity
 import com.example.chatapp.activities.UserProfileActivity
-
 import com.example.chatapp.models.User
 import com.example.chatapp.models.UserLocation
 import com.example.chatapp.utils.Constants
@@ -35,7 +34,6 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.*
 import com.yandex.mapkit.Animation
 import com.yandex.mapkit.MapKitFactory
-import com.yandex.mapkit.geometry.BoundingBoxHelper
 import com.yandex.mapkit.geometry.Point
 import com.yandex.mapkit.map.*
 import com.yandex.mapkit.mapview.MapView
@@ -50,7 +48,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
-import java.io.IOException
 import java.util.Locale
 import java.util.concurrent.Executors
 import kotlin.math.*
@@ -132,7 +129,7 @@ class MapFragment : Fragment() {
     private var lastGeocodePoint: Point? = null
 
     private val markerUpdateTimes = mutableMapOf<String, Long>()
-    private val MARKER_UPDATE_THROTTLE = 2000L
+    private val MARKER_UPDATE_THROTTLE = 5000L
 
     private var isMyAvatarLoading = false
     private var lastMyAvatarLoadTime: Long = 0
@@ -140,11 +137,12 @@ class MapFragment : Fragment() {
 
     private val ioScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var lastUserDataLoadTime = 0L
-    private val USER_DATA_LOAD_THROTTLE = 5000L // 5 секунд
+    private val USER_DATA_LOAD_THROTTLE = 5000L
 
     companion object {
         private const val TAG = "MapFragment"
         private const val MIN_MOVE_DISTANCE = 50.0
+        private const val MIN_MOVE_DISTANCE_FOR_UPDATE = 10.0
     }
 
     private var shouldReloadData = true
@@ -177,7 +175,6 @@ class MapFragment : Fragment() {
 
         locationManager = MapKitFactory.getInstance().createLocationManager()
 
-        // Отложить тяжелые операции
         Handler(Looper.getMainLooper()).postDelayed({
             if (!isFragmentDestroyed && isAdded) {
                 observeUserLocations()
@@ -226,17 +223,13 @@ class MapFragment : Fragment() {
 
         isFragmentDestroyed = false
 
-        // 1. Сначала запускаем только критически важные операции в основном потоке
         locationUpdateHandler.postDelayed(locationUpdateRunnable, 15000)
         locationRestartHandler.postDelayed(locationRestartRunnable, 45000)
 
-        // 2. Быстрая инициализация UI
         fixTouchInterception()
         startLocationTracking()
 
-        // 3. Отложить тяжелые операции с помощью корутин
         ioScope.launch {
-            // Небольшая задержка чтобы дать UI отрисоваться
             delay(100)
 
             withContext(Dispatchers.Main) {
@@ -249,7 +242,6 @@ class MapFragment : Fragment() {
                 }
             }
 
-            // Еще одна задержка для распределения нагрузки
             delay(500)
 
             withContext(Dispatchers.Main) {
@@ -258,7 +250,6 @@ class MapFragment : Fragment() {
                 }
             }
 
-            // Самые тяжелые операции - последними с наибольшей задержкой
             delay(2000)
 
             withContext(Dispatchers.Main) {
@@ -270,7 +261,6 @@ class MapFragment : Fragment() {
             }
         }
 
-        // 4. Оптимизированная загрузка данных пользователей с троттлингом
         handler.postDelayed({
             if (!isFragmentDestroyed && isAdded) {
                 loadUserDataWithThrottle()
@@ -290,7 +280,6 @@ class MapFragment : Fragment() {
 
         ioScope.launch {
             try {
-                // Загрузка данных пользователей в фоне
                 loadEssentialUserData()
             } catch (e: Exception) {
                 Log.e(TAG, "loadUserDataWithThrottle: Ошибка загрузки данных", e)
@@ -299,19 +288,15 @@ class MapFragment : Fragment() {
     }
 
     private suspend fun loadEssentialUserData() {
-        // Загружаем только самые необходимые данные
         val currentUserId = auth.currentUser?.uid ?: return
 
-        // Пример: загрузка основных данных текущего пользователя
         try {
             val userSnapshot = withContext(Dispatchers.IO) {
                 database.child("users").child(currentUserId).get().await()
             }
 
-            // Обработка данных в основном потоке если нужно обновить UI
             withContext(Dispatchers.Main) {
                 if (!isFragmentDestroyed && isAdded) {
-                    // Обновление UI если необходимо
                     updateUserProfileIfNeeded(userSnapshot)
                 }
             }
@@ -321,19 +306,15 @@ class MapFragment : Fragment() {
     }
 
     private fun updateUserProfileIfNeeded(snapshot: DataSnapshot) {
-        // Минимальное обновление UI если нужно
         try {
             val user = snapshot.getValue(User::class.java)
             user?.let {
-                // Только критически важные обновления UI
                 Log.d(TAG, "updateUserProfileIfNeeded: Данные пользователя загружены")
             }
         } catch (e: Exception) {
             Log.w(TAG, "updateUserProfileIfNeeded: Ошибка обновления UI", e)
         }
     }
-
-    // Остальные методы остаются без изменений...
 
     private fun setupMapTouchHandling() {
         mapView.isClickable = true
@@ -531,7 +512,14 @@ class MapFragment : Fragment() {
             return
         }
 
-        if (lastGeocodePoint != null && distanceBetween(lastGeocodePoint!!, point) < 5.0) {
+        // Проверка валидности координат
+        if (point.latitude < -90 || point.latitude > 90 ||
+            point.longitude < -180 || point.longitude > 180) {
+            Log.w(TAG, "reverseGeocode: Невалидные координаты $point")
+            return
+        }
+
+        if (lastGeocodePoint != null && distanceBetween(lastGeocodePoint!!, point) < 2.0) {
             Log.d(TAG, "reverseGeocode: Пропускаем геокодирование - точка почти не изменилась")
             return
         }
@@ -637,7 +625,7 @@ class MapFragment : Fragment() {
 
     override fun onPause() {
         super.onPause()
-        Log.d(TAG, "onPause: НАЧАЛО")
+        Log.d(TAG, "onPause: НАЧАЛO")
 
         locationUpdateHandler.removeCallbacksAndMessages(null)
         locationRestartHandler.removeCallbacksAndMessages(null)
@@ -775,55 +763,78 @@ class MapFragment : Fragment() {
             Log.w(TAG, "updateUserMarker: Fragment not attached or destroyed, skipping update")
             return
         }
-        val userLocation = snapshot.getValue(UserLocation::class.java)
-        val userId = snapshot.key
-        if (userLocation != null && userId != null) {
-            val lastUpdateTime = markerUpdateTimes[userId] ?: 0L
-            val currentTime = System.currentTimeMillis()
-            if (currentTime - lastUpdateTime < MARKER_UPDATE_THROTTLE) {
-                Log.v(TAG, "updateUserMarker: Throttling update for $userId")
-                return
-            }
-            val lastKnownLocation = lastReceivedLocation[userId]
-            if (lastKnownLocation != null &&
-                lastKnownLocation.lat == userLocation.lat &&
-                lastKnownLocation.lng == userLocation.lng &&
-                lastKnownLocation.timestamp == userLocation.timestamp) {
-                Log.v(TAG, "updateUserMarker: Data for $userId hasn't changed, skipping")
-                return
-            }
-            lastReceivedLocation[userId] = userLocation
-            markerUpdateTimes[userId] = currentTime
-            val point = Point(userLocation.lat, userLocation.lng)
-            lastActiveTime[userId] = userLocation.timestamp
-            val currentOnlineStatus = (System.currentTimeMillis() - userLocation.timestamp) < 30000
-            if (userId != auth.currentUser?.uid) {
-                loadUserInfo(userId)
-            }
-            if (userId == auth.currentUser?.uid) {
-                updateMyMarker(point)
-                myLocation = point
-            } else {
-                val existingMarker = markers[userId]
-                if (existingMarker != null) {
-                    val oldPoint = existingMarker.geometry
-                    if (distanceBetween(oldPoint, point) > MIN_MOVE_DISTANCE) {
-                        animateMarkerToBezierCubicWithRotation(existingMarker, point)
-                    } else {
-                        try {
-                            existingMarker.geometry = point
-                        } catch (e: Exception) {
-                            Log.w(TAG, "updateUserMarker: Error setting geometry for $userId", e)
-                        }
-                    }
-                    if (this.isOnline[userId] != currentOnlineStatus) {
-                        updateMarkerAppearance(userId, existingMarker, currentOnlineStatus)
-                    }
-                } else {
-                    addMarker(userId, point, currentOnlineStatus, "")
+
+        try {
+            val userLocation = snapshot.getValue(UserLocation::class.java)
+            val userId = snapshot.key
+
+            if (userLocation != null && userId != null && userLocation.isValid()) {
+                val lastUpdateTime = markerUpdateTimes[userId] ?: 0L
+                val currentTime = System.currentTimeMillis()
+                if (currentTime - lastUpdateTime < MARKER_UPDATE_THROTTLE) {
+                    Log.v(TAG, "updateUserMarker: Throttling update for $userId")
+                    return
                 }
+
+                val lastKnownLocation = lastReceivedLocation[userId]
+                if (lastKnownLocation != null) {
+                    val lastPoint = Point(lastKnownLocation.lat, lastKnownLocation.lng)
+                    val newPoint = Point(userLocation.lat, userLocation.lng)
+
+                    if (distanceBetween(lastPoint, newPoint) < MIN_MOVE_DISTANCE_FOR_UPDATE) {
+                        Log.v(TAG, "updateUserMarker: Малое перемещение, пропускаем для $userId")
+                        return
+                    }
+
+                    if (lastKnownLocation.lat == userLocation.lat &&
+                        lastKnownLocation.lng == userLocation.lng &&
+                        lastKnownLocation.timestamp == userLocation.timestamp) {
+                        Log.v(TAG, "updateUserMarker: Data for $userId hasn't changed, skipping")
+                        return
+                    }
+                }
+
+                lastReceivedLocation[userId] = userLocation
+                markerUpdateTimes[userId] = currentTime
+                val point = userLocation.toPoint()
+                lastActiveTime[userId] = userLocation.timestamp
+                val currentOnlineStatus = (System.currentTimeMillis() - userLocation.timestamp) < 30000
+
+                if (userId != auth.currentUser?.uid) {
+                    loadUserInfo(userId)
+                }
+
+                if (userId == auth.currentUser?.uid) {
+                    updateMyMarker(point)
+                    myLocation = point
+                } else {
+                    val existingMarker = markers[userId]
+                    if (existingMarker != null) {
+                        val oldPoint = existingMarker.geometry
+                        if (distanceBetween(oldPoint, point) > MIN_MOVE_DISTANCE) {
+                            animateMarkerToBezierCubicWithRotation(existingMarker, point)
+                        } else {
+                            try {
+                                existingMarker.geometry = point
+                            } catch (e: Exception) {
+                                Log.w(TAG, "updateUserMarker: Error setting geometry for $userId", e)
+                            }
+                        }
+                        if (this.isOnline[userId] != currentOnlineStatus) {
+                            updateMarkerAppearance(userId, existingMarker, currentOnlineStatus)
+                        }
+                    } else {
+                        addMarker(userId, point, currentOnlineStatus, "")
+                    }
+                }
+                this.isOnline[userId] = currentOnlineStatus
+
+            } else {
+                Log.w(TAG, "updateUserMarker: Invalid location data for $userId - $userLocation")
             }
-            this.isOnline[userId] = currentOnlineStatus
+
+        } catch (e: Exception) {
+            Log.e(TAG, "updateUserMarker: Error processing snapshot for ${snapshot.key}", e)
         }
     }
 
@@ -832,7 +843,7 @@ class MapFragment : Fragment() {
 
         val lastLoadTime = lastActiveTime[userId] ?: 0L
         val now = System.currentTimeMillis()
-        if (now - lastLoadTime < 30000) { // Увеличить интервал до 30 секунд
+        if (now - lastLoadTime < 30000) {
             return
         }
         lastActiveTime[userId] = now
@@ -960,7 +971,12 @@ class MapFragment : Fragment() {
 
             Log.d(TAG, "loadMyAvatar: Загрузка аватара для $userId с URL: $avatarUrl")
 
-            val finalAvatarUrl = avatarUrl ?: "https://storage.yandexcloud.net/chatskii/profile_$userId.jpg"
+            var finalAvatarUrl = avatarUrl ?: "https://storage.yandexcloud.net/chatskii/profile_$userId.jpg"
+
+            // Проверка валидности URL
+            if (finalAvatarUrl.isBlank() || !finalAvatarUrl.startsWith("http")) {
+                finalAvatarUrl = "https://storage.yandexcloud.net/chatskii/profile_$userId.jpg"
+            }
 
             Glide.with(this)
                 .asBitmap()
@@ -1130,8 +1146,12 @@ class MapFragment : Fragment() {
         if (isFragmentDestroyed || !isAdded) return
 
         val userInfo = userInfoCache[userId]
-        val avatarUrl = userInfo?.avatarUrl
-            ?: "https://storage.yandexcloud.net/chatskii/profile_$userId.jpg"
+        var avatarUrl = userInfo?.avatarUrl
+
+        // Проверка и нормализация URL
+        if (avatarUrl.isNullOrEmpty() || !avatarUrl.startsWith("http")) {
+            avatarUrl = "https://storage.yandexcloud.net/chatskii/profile_$userId.jpg"
+        }
 
         // Кэширование ключа для предотвращения повторных загрузок
         val cacheKey = "$userId-${userInfo?.avatarUrl}"
@@ -1157,6 +1177,7 @@ class MapFragment : Fragment() {
                             .submit()
                             .get()
                     } catch (e: Exception) {
+                        Log.w(TAG, "loadUserAvatar: Failed to load avatar for $userId from $avatarUrl", e)
                         null
                     }
                 }
@@ -1168,6 +1189,7 @@ class MapFragment : Fragment() {
                         try {
                             createMarkerBitmap(it, name, onlineStatus)
                         } catch (e: Exception) {
+                            Log.w(TAG, "loadUserAvatar: Error creating marker bitmap for $userId", e)
                             placeholderBitmap
                         }
                     } ?: placeholderBitmap
@@ -1178,6 +1200,7 @@ class MapFragment : Fragment() {
                     }
                 }
             } catch (e: Exception) {
+                Log.e(TAG, "loadUserAvatar: Unexpected error for $userId", e)
                 withContext(Dispatchers.Main) {
                     if (!isFragmentDestroyed && isAdded && placemark.isValid) {
                         setMarkerIconWithListener(userId, placemark, placeholderBitmap)
@@ -1420,7 +1443,6 @@ class MapFragment : Fragment() {
             return
         }
 
-        // Дополнительная проверка: не отправляем сообщение себе
         if (userId == currentUserId) {
             Log.w(TAG, "sendMessage: Попытка отправить сообщение самому себе")
             Toast.makeText(requireContext(), "Нельзя отправить сообщение самому себе", Toast.LENGTH_SHORT).show()
@@ -1430,16 +1452,13 @@ class MapFragment : Fragment() {
         val chatId = if (currentUserId < userId) "$currentUserId-$userId" else "$userId-$currentUserId"
         val chatRef = database.child("chats").child(chatId)
 
-        // Проверяем, существует ли чат
         chatRef.get().addOnSuccessListener { chatSnapshot ->
             if (!isFragmentDestroyed && isAdded) {
                 if (chatSnapshot.exists()) {
                     Log.d(TAG, "sendMessage: Чат с $userId уже существует, открываем.")
-                    // Чат уже есть, сразу открываем
-                    openChatActivity(chatId) // Передаём только chatId
+                    openChatActivity(chatId)
                 } else {
                     Log.d(TAG, "sendMessage: Создание нового чата с $userId")
-                    // Загружаем данные другого пользователя
                     database.child("users").child(userId).get().addOnSuccessListener { userSnapshot ->
                         if (!isFragmentDestroyed && isAdded) {
                             val otherUser = userSnapshot.getValue(User::class.java)
@@ -1447,7 +1466,6 @@ class MapFragment : Fragment() {
                                 val otherUserName = otherUser.getFullName() ?: "Пользователь $userId"
                                 val otherUserAvatarUrl = otherUser.profileImageUrl
 
-                                // Загружаем данные текущего пользователя
                                 database.child("users").child(currentUserId).addListenerForSingleValueEvent(object : ValueEventListener {
                                     override fun onDataChange(currentUserSnapshot: DataSnapshot) {
                                         if (!isFragmentDestroyed && isAdded) {
@@ -1456,32 +1474,25 @@ class MapFragment : Fragment() {
                                                 val currentUserName = currentUser.getFullName() ?: "Я"
                                                 val currentUserAvatarUrl = currentUser.profileImageUrl
 
-                                                // Создаём объект Chat с правильной структурой для ChatDetailActivity
                                                 val newChat = mapOf(
                                                     "creatorId" to currentUserId,
                                                     "creatorName" to currentUserName,
                                                     "imageUrl" to currentUserAvatarUrl,
                                                     "createdAt" to System.currentTimeMillis(),
-                                                    // !! КЛЮЧЕВОЕ ИЗМЕНЕНИЕ: используем "participants" !!
                                                     "participants" to mapOf(currentUserId to true, userId to true),
-                                                    "name" to otherUserName, // Имя другого пользователя для отображения
-                                                    "avatarUrl" to otherUserAvatarUrl, // Аватар другого пользователя для отображения
-                                                    "lastMessage" to "", // Или null
-                                                    "lastMessageTime" to 0L // Или System.currentTimeMillis() если это время создания
+                                                    "name" to otherUserName,
+                                                    "avatarUrl" to otherUserAvatarUrl,
+                                                    "lastMessage" to "",
+                                                    "lastMessageTime" to 0L
                                                 )
 
-                                                // Сохраняем чат
                                                 val updates = mutableMapOf<String, Any>()
                                                 updates["chats/$chatId"] = newChat
-                                                // Опционально: обновить списки чатов у обоих пользователей (если используется)
-                                                // updates["user_chats/$currentUserId/$chatId"] = true
-                                                // updates["user_chats/$userId/$chatId"] = true
 
                                                 database.updateChildren(updates)
                                                     .addOnSuccessListener {
                                                         Log.d(TAG, "sendMessage: Чат с $userId успешно создан в базе данных.")
-                                                        // После успешного создания открываем чат
-                                                        openChatActivity(chatId) // Передаём только chatId
+                                                        openChatActivity(chatId)
                                                     }
                                                     .addOnFailureListener { e ->
                                                         Log.e(TAG, "sendMessage: Ошибка сохранения чата в базе данных", e)
@@ -1534,16 +1545,12 @@ class MapFragment : Fragment() {
         }
     }
 
-    // Обновлённая функция openChatActivity - передаём только chatId
     private fun openChatActivity(chatId: String) {
         Log.d(TAG, "openChatActivity: Открытие чата $chatId")
         val intent = Intent(requireContext(), ChatDetailActivity::class.java).apply {
-            putExtra(Constants.CHAT_ID, chatId) // Используем Constants.CHAT_ID
-            // Убираем putExtra для FRIEND_NAME и FRIEND_AVATAR_URL
+            putExtra(Constants.CHAT_ID, chatId)
         }
         startActivity(intent)
-        // Дополнительно: можно добавить анимацию перехода
-        // overridePendingTransition(R.anim.slide_in_right, R.anim.slide_out_left)
     }
 
     private fun addFriend(userId: String) {
@@ -1815,7 +1822,6 @@ class MapFragment : Fragment() {
 
         isFragmentDestroyed = true
 
-        // Отменяем корутины
         ioScope.cancel()
 
         geocoderExecutor.shutdownNow()

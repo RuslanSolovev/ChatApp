@@ -1,6 +1,5 @@
 package com.example.chatapp.location
 
-import android.app.AlertDialog
 import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
@@ -14,6 +13,8 @@ import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
+import androidx.coordinatorlayout.widget.CoordinatorLayout
 import androidx.fragment.app.Fragment
 import com.example.chatapp.R
 import com.example.chatapp.models.UserLocation
@@ -31,11 +32,14 @@ import com.yandex.mapkit.map.PlacemarkMapObject
 import com.yandex.mapkit.map.PolylineMapObject
 import com.yandex.mapkit.mapview.MapView
 import com.yandex.runtime.image.ImageProvider
-import java.util.*
-import kotlin.collections.ArrayList
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlin.math.*
 
 class RouteTrackerFragment : Fragment() {
+
     private lateinit var mapView: MapView
     private lateinit var tvDistance: TextView
     private lateinit var tvTime: TextView
@@ -44,44 +48,39 @@ class RouteTrackerFragment : Fragment() {
     private lateinit var tvCalories: TextView
     private lateinit var btnClear: Button
     private lateinit var btnToggleSheet: ImageButton
+    private lateinit var btnCloseSheet: ImageButton
     private lateinit var bottomSheet: LinearLayout
-    private lateinit var bottomSheetBehavior: BottomSheetBehavior<LinearLayout>
+
     private val database = FirebaseDatabase.getInstance().reference
     private val auth = FirebaseAuth.getInstance()
     private var polyline: PolylineMapObject? = null
     private var startMarker: PlacemarkMapObject? = null
     private var endMarker: PlacemarkMapObject? = null
+
     private var totalDistance = 0.0
-    private var totalTimeInMotion = 0L
+    private var totalTime = 0L
     private var maxSpeed = 0.0
     private var avgSpeed = 0.0
     private val userWeight = 70.0
-    private var lastLocationTime = 0L
+
+    private var isTracking = false
     private var routePoints = mutableListOf<Point>()
     private var locationList = mutableListOf<UserLocation>()
-    private var filteredLocationList = mutableListOf<UserLocation>()
-    private var userLocationsListener: ValueEventListener? = null
-    private var userLocationsRef: DatabaseReference? = null
+    private var locationListener: ValueEventListener? = null
     private var trackingStatusListener: ValueEventListener? = null
-    private var dailyCleanupHandler = Handler(Looper.getMainLooper())
-    private var dailyCleanupRunnable: Runnable? = null
 
-    // Улучшенный буфер для сглаживания траектории
-    private val smoothingBuffer = ArrayList<Point>()
-    private var isFragmentDestroyed = false
-    private var isFirstLaunch = true
+    private val handler = Handler(Looper.getMainLooper())
+    private var statsUpdateRunnable: Runnable? = null
+    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
+    private var isFirstLoad = true
+    private var shouldShowFullHistory = true
 
     companion object {
         private const val TAG = "RouteTrackerFragment"
-        private const val MIN_POINT_DISTANCE = 5.0 // Минимальное расстояние между точками
-        private const val MAX_POINT_DISTANCE = 200.0 // Максимальное расстояние
-        private const val MAX_VALID_SPEED_MPS = 25.0f
-        private const val MIN_VALID_SPEED_MPS = 0.1f
-        private const val MAX_TIME_DIFF = 30000L
-        private const val MIN_TIME_DIFF = 1000L
-        private const val MAX_ACCELERATION = 5.0f
-        private const val SMOOTHING_BUFFER_SIZE = 5
-        private const val MIN_ACCURACY = 50.0f // Максимально допустимая погрешность GPS
+        private const val STATS_UPDATE_INTERVAL = 3000L
+        private const val MAX_REALISTIC_SPEED = 27.78 // 100 км/ч в м/с
+        private const val MAX_BIKE_SPEED = 16.67 // 60 км/ч в м/с
     }
 
     override fun onCreateView(
@@ -94,50 +93,27 @@ class RouteTrackerFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        Log.d(TAG, "🎯 Фрагмент создан")
+
         initViews(view)
         setupMap()
-        setupBottomSheet()
+        setupLeftSheet()
         setupButtons()
-        Log.d(TAG, "Fragment создан, начинаем инициализацию")
-        loadRouteForToday()
-        scheduleDailyCleanup()
-        checkAndStartTracking()
+        setupStatsUpdater()
+
+        // Запускаем сервис и загружаем данные
+        startLocationService()
+        setupFirebaseListeners()
+
+        // Загружаем полную историю маршрута при первом открытии
+        handler.postDelayed({
+            loadFullRouteHistory()
+        }, 1000)
+
+        Log.d(TAG, "✅ Фрагмент инициализирован")
     }
 
-    override fun onDestroyView() {
-        super.onDestroyView()
-        isFragmentDestroyed = true
-        dailyCleanupRunnable?.let { dailyCleanupHandler.removeCallbacks(it) }
-        removeLocationListener()
-        removeTrackingStatusListener()
-        clearRoute()
-        Log.d(TAG, "Fragment view destroyed")
-    }
 
-    override fun onDestroy() {
-        super.onDestroy()
-        isFragmentDestroyed = true
-        dailyCleanupRunnable?.let { dailyCleanupHandler.removeCallbacks(it) }
-        Log.d(TAG, "Fragment destroyed")
-    }
-
-    override fun onStart() {
-        super.onStart()
-        mapView.onStart()
-        MapKitFactory.getInstance().onStart()
-        Log.d(TAG, "Fragment started, запускаем слушатели")
-        startLocationListener()
-        setupTrackingStatusListener()
-    }
-
-    override fun onStop() {
-        super.onStop()
-        mapView.onStop()
-        MapKitFactory.getInstance().onStop()
-        Log.d(TAG, "Fragment stopped, останавливаем слушатели")
-        removeLocationListener()
-        removeTrackingStatusListener()
-    }
 
     private fun initViews(view: View) {
         tvDistance = view.findViewById(R.id.Distance)
@@ -147,696 +123,505 @@ class RouteTrackerFragment : Fragment() {
         tvCalories = view.findViewById(R.id.Calories)
         btnClear = view.findViewById(R.id.btnClear)
         btnToggleSheet = view.findViewById(R.id.btnToggleSheet)
+        btnCloseSheet = view.findViewById(R.id.btnCloseSheet)
         bottomSheet = view.findViewById(R.id.bottomSheet)
-        view.findViewById<Button>(R.id.btnStartTracking)?.visibility = View.GONE
-        view.findViewById<Button>(R.id.btnStopTracking)?.visibility = View.GONE
+
+        // Отладочная информация
+        bottomSheet.post {
+            Log.d(TAG, "📱 Размеры шторки: ${bottomSheet.width} x ${bottomSheet.height}")
+            Log.d(TAG, "📱 TranslationX: ${bottomSheet.translationX}")
+        }
+
+        // Создаем MapView
+        val mapContainer = view.findViewById<ViewGroup>(R.id.mapContainer)
+        mapView = MapView(requireContext())
+        mapContainer.addView(mapView)
+
+        Log.d(TAG, "✅ Views инициализированы")
     }
 
     private fun setupMap() {
-        val context = context ?: return
-        mapView = MapView(context)
-        val mapContainer = view?.findViewById<ViewGroup>(R.id.mapContainer)
-        mapContainer?.removeAllViews()
-        mapContainer?.addView(mapView)
+        // Начальная позиция карты (Москва)
         mapView.map.move(
             CameraPosition(Point(55.7558, 37.6173), 12f, 0f, 0f),
             Animation(Animation.Type.SMOOTH, 0f),
             null
         )
-        Log.d(TAG, "Карта инициализирована")
+        Log.d(TAG, "🗺️ Карта настроена")
     }
 
-    private fun setupBottomSheet() {
-        bottomSheetBehavior = BottomSheetBehavior.from(bottomSheet)
-        bottomSheetBehavior.apply {
-            peekHeight = 160
-            isHideable = false
-            state = BottomSheetBehavior.STATE_COLLAPSED
-            addBottomSheetCallback(object : BottomSheetBehavior.BottomSheetCallback() {
-                override fun onStateChanged(bottomSheet: View, newState: Int) {
-                    when (newState) {
-                        BottomSheetBehavior.STATE_EXPANDED -> {
-                            btnToggleSheet.setImageResource(R.drawable.ic_arrow_down)
-                        }
-                        BottomSheetBehavior.STATE_COLLAPSED -> {
-                            btnToggleSheet.setImageResource(R.drawable.ic_stats)
-                        }
-                    }
-                }
 
-                override fun onSlide(bottomSheet: View, slideOffset: Float) {
-                    btnToggleSheet.alpha = 1f - slideOffset
-                }
-            })
-        }
-        btnToggleSheet.setOnClickListener {
-            toggleBottomSheet()
-        }
-    }
-
-    private fun toggleBottomSheet() {
-        when (bottomSheetBehavior.state) {
-            BottomSheetBehavior.STATE_COLLAPSED -> {
-                bottomSheetBehavior.state = BottomSheetBehavior.STATE_EXPANDED
-            }
-
-            BottomSheetBehavior.STATE_EXPANDED -> {
-                bottomSheetBehavior.state = BottomSheetBehavior.STATE_COLLAPSED
-            }
-
-            else -> bottomSheetBehavior.state = BottomSheetBehavior.STATE_COLLAPSED
-        }
-    }
-
-    private fun checkAndStartTracking() {
-        val userId = auth.currentUser?.uid
-        if (userId == null) {
-            Log.e(TAG, "Пользователь не авторизован")
-            showSafeToast("Ошибка: пользователь не авторизован", Toast.LENGTH_LONG)
-            return
-        }
-        Log.d(TAG, "Проверяем статус трекинга для пользователя: $userId")
-        database.child("tracking_status").child(userId)
-            .addListenerForSingleValueEvent(object : ValueEventListener {
-                override fun onDataChange(snapshot: DataSnapshot) {
-                    if (isFragmentDestroyed || !isAdded) return
-                    val isTracking = snapshot.getValue(Boolean::class.java) ?: false
-                    Log.d(TAG, "Статус трекинга из БД: $isTracking")
-                    if (!isTracking) {
-                        Log.d(TAG, "Трекинг не активен, запускаем автоматически")
-                        startAutomaticTracking()
-                    } else {
-                        Log.d(TAG, "Трекинг уже активен, начинаем слушать обновления")
-                        startLocationListener()
-                        if (isFirstLaunch) {
-                            showSafeToast("Отслеживание активно")
-                            isFirstLaunch = false
-                        }
-                    }
-                }
-
-                override fun onCancelled(error: DatabaseError) {
-                    if (isFragmentDestroyed || !isAdded) return
-                    Log.e(TAG, "Ошибка проверки статуса трекинга: ${error.message}")
-                    startAutomaticTracking()
-                }
-            })
-    }
-
-    private fun startAutomaticTracking() {
-        Log.d(TAG, "Запускаем автоматическое отслеживание")
-        val context = context ?: return
-        LocationServiceManager.startLocationService(context)
-        startLocationListener()
-        setTrackingStatus(true)
-        if (isFirstLaunch) {
-            showSafeToast("Автоматическое отслеживание запущено")
-            isFirstLaunch = false
-        }
-    }
-
-    private fun startLocationListener() {
-        val userId = auth.currentUser?.uid
-        if (userId == null) {
-            Log.e(TAG, "Не удалось запустить слушатель: пользователь не авторизован")
-            return
-        }
-        removeLocationListener()
-        userLocationsRef = database.child("user_locations").child(userId)
-        userLocationsListener = object : ValueEventListener {
-            override fun onDataChange(snapshot: DataSnapshot) {
-                if (isFragmentDestroyed || !isAdded) return
-                Log.d(TAG, "Получены новые данные локации из Firebase")
-                val location = snapshot.getValue(UserLocation::class.java)
-                if (location != null) {
-                    Log.d(TAG, "Новая локация: ${location.lat}, ${location.lng}, время: ${location.timestamp}, точность: ${location.accuracy}")
-                    processNewLocation(location)
-                } else {
-                    Log.d(TAG, "Локация null в snapshot")
-                }
-            }
-
-            override fun onCancelled(error: DatabaseError) {
-                if (isFragmentDestroyed || !isAdded) return
-                Log.e(TAG, "Ошибка слушателя локаций: ${error.message}")
-            }
-        }
-        userLocationsRef?.addValueEventListener(userLocationsListener as ValueEventListener)
-        Log.d(TAG, "Слушатель локаций запущен для пути: user_locations/$userId")
-    }
-
-    private fun setupTrackingStatusListener() {
-        val userId = auth.currentUser?.uid ?: return
-        trackingStatusListener = database.child("tracking_status").child(userId)
-            .addValueEventListener(object : ValueEventListener {
-                override fun onDataChange(snapshot: DataSnapshot) {
-                    if (isFragmentDestroyed || !isAdded) return
-                    val isTracking = snapshot.getValue(Boolean::class.java) ?: false
-                    Log.d(TAG, "Статус трекинга изменен: $isTracking")
-                    if (!isTracking) {
-                        Log.d(TAG, "Трекинг остановлен извне, перезапускаем")
-                        startAutomaticTracking()
-                    }
-                }
-
-                override fun onCancelled(error: DatabaseError) {
-                    if (isFragmentDestroyed || !isAdded) return
-                    Log.e(TAG, "Ошибка слушателя статуса трекинга: ${error.message}")
-                }
-            })
-    }
-
-    private fun processNewLocation(location: UserLocation) {
-        Log.d(TAG, "Обрабатываем новую локацию: ${location.lat}, ${location.lng}")
-
-        // Основная проверка валидности точки
-        if (!isLocationValid(location)) {
-            Log.d(TAG, "Локация не прошла валидацию")
-            return
-        }
-
-        locationList.add(location)
-
-        // Применяем улучшенную фильтрацию
-        val filteredLocation = applyEnhancedFiltering(location)
-        filteredLocationList.add(filteredLocation)
-
-        val newPoint = Point(filteredLocation.lat, filteredLocation.lng)
-
-        // Решаем, добавлять ли точку в маршрут
-        if (shouldAddPointToRoute(newPoint)) {
-            // Применяем сглаживание
-            val smoothedPoint = applyTrajectorySmoothing(newPoint)
-            routePoints.add(smoothedPoint)
-            Log.d(TAG, "Добавлена новая точка в маршрут. Всего точек: ${routePoints.size}")
-
-            // Обновляем статистику и маршрут
-            recalculateStats()
-            updateRouteOnMap()
+    private fun toggleLeftSheetWithAnimation() {
+        if (bottomSheet.translationX < 0) {
+            // Показываем шторку
+            bottomSheet.animate()
+                .translationX(0f)
+                .setDuration(300)
+                .start()
+            btnToggleSheet.setImageResource(R.drawable.ic_arrow_back)
         } else {
-            Log.d(TAG, "Точка не добавлена в маршрут (слишком близко или не прошла проверки)")
+            // Скрываем шторку
+            hideLeftSheetWithAnimation()
         }
-
-        lastLocationTime = location.timestamp
     }
 
-    /**
-     * Основная проверка валидности локации
-     */
-    private fun isLocationValid(location: UserLocation): Boolean {
-        // Проверка точности GPS
-        if (location.accuracy > MIN_ACCURACY) {
-            Log.w(TAG, "Низкая точность GPS: ${location.accuracy} м")
-            return false
-        }
-
-        // Проверка временного интервала
-        if (lastLocationTime > 0) {
-            val timeDiff = location.timestamp - lastLocationTime
-            if (timeDiff < MIN_TIME_DIFF || timeDiff > MAX_TIME_DIFF) {
-                Log.w(TAG, "Недопустимый временной интервал: $timeDiff мс")
-                return false
-            }
-        }
-
-        // Проверка скорости (если доступна)
-        location.speed?.let { speed ->
-            val speedMps = abs(speed)
-            if (speedMps > MAX_VALID_SPEED_MPS) {
-                Log.w(TAG, "Недопустимая скорость: ${speedMps * 3.6} км/ч")
-                return false
-            }
-        }
-
-        return true
+    private fun hideLeftSheetWithAnimation() {
+        bottomSheet.animate()
+            .translationX(-bottomSheet.width.toFloat())
+            .setDuration(300)
+            .start()
+        btnToggleSheet.setImageResource(R.drawable.ic_stats)
     }
 
-    /**
-     * Улучшенная фильтрация локаций
-     */
-    private fun applyEnhancedFiltering(location: UserLocation): UserLocation {
-        if (filteredLocationList.isEmpty()) {
-            return location // Первая точка
-        }
-
-        val lastLocation = filteredLocationList.last()
-        val currentPoint = Point(location.lat, location.lng)
-        val lastPoint = Point(lastLocation.lat, lastLocation.lng)
-
-        // Проверка скорости и ускорения
-        if (!isSpeedAndAccelerationValid(location, lastLocation)) {
-            Log.w(TAG, "Локация не прошла проверку скорости/ускорения")
-            return lastLocation // Возвращаем предыдущую точку
-        }
-
-        // Применяем простой фильтр Калмана для сглаживания координат
-        return applySimpleKalmanFilter(location, lastLocation)
-    }
-
-    /**
-     * Проверка скорости и ускорения между двумя точками
-     */
-    private fun isSpeedAndAccelerationValid(current: UserLocation, previous: UserLocation): Boolean {
-        val timeDiff = current.timestamp - previous.timestamp
-        if (timeDiff <= 0) return false
-
-        val distance = calculateDistance(
-            Point(previous.lat, previous.lng),
-            Point(current.lat, current.lng)
-        )
-
-        val speed = distance / (timeDiff / 1000.0) // м/с
-
-        // Проверка скорости
-        if (speed < MIN_VALID_SPEED_MPS || speed > MAX_VALID_SPEED_MPS) {
-            Log.w(TAG, "Недопустимая скорость между точками: ${String.format("%.2f", speed * 3.6)} км/ч")
-            return false
-        }
-
-        // Проверка ускорения (если есть предыдущие точки)
-        if (filteredLocationList.size >= 2) {
-            val prevPrevious = filteredLocationList[filteredLocationList.size - 2]
-            val prevTimeDiff = previous.timestamp - prevPrevious.timestamp
-            if (prevTimeDiff > 0) {
-                val prevDistance = calculateDistance(
-                    Point(prevPrevious.lat, prevPrevious.lng),
-                    Point(previous.lat, previous.lng)
-                )
-                val prevSpeed = prevDistance / (prevTimeDiff / 1000.0)
-                val acceleration = abs(speed - prevSpeed) / (timeDiff / 1000.0)
-
-                if (acceleration > MAX_ACCELERATION) {
-                    Log.w(TAG, "Недопустимое ускорение: ${String.format("%.2f", acceleration)} м/с²")
-                    return false
-                }
-            }
-        }
-
-        return true
-    }
-
-    /**
-     * Простой фильтр Калмана для сглаживания координат
-     */
-    private fun applySimpleKalmanFilter(current: UserLocation, last: UserLocation): UserLocation {
-        // Коэффициент сглаживания (0.0 - полное доверие к новой точке, 1.0 - полное доверие к старой)
-        val kalmanGain = 0.3
-
-        val filteredLat = last.lat + kalmanGain * (current.lat - last.lat)
-        val filteredLng = last.lng + kalmanGain * (current.lng - last.lng)
-
-        return UserLocation(
-            filteredLat,
-            filteredLng,
-            current.timestamp,
-            minOf(current.accuracy, last.accuracy), // Используем лучшую точность
-            current.speed,
-            current.color
-        )
-    }
-
-    /**
-     * Решение о добавлении точки в маршрут
-     */
-    private fun shouldAddPointToRoute(newPoint: Point): Boolean {
-        if (routePoints.isEmpty()) {
-            return true // Первая точка всегда добавляется
-        }
-
-        val lastRoutePoint = routePoints.last()
-        val distance = calculateDistance(lastRoutePoint, newPoint)
-
-        // Основная проверка - минимальное расстояние
-        if (distance >= MIN_POINT_DISTANCE) {
-            // Дополнительная проверка для избежания резких поворотов
-            if (routePoints.size >= 2) {
-                val prevPoint = routePoints[routePoints.size - 2]
-                val bearingChange = calculateBearingChange(prevPoint, lastRoutePoint, newPoint)
-
-                // Если изменение направления небольшое, можно добавить точку
-                // Если большое - добавляем для лучшего отображения поворотов
-                if (bearingChange > 30.0 && distance < 15.0) {
-                    Log.d(TAG, "Добавляем точку из-за поворота: $bearingChange°")
-                    return true
-                }
-            }
-            Log.d(TAG, "Добавляем точку из-за расстояния: ${String.format("%.1f", distance)} м")
-            return true
-        }
-
-        Log.d(TAG, "Точка не добавлена - малое расстояние: ${String.format("%.1f", distance)} м")
-        return false
-    }
-
-    /**
-     * Расчет изменения направления между тремя точками
-     */
-    private fun calculateBearingChange(prev: Point, current: Point, new: Point): Double {
-        val bearing1 = calculateBearing(prev, current)
-        val bearing2 = calculateBearing(current, new)
-        var change = abs(bearing2 - bearing1)
-        change = minOf(change, 360.0 - change) // Учитываем круговой характер
-        return change
-    }
-
-    /**
-     * Расчет направления между двумя точками
-     */
-    private fun calculateBearing(from: Point, to: Point): Double {
-        val lat1 = Math.toRadians(from.latitude)
-        val lon1 = Math.toRadians(from.longitude)
-        val lat2 = Math.toRadians(to.latitude)
-        val lon2 = Math.toRadians(to.longitude)
-
-        val dLon = lon2 - lon1
-        val y = sin(dLon) * cos(lat2)
-        val x = cos(lat1) * sin(lat2) - sin(lat1) * cos(lat2) * cos(dLon)
-
-        var bearing = Math.toDegrees(atan2(y, x))
-        bearing = (bearing + 360) % 360
-        return bearing
-    }
-
-    /**
-     * Сглаживание траектории с использованием скользящего среднего
-     */
-    private fun applyTrajectorySmoothing(newPoint: Point): Point {
-        smoothingBuffer.add(newPoint)
-
-        // Ограничиваем размер буфера
-        if (smoothingBuffer.size > SMOOTHING_BUFFER_SIZE) {
-            smoothingBuffer.removeAt(0)
-        }
-
-        // Если точек мало, возвращаем исходную
-        if (smoothingBuffer.size < 2) {
-            return newPoint
-        }
-
-        // Применяем скользящее среднее
-        val avgLat = smoothingBuffer.map { it.latitude }.average()
-        val avgLon = smoothingBuffer.map { it.longitude }.average()
-
-        Log.d(TAG, "Сглаживание применено. Буфер: ${smoothingBuffer.size} точек")
-        return Point(avgLat, avgLon)
-    }
-
-    /**
-     * Пересчет статистики на основе всех отфильтрованных точек
-     */
-    private fun recalculateStats() {
-        if (filteredLocationList.size < 2) {
-            resetStats()
-            return
-        }
-
-        totalDistance = 0.0
-        totalTimeInMotion = 0L
-        maxSpeed = 0.0
-        var totalSpeed = 0.0
-        var validSegments = 0
-
-        val sortedLocations = filteredLocationList.sortedBy { it.timestamp }
-
-        for (i in 1 until sortedLocations.size) {
-            val prev = sortedLocations[i - 1]
-            val curr = sortedLocations[i]
-            val timeDiff = curr.timestamp - prev.timestamp
-
-            if (timeDiff in MIN_TIME_DIFF..MAX_TIME_DIFF) {
-                val distance = calculateDistance(
-                    Point(prev.lat, prev.lng),
-                    Point(curr.lat, curr.lng)
-                )
-
-                val speed = distance / (timeDiff / 1000.0)
-
-                if (speed in MIN_VALID_SPEED_MPS..MAX_VALID_SPEED_MPS) {
-                    totalDistance += distance
-                    totalTimeInMotion += timeDiff
-                    totalSpeed += speed
-                    validSegments++
-
-                    if (speed > maxSpeed) {
-                        maxSpeed = speed
-                    }
-                }
-            }
-        }
-
-        avgSpeed = if (validSegments > 0) totalSpeed / validSegments else 0.0
-        updateUI()
-    }
-
-    private fun resetStats() {
-        totalDistance = 0.0
-        totalTimeInMotion = 0L
-        maxSpeed = 0.0
-        avgSpeed = 0.0
-        updateUI()
-    }
 
     private fun setupButtons() {
         btnClear.setOnClickListener {
-            val context = context ?: return@setOnClickListener
-            AlertDialog.Builder(context)
-                .setTitle("Подтверждение")
-                .setMessage("Вы уверены, что хотите очистить сегодняшний маршрут?")
-                .setPositiveButton("Да") { _, _ ->
-                    clearTodayRoute()
-                    showSafeToast("Маршрут очищен")
+            showClearOptionsDialog()
+        }
+
+        Log.d(TAG, "🔘 Кнопки настроены")
+    }
+
+    private fun showClearOptionsDialog() {
+        val options = arrayOf(
+            "Очистить текущий маршрут",
+            "Очистить всю историю",
+            "Отмена"
+        )
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("Очистка маршрута")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> showClearCurrentConfirmation()
+                    1 -> showClearHistoryConfirmation()
+                    // 2 - отмена
                 }
-                .setNegativeButton("Отмена", null)
-                .show()
-        }
+            }
+            .show()
     }
 
-    private fun clearTodayRoute() {
-        clearRouteFromDatabase()
-        clearUI()
+    private fun showClearCurrentConfirmation() {
+        AlertDialog.Builder(requireContext())
+            .setTitle("Очистка текущего маршрута")
+            .setMessage("Текущий активный маршрут будет очищен. Исторические данные сохранятся.")
+            .setPositiveButton("Очистить") { _, _ ->
+                clearCurrentSession()
+                Toast.makeText(context, "Текущий маршрут очищен", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
     }
 
-    /**
-     * Обновление маршрута на карте
-     */
-    private fun updateRouteOnMap() {
-        if (routePoints.isEmpty()) {
-            clearRoute()
-            return
-        }
+    private fun showClearHistoryConfirmation() {
+        AlertDialog.Builder(requireContext())
+            .setTitle("Очистка всей истории")
+            .setMessage("ВСЕ данные о маршрутах будут безвозвратно удалены. Это действие нельзя отменить. Вы уверены?")
+            .setPositiveButton("Удалить всю историю") { _, _ ->
+                clearFullHistory()
+                Toast.makeText(context, "Вся история маршрутов очищена", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
 
+    private fun clearCurrentSession() {
+        val userId = auth.currentUser?.uid ?: return
+
+        database.child("user_locations").child(userId).removeValue()
+            .addOnSuccessListener {
+                Log.d(TAG, "✅ Текущая сессия очищена из БД")
+                shouldShowFullHistory = true
+                isFirstLoad = true
+                loadFullRouteHistory()
+            }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "❌ Ошибка очистки сессии", e)
+                Toast.makeText(context, "Ошибка очистки маршрута", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    private fun clearFullHistory() {
+        val userId = auth.currentUser?.uid ?: return
+
+        database.child("route_history").child(userId).removeValue()
+            .addOnSuccessListener {
+                database.child("user_locations").child(userId).removeValue()
+                    .addOnSuccessListener {
+                        Log.d(TAG, "✅ Вся история маршрута очищена")
+                        clearUI()
+                    }
+            }
+            .addOnFailureListener { e ->
+                Log.e(TAG, "❌ Ошибка очистки истории", e)
+                Toast.makeText(context, "Ошибка очистки истории", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    private fun setupStatsUpdater() {
+        statsUpdateRunnable = object : Runnable {
+            override fun run() {
+                if (isAdded) {
+                    calculateStats()
+                }
+                handler.postDelayed(this, STATS_UPDATE_INTERVAL)
+            }
+        }
+        statsUpdateRunnable?.let { handler.post(it) }
+        Log.d(TAG, "📊 Обновление статистики запущено")
+    }
+
+    private fun startLocationService() {
         try {
-            Log.d(TAG, "Обновляем маршрут на карте. Всего точек: ${routePoints.size}")
-
-            if (polyline == null) {
-                // Создаем новую полилинию
-                polyline = mapView.map.mapObjects.addPolyline(Polyline(routePoints)).apply {
-                    setStrokeColor(Color.parseColor("#1E88E5"))
-                    setStrokeWidth(8f) // Немного толще для лучшей видимости
-                    setOutlineColor(Color.parseColor("#64B5F6"))
-                    setOutlineWidth(2f)
-                    zIndex = 10f
-                }
-                Log.d(TAG, "Создана новая полилиния")
-            } else {
-                // Обновляем существующую полилинию
-                polyline?.geometry = Polyline(routePoints)
-                Log.d(TAG, "Обновлена существующая полилиния")
-            }
-
-            // Обновляем маркеры
-            updateRouteMarkers()
-
-            // Периодически подстраиваем камеру
-            if (routePoints.size % 10 == 0) { // Каждые 10 точек
-                adjustCameraToRoute(routePoints)
-            }
-
+            Log.d(TAG, "🚀 ЗАПУСК СЕРВИСА ЛОКАЦИИ")
+            LocationUpdateService.startService(requireContext())
+            Log.d(TAG, "✅ Сервис локации запущен")
         } catch (e: Exception) {
-            Log.e(TAG, "Ошибка обновления маршрута", e)
+            Log.e(TAG, "❌ Ошибка запуска сервиса", e)
+            Toast.makeText(context, "Ошибка запуска отслеживания", Toast.LENGTH_SHORT).show()
         }
     }
 
-    /**
-     * Обновление стартового и конечного маркеров
-     */
-    private fun updateRouteMarkers() {
-        if (routePoints.isEmpty()) return
-
-        val context = context ?: return
-
-        // Стартовый маркер
-        if (startMarker == null) {
-            startMarker = mapView.map.mapObjects.addPlacemark(routePoints.first()).apply {
-                setIcon(
-                    ImageProvider.fromResource(context, R.drawable.ic_location),
-                    IconStyle().setScale(1.2f)
-                )
-                setText("Старт")
-                zIndex = 20f
-            }
-        } else {
-            startMarker?.geometry = routePoints.first()
-        }
-
-        // Конечный маркер (всегда обновляем на последнюю точку)
-        endMarker?.let {
-            mapView.map.mapObjects.remove(it)
-        }
-
-        endMarker = mapView.map.mapObjects.addPlacemark(routePoints.last()).apply {
-            setIcon(
-                ImageProvider.fromResource(context, R.drawable.ic_marker),
-                IconStyle().setScale(1.2f)
-            )
-            setText("Текущая позиция")
-            zIndex = 20f
-        }
-    }
-
-    private fun updateUI() {
-        val distanceKm = totalDistance / 1000
-        val timeMinutes = totalTimeInMotion / (1000.0 * 60.0)
-        val timeHours = totalTimeInMotion / (1000.0 * 3600.0)
-        val avgSpeedKmh = avgSpeed * 3.6
-        val maxSpeedKmh = maxSpeed * 3.6
-        val calories = estimateCalories(distanceKm, timeHours, avgSpeedKmh)
-
-        tvDistance.text = "里程碑️ Пройдено: ${String.format("%.3f", distanceKm.coerceAtLeast(0.0))} км"
-        tvTime.text = "⏱️ Время: ${String.format("%.1f", timeMinutes.coerceAtLeast(0.0))} мин"
-        tvAvgSpeed.text = "🚶 Ср. скорость: ${String.format("%.1f", avgSpeedKmh.coerceIn(0.0, 200.0))} км/ч"
-        tvMaxSpeed.text = "💨 Макс. скорость: ${String.format("%.1f", maxSpeedKmh.coerceIn(0.0, 200.0))} км/ч"
-        tvCalories.text = "🔥 Калории: ~${calories.toInt().coerceAtLeast(0)}"
-
-        Log.d(TAG, "Статистика обновлена: ${String.format("%.3f", distanceKm)} км, ${String.format("%.1f", timeMinutes)} мин")
-    }
-
-    private fun estimateCalories(distanceKm: Double, timeHours: Double, avgSpeedKmh: Double): Double {
-        val met = when {
-            avgSpeedKmh < 3 -> 2.0
-            avgSpeedKmh < 5 -> 3.0
-            avgSpeedKmh < 7 -> 5.0
-            avgSpeedKmh < 10 -> 6.0
-            else -> 8.0
-        }
-        return met * userWeight * timeHours
-    }
-
-    private fun scheduleDailyCleanup() {
-        dailyCleanupRunnable = Runnable {
-            if (isMidnight()) {
-                Log.d(TAG, "Обнаружена полночь, очищаем маршрут")
-                clearTodayRoute()
-                showSafeToast("Автоматическая очистка дневного маршрута", Toast.LENGTH_LONG)
-            }
-            dailyCleanupHandler.postDelayed(dailyCleanupRunnable!!, 60000)
-        }
-        dailyCleanupHandler.post(dailyCleanupRunnable!!)
-        Log.d(TAG, "Запланирована ежедневная очистка")
-    }
-
-    private fun isMidnight(): Boolean {
-        val calendar = Calendar.getInstance()
-        return calendar.get(Calendar.HOUR_OF_DAY) == 0 &&
-                calendar.get(Calendar.MINUTE) == 0
-    }
-
-    private fun loadRouteForToday() {
-        val startOfDay = getStartOfToday()
-        val endOfDay = getEndOfDay()
+    private fun setupFirebaseListeners() {
         val userId = auth.currentUser?.uid
         if (userId == null) {
-            Log.e(TAG, "Не удалось загрузить маршрут: пользователь не авторизован")
+            Log.e(TAG, "❌ Пользователь не авторизован")
+            Toast.makeText(context, "Требуется авторизация", Toast.LENGTH_SHORT).show()
             return
         }
 
-        Log.d(TAG, "Загружаем маршрут за сегодня. Временной диапазон: $startOfDay - $endOfDay")
+        Log.d(TAG, "👤 ID пользователя: $userId")
 
-        database.child("user_location_history")
-            .child(userId)
-            .orderByChild("timestamp")
-            .startAt(startOfDay.toDouble())
-            .endAt(endOfDay.toDouble())
-            .addListenerForSingleValueEvent(object : ValueEventListener {
+        // Слушатель статуса трекинга
+        trackingStatusListener = database.child("tracking_status").child(userId)
+            .addValueEventListener(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
-                    if (isFragmentDestroyed || !isAdded) {
-                        Log.d(TAG, "Фрагмент не прикреплен, пропускаем обновление UI")
-                        return
-                    }
+                    isTracking = snapshot.getValue(Boolean::class.java) ?: false
+                    Log.d(TAG, "📊 Статус трекинга: $isTracking")
+                    updateTrackingUI()
 
-                    Log.d(TAG, "Получены данные истории маршрута. Детей: ${snapshot.childrenCount}")
-                    val locations = mutableListOf<UserLocation>()
-
-                    for (child in snapshot.children) {
-                        val location = child.getValue(UserLocation::class.java)
-                        location?.let {
-                            locations.add(it)
-                        }
-                    }
-
-                    if (locations.isNotEmpty()) {
-                        Log.d(TAG, "Загружено ${locations.size} точек маршрута")
-                        locations.sortBy { it.timestamp }
-
-                        // Очищаем все буферы
-                        routePoints.clear()
-                        locationList.clear()
-                        filteredLocationList.clear()
-                        smoothingBuffer.clear()
-
-                        // Обрабатываем загруженные точки
-                        locations.forEach { location ->
-                            if (isLocationValid(location)) {
-                                val filteredLocation = applyEnhancedFiltering(location)
-                                filteredLocationList.add(filteredLocation)
-                                val point = Point(filteredLocation.lat, filteredLocation.lng)
-
-                                if (shouldAddPointToRoute(point)) {
-                                    val smoothedPoint = applyTrajectorySmoothing(point)
-                                    routePoints.add(smoothedPoint)
-                                }
-                            }
-                        }
-
-                        // Отображаем маршрут
-                        if (routePoints.isNotEmpty()) {
-                            drawRoute(routePoints)
-                            recalculateStats()
-                            adjustCameraToRoute(routePoints)
-                            showSafeToast("Загружен маршрут (${routePoints.size} точек)")
-                        } else {
-                            showSafeToast("Нет валидных точек для отображения")
-                        }
+                    if (isTracking) {
+                        startLocationListener()
+                        // При активном трекинге показываем только текущую сессию
+                        shouldShowFullHistory = false
+                        loadCurrentSession()
                     } else {
-                        Log.d(TAG, "Нет данных маршрута за сегодня")
-                        showSafeToast("Нет данных маршрута за сегодня")
+                        // При остановленном трекинге показываем всю историю
+                        shouldShowFullHistory = true
+                        stopLocationListener()
+                        if (!isFirstLoad) {
+                            loadFullRouteHistory()
+                        }
                     }
                 }
-
                 override fun onCancelled(error: DatabaseError) {
-                    if (isFragmentDestroyed || !isAdded) return
-                    Log.e(TAG, "Ошибка загрузки маршрута: ${error.message}")
-                    showSafeToast("Ошибка загрузки маршрута")
+                    Log.e(TAG, "❌ Ошибка статуса трекинга", error.toException())
                 }
             })
     }
 
-    private fun calculateDistance(p1: Point, p2: Point): Double {
-        val R = 6371000.0
-        val lat1 = Math.toRadians(p1.latitude)
-        val lat2 = Math.toRadians(p2.latitude)
-        val deltaLat = Math.toRadians(p2.latitude - p1.latitude)
-        val deltaLon = Math.toRadians(p2.longitude - p1.longitude)
-        val a = sin(deltaLat / 2).pow(2) +
-                cos(lat1) * cos(lat2) * sin(deltaLon / 2).pow(2)
-        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
-        return R * c
+    private fun loadFullRouteHistory() {
+        val userId = auth.currentUser?.uid ?: return
+
+        Log.d(TAG, "📥 ЗАГРУЗКА ПОЛНОЙ ИСТОРИИ МАРШРУТА")
+
+        database.child("route_history").child(userId)
+            .addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    if (!isAdded) return
+
+                    Log.d(TAG, "📦 Получено данных из истории: ${snapshot.childrenCount} записей")
+                    processRouteData(snapshot, "history")
+                }
+                override fun onCancelled(error: DatabaseError) {
+                    Log.e(TAG, "❌ Ошибка загрузки истории маршрута", error.toException())
+                }
+            })
     }
 
-    private fun adjustCameraToRoute(points: List<Point>) {
-        if (points.size < 2) return
+    private fun loadCurrentSession() {
+        val userId = auth.currentUser?.uid ?: return
 
-        val bbox = calculateBoundingBox(points)
+        Log.d(TAG, "📥 ЗАГРУЗКА ТЕКУЩЕЙ СЕССИИ")
+
+        database.child("user_locations").child(userId)
+            .addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    if (!isAdded) return
+
+                    Log.d(TAG, "📦 Получено данных из сессии: ${snapshot.childrenCount} записей")
+                    processRouteData(snapshot, "session")
+                }
+                override fun onCancelled(error: DatabaseError) {
+                    Log.e(TAG, "❌ Ошибка загрузки текущей сессии", error.toException())
+                }
+            })
+    }
+
+    private fun parseUserLocation(snapshot: DataSnapshot): UserLocation? {
+        return try {
+            Log.d(TAG, "🔍 Парсим данные: ${snapshot.key}")
+            Log.d(TAG, "📦 Содержимое: ${snapshot.value}")
+
+            // Пропускаем служебные поля (accuracy, color и т.д.)
+            if (snapshot.key in listOf("accuracy", "color", "lat", "lng", "timestamp", "speed")) {
+                Log.w(TAG, "⚠️ Пропускаем служебное поле: ${snapshot.key}")
+                return null
+            }
+
+            // Проверяем, что это объект с данными локации
+            if (snapshot.hasChild("lat") && snapshot.hasChild("lng")) {
+                // Формат: -Oc-dxPtRrNFiZGK1-tv { lat: 55.96, lng: 38.05, ... }
+                val lat = snapshot.child("lat").getValue(Double::class.java) ?: 0.0
+                val lng = snapshot.child("lng").getValue(Double::class.java) ?: 0.0
+                val timestamp = snapshot.child("timestamp").getValue(Long::class.java) ?: System.currentTimeMillis()
+
+                if (isValidCoordinates(lat, lng)) {
+                    Log.d(TAG, "✅ Успешно распарсено из объекта: $lat, $lng")
+                    return UserLocation(lat, lng, timestamp)
+                }
+            } else if (snapshot.value is Map<*, *>) {
+                // Альтернативный формат данных
+                val data = snapshot.value as Map<*, *>
+                val lat = (data["lat"] as? Double) ?: 0.0
+                val lng = (data["lng"] as? Double) ?: 0.0
+                val timestamp = (data["timestamp"] as? Long) ?: System.currentTimeMillis()
+
+                if (isValidCoordinates(lat, lng)) {
+                    Log.d(TAG, "✅ Успешно распарсено из Map: $lat, $lng")
+                    return UserLocation(lat, lng, timestamp)
+                }
+            }
+
+            Log.w(TAG, "⚠️ Не удалось распарсить данные для ключа: ${snapshot.key}")
+            null
+
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Ошибка парсинга UserLocation для ${snapshot.key}", e)
+            null
+        }
+    }
+
+    private fun isValidCoordinates(lat: Double, lng: Double): Boolean {
+        return lat != 0.0 && lng != 0.0 &&
+                abs(lat) <= 90 && abs(lng) <= 180 &&
+                lat > 1.0 && lng > 1.0 // Фильтруем тестовые координаты
+    }
+
+    private fun processRouteData(snapshot: DataSnapshot, source: String) {
+        val locations = mutableListOf<UserLocation>()
+
+        for (child in snapshot.children) {
+            try {
+                val location = parseUserLocation(child)
+                if (location != null) {
+                    locations.add(location)
+                    Log.d(TAG, "✅ Точка из $source: ${location.lat}, ${location.lng}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "❌ Ошибка парсинга точки из $source", e)
+            }
+        }
+
+        if (locations.isNotEmpty()) {
+            locations.sortBy { it.timestamp }
+
+            if (source == "history" && isFirstLoad) {
+                // При первой загрузке истории показываем весь маршрут
+                locationList.clear()
+                routePoints.clear()
+                locationList.addAll(locations)
+                routePoints.addAll(locations.map { Point(it.lat, it.lng) })
+                isFirstLoad = false
+            } else if (source == "session") {
+                // При загрузке сессии добавляем к существующему маршруту
+                val newPoints = locations.map { Point(it.lat, it.lng) }
+                routePoints.addAll(newPoints)
+                locationList.addAll(locations)
+            }
+
+            updateRouteOnMap()
+            calculateStats()
+
+            Log.d(TAG, "✅ Маршрут из $source загружен: ${locations.size} точек")
+        } else {
+            Log.d(TAG, "📭 Нет данных в $source для загрузки")
+            if (source == "history" && isFirstLoad) {
+                clearUI()
+            }
+        }
+    }
+
+    private fun setupLeftSheet() {
+        // Используем фиксированную ширину из XML (320dp)
+        val sheetWidth = (320 * resources.displayMetrics.density).toInt()
+
+        // Сразу скрываем шторку
+        bottomSheet.translationX = -sheetWidth.toFloat()
+
+        btnToggleSheet.setOnClickListener {
+            toggleLeftSheetWithAnimation(sheetWidth)
+        }
+
+        btnCloseSheet.setOnClickListener {
+            hideLeftSheetWithAnimation(sheetWidth)
+        }
+
+        Log.d(TAG, "📱 Левая шторка настроена, ширина: $sheetWidth px")
+    }
+
+    private fun toggleLeftSheetWithAnimation(sheetWidth: Int) {
+        if (bottomSheet.translationX < 0) {
+            // Показываем шторку
+            bottomSheet.animate()
+                .translationX(0f)
+                .setDuration(300)
+                .start()
+            btnToggleSheet.setImageResource(R.drawable.ic_arrow_back)
+            Log.d(TAG, "📱 Показываем шторку")
+        } else {
+            // Скрываем шторку
+            hideLeftSheetWithAnimation(sheetWidth)
+        }
+    }
+
+    private fun hideLeftSheetWithAnimation(sheetWidth: Int) {
+        bottomSheet.animate()
+            .translationX(-sheetWidth.toFloat())
+            .setDuration(300)
+            .start()
+        btnToggleSheet.setImageResource(R.drawable.ic_stats)
+        Log.d(TAG, "📱 Скрываем шторку")
+    }
+
+
+    private fun startLocationListener() {
+        val userId = auth.currentUser?.uid ?: return
+        stopLocationListener()
+
+        Log.d(TAG, "🎯 Запуск слушателя локаций для реального времени")
+
+        locationListener = database.child("user_locations").child(userId)
+            .addValueEventListener(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    if (!isAdded || !isTracking) return
+
+                    Log.d(TAG, "🔄 Real-time данные: ${snapshot.childrenCount} записей")
+
+                    val newLocations = mutableListOf<UserLocation>()
+                    for (child in snapshot.children) {
+                        try {
+                            val location = parseUserLocation(child)
+                            if (location != null) {
+                                newLocations.add(location)
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "❌ Ошибка парсинга real-time точки", e)
+                        }
+                    }
+
+                    if (newLocations.isNotEmpty()) {
+                        newLocations.sortBy { it.timestamp }
+                        // Добавляем только новые точки к существующему маршруту
+                        addNewLocationsToRoute(newLocations)
+                    }
+                }
+                override fun onCancelled(error: DatabaseError) {
+                    Log.e(TAG, "❌ Ошибка real-time слушателя", error.toException())
+                }
+            })
+    }
+
+    private fun addNewLocationsToRoute(newLocations: List<UserLocation>) {
+        val existingTimestamps = locationList.map { it.timestamp }.toSet()
+
+        // Фильтруем и сортируем новые точки с дополнительной проверкой на реалистичность
+        val trulyNewLocations = newLocations
+            .filter { it.timestamp !in existingTimestamps }
+            .sortedBy { it.timestamp }
+            .filterIndexed { index, location ->
+                if (index > 0) {
+                    val prev = newLocations[index - 1]
+                    val distance = calculateDistance(prev.lat, prev.lng, location.lat, location.lng)
+                    val timeDiff = (location.timestamp - prev.timestamp) / 1000.0
+
+                    if (timeDiff > 0) {
+                        val speed = distance / timeDiff
+                        // Фильтруем точки с нереалистичной скоростью (более 100 км/ч)
+                        val isRealistic = speed <= MAX_REALISTIC_SPEED
+                        if (!isRealistic) {
+                            Log.w(TAG, "🚫 Отфильтрована точка с нереалистичной скоростью: ${String.format("%.1f", speed * 3.6)} км/ч")
+                        }
+                        isRealistic
+                    } else {
+                        true
+                    }
+                } else {
+                    true
+                }
+            }
+
+        if (trulyNewLocations.isEmpty()) {
+            Log.d(TAG, "⚠️ Нет новых точек для добавления после фильтрации")
+            return
+        }
+
+        Log.d(TAG, "📍 Добавляем ${trulyNewLocations.size} новых точек в маршрут (после фильтрации)")
+
+        locationList.addAll(trulyNewLocations)
+        // Сортируем по времени на случай, если точки пришли в неправильном порядке
+        locationList.sortBy { it.timestamp }
+        routePoints.clear()
+        routePoints.addAll(locationList.map { Point(it.lat, it.lng) })
+
+        updateRouteOnMap()
+        calculateStats()
+    }
+
+    private fun updateRouteOnMap() {
+        if (!isAdded || routePoints.isEmpty()) return
+
+        clearRoute()
+
+        try {
+            // Рисуем полилинию если есть хотя бы 2 точки
+            if (routePoints.size >= 2) {
+                polyline = mapView.map.mapObjects.addPolyline(Polyline(routePoints)).apply {
+                    setStrokeColor(Color.parseColor("#1E88E5"))
+                    setStrokeWidth(6f)
+                    setOutlineColor(Color.WHITE)
+                    setOutlineWidth(2f)
+                }
+                Log.d(TAG, "🎯 Полилиния нарисована: ${routePoints.size} точек")
+            }
+
+            // Добавляем маркеры
+            startMarker = mapView.map.mapObjects.addPlacemark(routePoints.first()).apply {
+                setIcon(ImageProvider.fromResource(requireContext(), R.drawable.ic_location))
+                setIconStyle(IconStyle().setScale(1.5f))
+            }
+
+            if (routePoints.size > 1) {
+                endMarker = mapView.map.mapObjects.addPlacemark(routePoints.last()).apply {
+                    setIcon(ImageProvider.fromResource(requireContext(), R.drawable.ic_marker))
+                    setIconStyle(IconStyle().setScale(1.5f))
+                }
+            }
+
+            // Настраиваем камеру
+            adjustCameraToRoute()
+
+            Log.d(TAG, "✅ Маршрут обновлен на карте")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Ошибка обновления маршрута", e)
+        }
+    }
+
+    private fun adjustCameraToRoute() {
+        if (routePoints.isEmpty()) return
+
+        val bbox = calculateBoundingBox(routePoints)
         val center = Point(
             (bbox.southWest.latitude + bbox.northEast.latitude) / 2,
             (bbox.southWest.longitude + bbox.northEast.longitude) / 2
@@ -848,216 +633,202 @@ class RouteTrackerFragment : Fragment() {
 
         val zoom = when {
             maxDiff < 0.001 -> 17f
-            maxDiff < 0.002 -> 16f
             maxDiff < 0.005 -> 15f
             maxDiff < 0.01 -> 14f
             maxDiff < 0.02 -> 13f
             maxDiff < 0.05 -> 12f
-            maxDiff < 0.1 -> 11f
-            else -> 10f
+            else -> 11f
         }.coerceIn(10f, 18f)
 
         mapView.map.move(
             CameraPosition(center, zoom, 0f, 0f),
-            Animation(Animation.Type.SMOOTH, 1f),
+            Animation(Animation.Type.SMOOTH, 0.5f),
             null
         )
-        Log.d(TAG, "Камера настроена на маршрут. Центр: $center, zoom: $zoom")
     }
 
     private fun calculateBoundingBox(points: List<Point>): BoundingBox {
+        if (points.isEmpty()) return BoundingBox(Point(0.0, 0.0), Point(0.0, 0.0))
+
         var minLat = points.first().latitude
         var maxLat = points.first().latitude
         var minLon = points.first().longitude
         var maxLon = points.first().longitude
 
         for (point in points) {
-            minLat = minOf(minLat, point.latitude)
-            maxLat = maxOf(maxLat, point.latitude)
-            minLon = minOf(minLon, point.longitude)
-            maxLon = maxOf(maxLon, point.longitude)
+            minLat = min(minLat, point.latitude)
+            maxLat = max(maxLat, point.latitude)
+            minLon = min(minLon, point.longitude)
+            maxLon = max(maxLon, point.longitude)
         }
 
-        return BoundingBox(Point(minLat, minLon), Point(maxLat, maxLon))
+        val padding = 0.001
+        return BoundingBox(
+            Point(minLat - padding, minLon - padding),
+            Point(maxLat + padding, maxLon + padding)
+        )
     }
 
-    private fun clearRouteFromDatabase() {
-        val startOfDay = getStartOfToday()
-        val endOfDay = getEndOfDay()
-        val userId = auth.currentUser?.uid ?: return
-
-        Log.d(TAG, "Очищаем маршрут из БД за сегодня")
-
-        database.child("user_location_history").child(userId)
-            .orderByChild("timestamp")
-            .startAt(startOfDay.toDouble())
-            .endAt(endOfDay.toDouble())
-            .addListenerForSingleValueEvent(object : ValueEventListener {
-                override fun onDataChange(snapshot: DataSnapshot) {
-                    val childrenCount = snapshot.childrenCount
-                    snapshot.children.forEach { child -> child.ref.removeValue() }
-                    clearUI()
-                    Log.d(TAG, "Удалено $childrenCount точек маршрута из БД")
-                }
-
-                override fun onCancelled(error: DatabaseError) {
-                    Log.e(TAG, "Ошибка очистки БД: ${error.message}")
-                }
-            })
-    }
-
-    private fun drawRoute(points: List<Point>) {
-        clearRoute()
-        if (points.size < 2) {
-            Log.d(TAG, "Недостаточно точек для отрисовки маршрута: ${points.size}")
+    private fun calculateStats() {
+        if (locationList.size < 2) {
+            updateUI() // Обновляем UI даже если нет статистики
             return
         }
 
-        try {
-            Log.d(TAG, "Отрисовываем маршрут из ${points.size} точек")
+        totalDistance = 0.0
+        totalTime = 0L
+        maxSpeed = 0.0
+        var totalSpeed = 0.0
+        var validSegments = 0
 
-            polyline = mapView.map.mapObjects.addPolyline(Polyline(points)).apply {
-                setStrokeColor(Color.parseColor("#1E88E5"))
-                setStrokeWidth(8f)
-                setOutlineColor(Color.parseColor("#64B5F6"))
-                setOutlineWidth(2f)
-                zIndex = 10f
+        for (i in 1 until locationList.size) {
+            val prev = locationList[i - 1]
+            val curr = locationList[i]
+
+            val timeDiff = (curr.timestamp - prev.timestamp) / 1000.0 // в секундах
+            val distance = calculateDistance(
+                prev.lat, prev.lng,
+                curr.lat, curr.lng
+            )
+
+            if (timeDiff > 0 && distance > 0) {
+                val speed = distance / timeDiff // м/с
+
+                // ФИЛЬТРАЦИЯ: игнорируем сегменты с нереалистичной скоростью
+                if (speed <= MAX_REALISTIC_SPEED) { // 100 км/ч
+                    totalDistance += distance
+                    totalTime += timeDiff.toLong()
+                    totalSpeed += speed
+                    validSegments++
+
+                    if (speed > maxSpeed) {
+                        maxSpeed = speed
+                    }
+                } else {
+                    Log.w(TAG, "📊 Игнорируем нереалистичный сегмент: ${String.format("%.1f", speed * 3.6)} км/ч")
+                }
             }
+        }
 
-            val context = context ?: return
-            startMarker = mapView.map.mapObjects.addPlacemark(points.first()).apply {
-                setIcon(
-                    ImageProvider.fromResource(context, R.drawable.ic_location),
-                    IconStyle().setScale(1.2f)
-                )
-                setText("Старт")
-                zIndex = 20f
-            }
+        avgSpeed = if (validSegments > 0) totalSpeed / validSegments else 0.0
 
-            endMarker = mapView.map.mapObjects.addPlacemark(points.last()).apply {
-                setIcon(
-                    ImageProvider.fromResource(context, R.drawable.ic_marker),
-                    IconStyle().setScale(1.2f)
-                )
-                setText("Финиш")
-                zIndex = 20f
-            }
+        // Дополнительное сглаживание максимальной скорости
+        if (maxSpeed * 3.6 > 80) { // Если больше 80 км/ч - вероятно ошибка
+            maxSpeed = avgSpeed * 1.5 // Ограничиваем до 150% от средней
+            Log.d(TAG, "📊 Скорректирована максимальная скорость")
+        }
 
-            Log.d(TAG, "Маршрут успешно отрисован на карте")
-        } catch (e: Exception) {
-            Log.e(TAG, "Ошибка построения маршрута", e)
+        // Для велосипедиста дополнительно ограничиваем максимальную скорость
+        if (maxSpeed * 3.6 > 60) { // Если больше 60 км/ч на велосипеде
+            maxSpeed = min(maxSpeed, MAX_BIKE_SPEED)
+            Log.d(TAG, "📊 Ограничена максимальная скорость для велосипеда")
+        }
+
+        updateUI()
+
+        Log.d(TAG, "📊 Статистика: ${"%.1f".format(totalDistance)}м, ${"%.1f".format(avgSpeed * 3.6)}км/ч, макс: ${"%.1f".format(maxSpeed * 3.6)}км/ч")
+    }
+
+    private fun updateUI() {
+        if (!isAdded) return
+
+        val distanceKm = totalDistance / 1000
+        val timeMinutes = totalTime / 60.0
+        val avgSpeedKmh = avgSpeed * 3.6
+        val maxSpeedKmh = maxSpeed * 3.6
+        val calories = calculateCalories(distanceKm, timeMinutes / 60.0, avgSpeedKmh)
+
+        activity?.runOnUiThread {
+            tvDistance.text = "${String.format("%.2f", distanceKm)} км"
+            tvTime.text = "${String.format("%.0f", timeMinutes)} мин"
+            tvAvgSpeed.text = "${String.format("%.1f", avgSpeedKmh)} км/ч"
+            tvMaxSpeed.text = "${String.format("%.1f", maxSpeedKmh)} км/ч"
+            tvCalories.text = "${calories.toInt()} ккал"
         }
     }
 
+    private fun calculateCalories(distanceKm: Double, timeHours: Double, speedKmh: Double): Double {
+        val met = when {
+            speedKmh < 5 -> 2.0   // Ходьба
+            speedKmh < 15 -> 4.0  // Медленная езда на велосипеде
+            speedKmh < 25 -> 6.0  // Средняя езда на велосипеде
+            else -> 8.0           // Быстрая езда на велосипеде
+        }
+        return met * userWeight * timeHours
+    }
+
+    private fun calculateDistance(lat1: Double, lon1: Double, lat2: Double, lon2: Double): Double {
+        val R = 6371000.0
+        val dLat = Math.toRadians(lat2 - lat1)
+        val dLon = Math.toRadians(lon2 - lon1)
+        val a = sin(dLat / 2).pow(2) + cos(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * sin(dLon / 2).pow(2)
+        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+        return R * c
+    }
+
+    private fun updateTrackingUI() {
+        val color = if (isTracking) Color.GREEN else Color.GRAY
+        tvDistance.setTextColor(color)
+        tvTime.setTextColor(color)
+    }
+
+    private fun stopLocationListener() {
+        locationListener?.let {
+            database.removeEventListener(it)
+            locationListener = null
+        }
+        Log.d(TAG, "🛑 Слушатель локаций остановлен")
+    }
+
     private fun clearRoute() {
-        polyline?.let {
-            mapView.map.mapObjects.remove(it)
-            Log.d(TAG, "Удалена полилиния")
+        try {
+            polyline?.let { mapView.map.mapObjects.remove(it) }
+            startMarker?.let { mapView.map.mapObjects.remove(it) }
+            endMarker?.let { mapView.map.mapObjects.remove(it) }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Ошибка очистки маршрута", e)
+        } finally {
+            polyline = null
+            startMarker = null
+            endMarker = null
         }
-        startMarker?.let {
-            mapView.map.mapObjects.remove(it)
-            Log.d(TAG, "Удален стартовый маркер")
-        }
-        endMarker?.let {
-            mapView.map.mapObjects.remove(it)
-            Log.d(TAG, "Удален конечный маркер")
-        }
-        polyline = null
-        startMarker = null
-        endMarker = null
     }
 
     private fun clearUI() {
         totalDistance = 0.0
-        totalTimeInMotion = 0L
+        totalTime = 0L
         maxSpeed = 0.0
         avgSpeed = 0.0
         routePoints.clear()
         locationList.clear()
-        filteredLocationList.clear()
-        smoothingBuffer.clear()
+        isFirstLoad = true
 
-        tvDistance.text = "里程碑️ Пройдено: 0 км"
-        tvTime.text = "⏱️ Время: 0 мин"
-        tvAvgSpeed.text = "🚶 Ср. скорость: 0 км/ч"
-        tvMaxSpeed.text = "💨 Макс. скорость: 0 км/ч"
-        tvCalories.text = "🔥 Калории: ~0"
-        Log.d(TAG, "UI очищен")
+        updateUI()
+        clearRoute()
+        Log.d(TAG, "🎯 UI очищен")
     }
 
-    private fun getStartOfToday(): Long {
-        val calendar = Calendar.getInstance()
-        calendar.set(Calendar.HOUR_OF_DAY, 0)
-        calendar.set(Calendar.MINUTE, 0)
-        calendar.set(Calendar.SECOND, 0)
-        calendar.set(Calendar.MILLISECOND, 0)
-        return calendar.timeInMillis
+    override fun onStart() {
+        super.onStart()
+        mapView.onStart()
+        MapKitFactory.getInstance().onStart()
+        Log.d(TAG, "▶️ Фрагмент started")
     }
 
-    private fun getEndOfDay(): Long {
-        val calendar = Calendar.getInstance()
-        calendar.set(Calendar.HOUR_OF_DAY, 23)
-        calendar.set(Calendar.MINUTE, 59)
-        calendar.set(Calendar.SECOND, 59)
-        calendar.set(Calendar.MILLISECOND, 999)
-        return calendar.timeInMillis
+    override fun onStop() {
+        super.onStop()
+        mapView.onStop()
+        MapKitFactory.getInstance().onStop()
+        Log.d(TAG, "⏸️ Фрагмент stopped")
     }
 
-    private fun removeLocationListener() {
-        try {
-            userLocationsRef?.let { ref ->
-                userLocationsListener?.let { listener ->
-                    ref.removeEventListener(listener)
-                    Log.d(TAG, "Слушатель локаций удален")
-                }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Ошибка удаления слушателя локаций", e)
-        } finally {
-            userLocationsListener = null
-            userLocationsRef = null
-        }
-    }
-
-    private fun removeTrackingStatusListener() {
-        try {
-            trackingStatusListener?.let { listener ->
-                database.removeEventListener(listener)
-                Log.d(TAG, "Слушатель статуса трекинга удален")
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "Ошибка удаления слушателя статуса трекинга", e)
-        } finally {
-            trackingStatusListener = null
-        }
-    }
-
-    private fun setTrackingStatus(isTracking: Boolean) {
-        val userId = auth.currentUser?.uid ?: return
-        database.child("tracking_status").child(userId).setValue(isTracking)
-        Log.d(TAG, "Статус трекинга установлен: $isTracking")
-    }
-
-    /**
-     * Безопасный показ Toast с проверкой контекста и жизненного цикла
-     */
-    private fun showSafeToast(message: String, duration: Int = Toast.LENGTH_SHORT) {
-        try {
-            if (isFragmentDestroyed || !isAdded || context == null) {
-                Log.d(TAG, "Cannot show toast - fragment detached: $message")
-                return
-            }
-            activity?.runOnUiThread {
-                try {
-                    if (isAdded && context != null) {
-                        Toast.makeText(requireContext(), message, duration).show()
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error showing toast on UI thread", e)
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in showSafeToast", e)
-        }
+    override fun onDestroyView() {
+        stopLocationListener()
+        trackingStatusListener?.let { database.removeEventListener(it) }
+        statsUpdateRunnable?.let { handler.removeCallbacks(it) }
+        serviceScope.cancel()
+        clearRoute()
+        super.onDestroyView()
+        Log.d(TAG, "🗑️ Фрагмент destroyed")
     }
 }

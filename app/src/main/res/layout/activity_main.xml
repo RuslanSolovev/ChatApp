@@ -52,7 +52,7 @@
             android:layout_gravity="end"
             android:orientation="horizontal">
 
-            <!-- Новая кнопка для музыки -->
+            <!-- Кнопка для музыки -->
             <ImageButton
                 android:id="@+id/btnMusic"
                 android:layout_width="48dp"
@@ -70,24 +70,120 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Меню"
                 android:src="@drawable/id_bok_menu"
-                app:tint="#FF0000" />
+                app:tint="#000000" />
         </LinearLayout>
 
     </androidx.appcompat.widget.Toolbar>
 
-    <!-- Остальная разметка без изменений -->
+    <!-- Основной контент - РАСШИРЯЕМ ДО САМОГО НИЗА -->
     <FrameLayout
         android:id="@+id/fragment_container"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        app:layout_constraintBottom_toTopOf="@id/bottomNavigation"
-        app:layout_constraintTop_toBottomOf="@id/toolbar"/>
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/toolbar">
 
+        <!-- Приветственный виджет поверх контента -->
+        <androidx.cardview.widget.CardView
+            android:id="@+id/welcomeCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_margin="16dp"
+            android:layout_gravity="top"
+            android:visibility="gone"
+            app:cardCornerRadius="16dp"
+            app:cardElevation="8dp"
+            app:cardBackgroundColor="@color/white">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
+
+                <!-- Заголовок и кнопка закрытия -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <TextView
+                        android:id="@+id/tvWelcomeTitle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="Доброе утро!"
+                        android:textSize="18sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/black"/>
+
+                    <ImageButton
+                        android:id="@+id/btnCloseWelcome"
+                        android:layout_width="24dp"
+                        android:layout_height="24dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:src="@drawable/ic_close"
+                        android:contentDescription="Закрыть"
+                        app:tint="#666666"/>
+                </LinearLayout>
+
+                <!-- Сообщение -->
+                <TextView
+                    android:id="@+id/tvWelcomeMessage"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Как ваши дела сегодня?"
+                    android:textSize="14sp"
+                    android:textColor="#666666"
+                    android:layout_marginTop="8dp"
+                    android:lineSpacingExtra="2dp"/>
+
+                <!-- Кнопки действий -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="16px">
+
+                    <Button
+                        android:id="@+id/btnStartChat"
+                        android:layout_width="0dp"
+                        android:layout_height="36dp"
+                        android:layout_weight="1"
+                        android:text="Начать диалог"
+                        android:textSize="13sp"
+                        android:background="@drawable/btn_primary_small"
+                        android:textColor="@color/white"
+                        android:layout_marginEnd="8dp"/>
+
+                    <Button
+                        android:id="@+id/btnMaybeLater"
+                        android:layout_width="0dp"
+                        android:layout_height="36dp"
+                        android:layout_weight="1"
+                        android:text="Может позже"
+                        android:textSize="13sp"
+                        android:background="@drawable/btn_outline_small"
+                        android:textColor="#666666"
+                        android:layout_marginStart="8dp"/>
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </androidx.cardview.widget.CardView>
+
+    </FrameLayout>
+
+    <!-- Полупрозрачная навигация СВЕРХУ контента -->
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottomNavigation"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="#F2F1F1"
+        android:background="@drawable/transparent_nav_background"
+        android:elevation="8dp"
+        android:layout_marginEnd="50dp"
+        android:layout_marginStart="50dp"
         app:layout_constraintBottom_toBottomOf="parent"
         app:menu="@menu/bottom_nav_menu"
         app:itemIconTint="@drawable/bottom_nav_colors"

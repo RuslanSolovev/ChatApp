@@ -290,6 +290,55 @@ class ChatDetailActivity : AppCompatActivity() {
             })
     }
 
+    private fun sendNotificationsToParticipants(messageText: String, senderName: String) {
+        database.child("chats").child(chatId).child("participants")
+            .addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val participants = snapshot.children.mapNotNull { it.key }
+                        .filter { it != currentUserId }
+
+                    Log.d(TAG, "🔍 Найдено ${participants.size} участников для уведомления")
+
+                    if (participants.isEmpty()) {
+                        Log.w(TAG, "⚠️ Нет участников для уведомления (только текущий пользователь)")
+                        return
+                    }
+
+                    participants.forEach { userId ->
+                        Log.d(TAG, "👤 Отправка уведомления пользователю: $userId")
+
+                        // Проверим есть ли OneSignal ID у этого пользователя
+                        database.child("users").child(userId).child("oneSignalId")
+                            .addListenerForSingleValueEvent(object : ValueEventListener {
+                                override fun onDataChange(userSnapshot: DataSnapshot) {
+                                    val oneSignalId = userSnapshot.getValue(String::class.java)
+                                    if (!oneSignalId.isNullOrBlank()) {
+                                        Log.d(TAG, "✅ У пользователя $userId есть OneSignal ID: ${oneSignalId.take(8)}...")
+                                        NotificationUtils.sendChatNotification(
+                                            this@ChatDetailActivity,
+                                            userId,
+                                            messageText,
+                                            senderName,
+                                            chatId
+                                        )
+                                    } else {
+                                        Log.e(TAG, "❌ У пользователя $userId нет OneSignal ID в Firebase")
+                                    }
+                                }
+
+                                override fun onCancelled(error: DatabaseError) {
+                                    Log.e(TAG, "Ошибка получения OneSignal ID для пользователя $userId", error.toException())
+                                }
+                            })
+                    }
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    Log.e(TAG, "Ошибка получения участников чата", error.toException())
+                }
+            })
+    }
+
     private fun loadOtherUserData(userId: String) {
         database.child("users").child(userId)
             .addListenerForSingleValueEvent(object : ValueEventListener {
@@ -667,40 +716,7 @@ class ChatDetailActivity : AppCompatActivity() {
             }
     }
 
-    private fun sendNotificationsToParticipants(messageText: String, senderName: String) {
-        database.child("chats").child(chatId).child("participants")
-            .addListenerForSingleValueEvent(object : ValueEventListener {
-                override fun onDataChange(snapshot: DataSnapshot) {
-                    snapshot.children.mapNotNull { it.key }
-                        .filter { it != currentUserId }
-                        .forEach { userId ->
-                            // Отправляем уведомление от имени текущего пользователя
-                            NotificationUtils.sendChatNotification(
-                                this@ChatDetailActivity,
-                                userId,
-                                messageText,
-                                senderName, // Имя отправителя (текущего пользователя)
-                                chatId
-                            )
-                        }
-                }
 
-                override fun onCancelled(error: DatabaseError) {
-                    Log.e(TAG, "Failed to get participants", error.toException())
-                }
-            })
-    }
-
-    private fun removeInvalidToken(userId: String) {
-        database.child("users").child(userId).child("fcmToken")
-            .removeValue()
-            .addOnSuccessListener {
-                Log.d(TAG, "Invalid FCM token removed for user $userId")
-            }
-            .addOnFailureListener { e ->
-                Log.e(TAG, "Failed to remove token for user $userId", e)
-            }
-    }
 
     private fun uploadImageToYandexCloud(imageUri: Uri) {
         lifecycleScope.launch(Dispatchers.Main) {

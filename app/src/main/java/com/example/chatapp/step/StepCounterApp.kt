@@ -8,19 +8,20 @@ import android.content.Context
 import android.os.Build
 import android.util.Log
 import androidx.lifecycle.ViewModelProvider
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.OneTimeWorkRequestBuilder
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
+import androidx.work.*
 import com.example.chatapp.ForegroundServiceLauncher
 import com.example.chatapp.LocationWorker
 import com.example.chatapp.StepCounterWorker
-import com.example.chatapp.StepSyncWorker
+import com.example.chatapp.step.StepCounterService
+import com.example.chatapp.step.StepCounterViewModel
+import com.example.chatapp.utils.PhilosophyQuoteWorker
 import com.onesignal.OneSignal
 import com.yandex.mapkit.MapKitFactory
 import kotlinx.coroutines.*
+import java.util.*
 import java.util.concurrent.TimeUnit
 
+// ⚠️ ОБНОВЛЕННЫЙ ПРАВИЛЬНЫЙ APP ID
 const val ONESIGNAL_APP_ID = "0083de8f-7ca0-4824-ac88-9c037278237e"
 
 class StepCounterApp : Application() {
@@ -29,31 +30,18 @@ class StepCounterApp : Application() {
         private const val TAG = "StepCounterApp"
     }
 
-    // Корутин scope для асинхронной инициализации
     private val appScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     override fun onCreate() {
         super.onCreate()
 
-        // Проверка App ID
-        if (ONESIGNAL_APP_ID == "0083de8f-7ca0-4824-ac88-9c037278237e") {
-            Log.w(TAG, "ONESIGNAL_APP_ID не изменён! Используйте свой реальный App ID.")
-        }
-
-        // Создаем каналы уведомлений
         createNotificationChannels()
-
-        // ЗАПУСКАЕМ ВСЕ АСИНХРОННО И ПАРАЛЛЕЛЬНО
         initializeAppAsync()
         Log.d(TAG, "Application initialization started")
     }
 
-    /**
-     * АСИНХРОННАЯ ИНИЦИАЛИЗАЦИЯ ВСЕХ КОМПОНЕНТОВ
-     */
     private fun initializeAppAsync() {
         appScope.launch {
-            // 1. КРИТИЧЕСКИЕ КОМПОНЕНТЫ - запускаем сразу параллельно
             val criticalJobs = listOf(
                 async { initializeMapKit() },
                 async { setupPeriodicStepSync() },
@@ -61,19 +49,13 @@ class StepCounterApp : Application() {
             )
             criticalJobs.awaitAll()
 
-            // 2. БЫСТРЫЙ ЗАПУСК СЕРВИСОВ - через 2 секунды
             delay(2000)
-
-            // ИСПОЛЬЗУЕМ БЕЗОПАСНЫЙ ЗАПУСК
             safeRestartServices()
 
             Log.d(TAG, "Application initialization COMPLETED - все сервисы запущены")
         }
     }
 
-    /**
-     * БЕЗОПАСНЫЙ перезапуск сервисов с учетом ограничений Android 12+
-     */
     private fun safeRestartServices() {
         appScope.launch {
             try {
@@ -84,7 +66,6 @@ class StepCounterApp : Application() {
                 Log.d(TAG, "=== SAFE SERVICE RESTART ===")
                 Log.d(TAG, "Step was active: $wasStepActive, Location was active: $wasLocationActive")
 
-                // ИСПОЛЬЗУЕМ БЕЗОПАСНЫЙ ЗАПУСК
                 if (wasStepActive) {
                     Log.d(TAG, "Safely starting step service...")
                     ForegroundServiceLauncher.startStepCounterService(this@StepCounterApp)
@@ -96,16 +77,12 @@ class StepCounterApp : Application() {
                 }
 
                 Log.d(TAG, "=== SAFE RESTART COMPLETED ===")
-
             } catch (e: Exception) {
                 Log.e(TAG, "Safe restart error", e)
             }
         }
     }
 
-    /**
-     * УНИВЕРСАЛЬНЫЙ метод перезапуска сервисов после краша для всех версий Android
-     */
     fun restartServicesAfterCrash() {
         Log.d(TAG, "restartServicesAfterCrash: Перезапуск сервисов после краша")
 
@@ -115,32 +92,21 @@ class StepCounterApp : Application() {
                 val wasStepActive = prefs.getBoolean("step_service_active", false)
                 val wasLocationActive = prefs.getBoolean("location_tracking_active", false)
 
-                Log.d(TAG, "Предыдущее состояние - Step: $wasStepActive, Location: $wasLocationActive")
-
-                // ИСПОЛЬЗУЕМ БЕЗОПАСНЫЙ ЗАПУСК ДЛЯ ANDROID 12+
                 if (wasStepActive) {
-                    Log.d(TAG, "Safely restarting step service after crash...")
                     ForegroundServiceLauncher.startStepCounterService(this@StepCounterApp)
                 }
-
                 if (wasLocationActive) {
-                    Log.d(TAG, "Safely restarting location service after crash...")
                     ForegroundServiceLauncher.startLocationService(this@StepCounterApp)
                 }
 
                 Log.d(TAG, "Перезапуск сервисов после краша завершен")
-
             } catch (e: Exception) {
                 Log.e(TAG, "Критическая ошибка при перезапуске сервисов", e)
-                // Аварийный перезапуск через Workers
                 scheduleEmergencyWorkersAfterCrash()
             }
         }
     }
 
-    /**
-     * Аварийные Workers после краша
-     */
     private fun scheduleEmergencyWorkersAfterCrash() {
         try {
             Log.w(TAG, "Scheduling emergency workers after crash")
@@ -161,15 +127,11 @@ class StepCounterApp : Application() {
             }
 
             Log.d(TAG, "Emergency workers scheduled after crash")
-
         } catch (e: Exception) {
             Log.e(TAG, "Error scheduling emergency workers after crash", e)
         }
     }
 
-    /**
-     * Инициализация MapKit в главном потоке
-     */
     private suspend fun initializeMapKit() = withContext(Dispatchers.Main) {
         try {
             Log.d(TAG, "Initializing Yandex MapKit")
@@ -181,9 +143,6 @@ class StepCounterApp : Application() {
         }
     }
 
-    /**
-     * Настройка периодической синхронизации
-     */
     private fun setupPeriodicStepSync() {
         try {
             val syncRequest = PeriodicWorkRequestBuilder<StepSyncWorker>(
@@ -202,34 +161,105 @@ class StepCounterApp : Application() {
         }
     }
 
-    /**
-     * УПРОЩЕННЫЙ OneSignal - БЕЗ ГЕОЛОКАЦИИ чтобы избежать таймаутов
-     */
     private fun initializeOneSignalLite() {
         try {
             Log.d(TAG, "Initializing OneSignal LITE...")
+            Log.d(TAG, "OneSignal App ID: ${ONESIGNAL_APP_ID.take(8)}...")
 
+            // Правильная инициализация OneSignal
             OneSignal.initWithContext(this)
             OneSignal.setAppId(ONESIGNAL_APP_ID)
-
-            // КРИТИЧЕСКИЕ НАСТРОЙКИ для избежания таймаутов:
-            OneSignal.setLocationShared(false) // ОТКЛЮЧАЕМ геолокацию
+            OneSignal.setLocationShared(false)
             OneSignal.disablePush(false)
 
-            // Минимальная конфигурация
-            OneSignal.setNotificationWillShowInForegroundHandler { event ->
-                event.complete(event.notification)
+            // Обработчик уведомлений в foreground
+            OneSignal.setNotificationWillShowInForegroundHandler { notificationReceivedEvent ->
+                Log.d(TAG, "📱 Notification received in foreground")
+                notificationReceivedEvent.complete(notificationReceivedEvent.notification)
             }
 
-            Log.d(TAG, "OneSignal LITE initialized - без геолокации")
+            // Обработчик открытия уведомлений
+            OneSignal.setNotificationOpenedHandler { result ->
+                Log.d(TAG, "👆 Notification opened: ${result.notification.title}")
+            }
+
+            // Получение playerId после инициализации
+            OneSignal.getDeviceState()?.let { deviceState ->
+                deviceState.userId?.let { playerId ->
+                    if (playerId.isNotBlank()) {
+                        Log.d(TAG, "✅ OneSignal Player ID obtained: ${playerId.take(8)}...")
+                        saveOneSignalIdToFirebase(playerId)
+                    } else {
+                        Log.d(TAG, "⏳ OneSignal Player ID is empty, waiting for registration...")
+                    }
+                }
+            }
+
+            Log.d(TAG, "✅ OneSignal LITE initialized successfully")
         } catch (e: Exception) {
-            Log.e(TAG, "OneSignal LITE init error - SILENT", e)
+            Log.e(TAG, "❌ OneSignal LITE init error", e)
         }
     }
 
-    /**
-     * Сохраняет состояние сервисов
-     */
+    private fun saveOneSignalIdToFirebase(playerId: String) {
+        try {
+            val currentUserId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
+            if (currentUserId != null) {
+                com.google.firebase.database.FirebaseDatabase.getInstance().reference
+                    .child("users").child(currentUserId).child("oneSignalId")
+                    .setValue(playerId)
+                    .addOnSuccessListener {
+                        Log.d(TAG, "✅ OneSignal ID saved to Firebase: ${playerId.take(8)}...")
+                    }
+                    .addOnFailureListener { e ->
+                        Log.e(TAG, "❌ Failed to save OneSignal ID to Firebase", e)
+                    }
+            } else {
+                Log.w(TAG, "⚠️ No authenticated user, OneSignal ID will be saved later when user logs in")
+                // Сохраняем временно в SharedPreferences для последующего сохранения
+                val prefs = getSharedPreferences("oneSignal_prefs", Context.MODE_PRIVATE)
+                prefs.edit().putString("pending_oneSignal_id", playerId).apply()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error saving OneSignal ID to Firebase", e)
+        }
+    }
+
+    // Метод для сохранения отложенного OneSignal ID после логина пользователя
+    fun savePendingOneSignalId(userId: String) {
+        try {
+            val prefs = getSharedPreferences("oneSignal_prefs", Context.MODE_PRIVATE)
+            val pendingOneSignalId = prefs.getString("pending_oneSignal_id", null)
+
+            if (!pendingOneSignalId.isNullOrBlank()) {
+                com.google.firebase.database.FirebaseDatabase.getInstance().reference
+                    .child("users").child(userId).child("oneSignalId")
+                    .setValue(pendingOneSignalId)
+                    .addOnSuccessListener {
+                        Log.d(TAG, "✅ Pending OneSignal ID saved to Firebase for user: $userId")
+                        prefs.edit().remove("pending_oneSignal_id").apply()
+                    }
+                    .addOnFailureListener { e ->
+                        Log.e(TAG, "❌ Failed to save pending OneSignal ID", e)
+                    }
+            }
+
+            // Также сохраняем текущий OneSignal ID если есть
+            OneSignal.getDeviceState()?.userId?.let { currentPlayerId ->
+                if (currentPlayerId.isNotBlank()) {
+                    com.google.firebase.database.FirebaseDatabase.getInstance().reference
+                        .child("users").child(userId).child("oneSignalId")
+                        .setValue(currentPlayerId)
+                        .addOnSuccessListener {
+                            Log.d(TAG, "✅ Current OneSignal ID saved to Firebase: ${currentPlayerId.take(8)}...")
+                        }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Error saving pending OneSignal ID", e)
+        }
+    }
+
     fun saveServiceState(serviceType: String, isActive: Boolean) {
         try {
             val prefs = getSharedPreferences("service_prefs", Context.MODE_PRIVATE)
@@ -247,9 +277,6 @@ class StepCounterApp : Application() {
         }
     }
 
-    /**
-     * Получает текущее состояние сервиса
-     */
     fun getServiceState(serviceType: String): Boolean {
         return try {
             val prefs = getSharedPreferences("service_prefs", Context.MODE_PRIVATE)
@@ -275,44 +302,28 @@ class StepCounterApp : Application() {
         }
     }
 
-    /**
-     * ДОБАВЛЯЕМ МЕТОД ДЛЯ РУЧНОГО ЗАПУСКА СЕРВИСОВ ИЗ АКТИВНОСТИ
-     */
     fun startServicesFromActivity() {
         Log.d(TAG, "Starting services from activity...")
-
-        // Запускаем pending сервисы
         ForegroundServiceLauncher.startPendingServices(this)
 
         appScope.launch {
-            // Также запускаем обычные сервисы если они не активны
             if (!getServiceState("step")) {
-                Log.d(TAG, "Starting step service from activity...")
                 ForegroundServiceLauncher.startStepCounterService(this@StepCounterApp)
             }
-
             if (!getServiceState("location")) {
-                Log.d(TAG, "Starting location service from activity...")
                 ForegroundServiceLauncher.startLocationService(this@StepCounterApp)
             }
         }
     }
 
-    /**
-     * Проверяет есть ли pending сервисы
-     */
     fun hasPendingServices(): Boolean {
         val prefs = getSharedPreferences("service_prefs", Context.MODE_PRIVATE)
         return prefs.getBoolean("step_service_pending", false) ||
                 prefs.getBoolean("location_service_pending", false)
     }
 
-    /**
-     * Создает каналы уведомлений для Workers и сервисов
-     */
     private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            // Каналы для сервисов
             val stepServiceChannel = NotificationChannel(
                 "step_counter_channel",
                 "Счетчик шагов",
@@ -348,12 +359,25 @@ class StepCounterApp : Application() {
                 enableLights(false)
             }
 
+            // Канал для философских цитат
+            val philosophyChannel = NotificationChannel(
+                "292588fb-8a77-4b57-8566-b8bb9552ff68",
+                "Философские цитаты",
+                NotificationManager.IMPORTANCE_DEFAULT
+            ).apply {
+                description = "Ежечасные мудрые мысли"
+                setShowBadge(true)
+                enableVibration(true)
+                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+            }
+
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(stepServiceChannel)
             notificationManager.createNotificationChannel(milestoneChannel)
             notificationManager.createNotificationChannel(locationServiceChannel)
+            notificationManager.createNotificationChannel(philosophyChannel)
 
-            Log.d(TAG, "All notification channels created")
+            Log.d(TAG, "All notification channels created (including philosophy)")
         }
     }
 

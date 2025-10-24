@@ -1,24 +1,28 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    android:layout_width="80dp"
-    android:layout_height="80dp"
-    android:padding="4dp">
+    android:layout_width="60dp"
+    android:layout_height="60dp"
+    android:layout_margin="2dp"
+    android:background="@drawable/cell_background">
 
-    <!-- Иконка ячейки -->
     <ImageView
         android:id="@+id/ivCellImage"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:scaleType="centerCrop"
-        android:contentDescription="Ячейка карты" />
+        android:scaleType="centerCrop" />
 
-    <!-- Текстовое описание -->
     <TextView
         android:id="@+id/tvCellInfo"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textColor="@color/black"
-        android:textSize="12sp"
         android:layout_gravity="bottom|center_horizontal"
-        android:background="#80FFFFFF" />
+        android:layout_marginBottom="4dp"
+        android:textColor="#FFFFFF"
+        android:textSize="10sp"
+        android:shadowColor="#000000"
+        android:shadowRadius="2"
+        android:gravity="center"
+        android:maxLines="2"
+        android:ellipsize="end" />
+
 </FrameLayout>

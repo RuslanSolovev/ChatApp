@@ -3,158 +3,107 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="8dp"
-    android:background="@drawable/bg_gradient">
+    android:padding="12dp"
+    android:background="#FAFAFA">
 
-    <!-- Информация о ресурсах -->
-    <TextView
-        android:id="@+id/tvPlayerInfo"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Ресурсы игрока"
-        android:textSize="16sp"
-        android:textColor="@color/white"
-        android:gravity="center"
-        android:padding="8dp" />
-
-    <!-- Карта -->
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/rvGameMap"
-        android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginTop="8dp"
-        android:layout_marginBottom="8dp"
-        android:background="@color/white"
-        android:padding="4dp" />
-
-    <!-- Кнопки управления (строим, нанимаем, атакуем) -->
+    <!-- Верхняя панель: ресурсы + новая игра -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:padding="4dp">
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="12dp">
 
-        <!-- Строительство -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="4dp">
-
-            <Button
-                android:id="@+id/btnBuildBarracks"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Казармы"
-                android:textSize="12sp"
-                android:padding="4dp"
-                android:layout_marginEnd="2dp" />
-
-            <Button
-                android:id="@+id/btnBuildTownHall"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Ратуша"
-                android:textSize="12sp"
-                android:padding="4dp"
-                android:layout_marginStart="2dp"
-                android:layout_marginEnd="2dp" />
-
-            <Button
-                android:id="@+id/btnBuildMine"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Шахта"
-                android:textSize="12sp"
-                android:padding="4dp"
-                android:layout_marginStart="2dp" />
-
-        </LinearLayout>
-
-        <!-- Найм юнитов -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="4dp">
-
-            <Button
-                android:id="@+id/btnHireSoldier"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Солдат"
-                android:textSize="12sp"
-                android:padding="4dp"
-                android:layout_marginEnd="2dp" />
-
-            <Button
-                android:id="@+id/btnHireArcher"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Лучник"
-                android:textSize="12sp"
-                android:padding="4dp"
-                android:layout_marginStart="2dp"
-                android:layout_marginEnd="2dp" />
-
-            <Button
-                android:id="@+id/btnHireTank"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Танк"
-                android:textSize="12sp"
-                android:padding="4dp"
-                android:layout_marginStart="2dp" />
-
-        </LinearLayout>
-
-        <!-- Остальные кнопки -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="4dp">
-
-            <Button
-                android:id="@+id/btnNextTurn"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Ход"
-                android:textSize="12sp"
-                android:padding="4dp"
-                android:layout_marginEnd="2dp" />
-
-            <Button
-                android:id="@+id/btnAttack"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Атака"
-                android:textSize="12sp"
-                android:padding="4dp"
-                android:layout_marginStart="2dp" />
-
-        </LinearLayout>
-
-        <!-- Статус -->
         <TextView
-            android:id="@+id/tvStatus"
-            android:layout_width="match_parent"
+            android:id="@+id/tvPlayerInfo"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="Статус"
-            android:textSize="14sp"
-            android:textColor="@color/white"
+            android:layout_weight="1"
+            android:text="Загрузка..."
+            android:textSize="13sp"
+            android:textStyle="bold"
             android:gravity="center"
-            android:padding="4dp" />
+            android:maxLines="3"
+            android:ellipsize="end"
+            android:textColor="#333333" />
+
+        <Button
+            android:id="@+id/btnNewGame"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Новая\nигра"
+            android:textSize="11sp"
+            android:paddingLeft="12dp"
+            android:paddingRight="12dp"
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp"
+            android:backgroundTint="#4CAF50"
+            android:textColor="#FFFFFF" />
 
     </LinearLayout>
+
+    <!-- Карта с двумерной прокруткой -->
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:layout_marginBottom="12dp"
+        android:background="@android:color/white"
+        android:elevation="2dp"
+        android:padding="4dp">
+
+        <ScrollView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content">
+
+            <FrameLayout
+                android:id="@+id/mapContainer"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content" />
+
+        </ScrollView>
+    </HorizontalScrollView>
+
+    <!-- Управление -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="8dp">
+
+        <Button
+            android:id="@+id/btnBuild"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Построить"
+            android:backgroundTint="#607D8B"
+            android:textColor="#FFFFFF" />
+
+        <Button
+            android:id="@+id/btnNextTurn"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Ход"
+            android:backgroundTint="#4CAF50"
+            android:textColor="#FFFFFF" />
+
+    </LinearLayout>
+
+    <!-- Статус с фиксированной высотой -->
+    <TextView
+        android:id="@+id/tvStatus"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:minHeight="60dp"
+        android:text="Готовы к действию"
+        android:gravity="center"
+        android:textSize="13sp"
+        android:textColor="#1976D2"
+        android:padding="8dp"
+        android:background="@drawable/status_background"
+        android:maxLines="3"
+        android:ellipsize="end" />
 
 </LinearLayout>

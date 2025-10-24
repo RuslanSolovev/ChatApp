@@ -4,38 +4,31 @@ import com.google.gson.*
 import java.lang.reflect.Type
 
 object BuildingTypeAdapter : JsonDeserializer<Building>, JsonSerializer<Building> {
-    override fun deserialize(json: JsonElement, typeOfT: Type, context: JsonDeserializationContext): Building {
-        val jsonObject = json.asJsonObject
-        // Проверяем наличие поля "type"
-        val typeField = jsonObject.get("type")
 
-        return if (typeField != null && !typeField.isJsonNull) {
-            // Если поле "type" есть, используем его
-            when (val type = typeField.asString) {
-                "Barracks" -> context.deserialize<Building.Barracks>(json, Building.Barracks::class.java)
-                "TownHall" -> context.deserialize<Building.TownHall>(json, Building.TownHall::class.java)
-                "Mine" -> context.deserialize<Building.Mine>(json, Building.Mine::class.java)
-                else -> throw JsonParseException("Unknown building type: $type")
+    override fun deserialize(json: JsonElement, typeOfT: Type, context: JsonDeserializationContext): Building {
+        val obj = json.asJsonObject
+        val type = obj.get("type")?.asString
+
+        return when (type) {
+            "Barracks" -> context.deserialize(json, Building.Barracks::class.java)
+            "TownHall" -> context.deserialize(json, Building.TownHall::class.java)
+            "Mine" -> context.deserialize(json, Building.GoldMine::class.java)
+            null -> {
+                // Fallback: определяем по имени
+                when (val name = obj.get("name")?.asString) {
+                    "Barracks" -> context.deserialize(json, Building.Barracks::class.java)
+                    "Town Hall" -> context.deserialize(json, Building.TownHall::class.java)
+                    "Mine" -> context.deserialize(json, Building.GoldMine::class.java)
+                    else -> throw JsonParseException("Unknown building name: $name")
+                }
             }
-        } else {
-            // Если поле "type" отсутствует, пытаемся определить по другим полям (например, name)
-            val name = jsonObject.get("name")?.asString
-            when (name) {
-                "Barracks" -> context.deserialize<Building.Barracks>(json, Building.Barracks::class.java)
-                "Town Hall" -> context.deserialize<Building.TownHall>(json, Building.TownHall::class.java)
-                "Mine" -> context.deserialize<Building.Mine>(json, Building.Mine::class.java)
-                else -> throw JsonParseException("Unknown building: $name")
-            }
+            else -> throw JsonParseException("Unknown building type: $type")
         }
     }
 
     override fun serialize(src: Building, typeOfSrc: Type, context: JsonSerializationContext): JsonElement {
-        val jsonObject = JsonObject()
-        jsonObject.addProperty("type", src::class.simpleName) // Добавляем тип при сохранении
-        when (src) {
-            is Building.Barracks -> return context.serialize(src, Building.Barracks::class.java).asJsonObject
-            is Building.TownHall -> return context.serialize(src, Building.TownHall::class.java).asJsonObject
-            is Building.Mine -> return context.serialize(src, Building.Mine::class.java).asJsonObject
-        }
+        val json = context.serialize(src).asJsonObject
+        json.addProperty("type", src::class.simpleName)
+        return json
     }
 }

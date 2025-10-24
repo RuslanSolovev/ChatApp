@@ -5,19 +5,19 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.commit
 import androidx.viewpager2.widget.ViewPager2
 import com.example.chatapp.R
 import com.example.chatapp.adapters.HomePagerAdapter
 import com.example.chatapp.novosti.FeedFragment
-import com.google.android.material.tabs.TabLayout
-import com.google.android.material.tabs.TabLayoutMediator
 
 class HomeFragment : Fragment() {
 
     private lateinit var viewPager: ViewPager2
-    private lateinit var tabLayout: TabLayout
+    private lateinit var btnNews: androidx.appcompat.widget.AppCompatImageView
+    private lateinit var btnChats: androidx.appcompat.widget.AppCompatImageView
+    private lateinit var btnGroups: androidx.appcompat.widget.AppCompatImageView
     private var homePagerAdapter: HomePagerAdapter? = null
 
     companion object {
@@ -44,14 +44,13 @@ class HomeFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // Проверяем, что Fragment еще attached к Activity
         if (!isAdded || isDetached) {
             return
         }
 
         try {
             setupViewPager(view)
-            setupTabs()
+            setupCompactNavigation()
 
             // Проверяем, нужно ли открыть вкладку новостей
             if (arguments?.getBoolean(ARG_OPEN_NEWS_TAB, false) == true) {
@@ -65,7 +64,9 @@ class HomeFragment : Fragment() {
 
     private fun setupViewPager(view: View) {
         viewPager = view.findViewById(R.id.viewPager)
-        tabLayout = view.findViewById(R.id.tabLayout)
+        btnNews = view.findViewById(R.id.btnNews)
+        btnChats = view.findViewById(R.id.btnChats)
+        btnGroups = view.findViewById(R.id.btnGroups)
 
         // Используем childFragmentManager и viewLifecycleOwner.lifecycle
         homePagerAdapter = HomePagerAdapter(childFragmentManager, viewLifecycleOwner.lifecycle)
@@ -74,38 +75,57 @@ class HomeFragment : Fragment() {
         // Оптимизация производительности ViewPager2
         viewPager.offscreenPageLimit = 1
         viewPager.setPageTransformer { page, position ->
-            // Простая трансформация для производительности
             page.alpha = 1 - kotlin.math.abs(position) * 0.3f
         }
     }
 
-    private fun setupTabs() {
-        TabLayoutMediator(tabLayout, viewPager) { tab, position ->
-            tab.text = when (position) {
-                0 -> "Лента"
-                1 -> "Мои чаты"
-                2 -> "Беседы"
-                else -> null
-            }
-        }.attach()
+    private fun setupCompactNavigation() {
+        // Обработка кликов по кнопкам
+        btnNews.setOnClickListener {
+            switchToPage(0)
+        }
+        btnChats.setOnClickListener {
+            switchToPage(1)
+        }
+        btnGroups.setOnClickListener {
+            switchToPage(2)
+        }
 
-        // Добавляем слушатель изменения страниц для отладки
+        // Слушатель изменения страниц для обновления UI
         viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
-                super.onPageSelected(position)
-                Log.d(TAG, "onPageSelected: position=$position")
-            }
-
-            override fun onPageScrollStateChanged(state: Int) {
-                super.onPageScrollStateChanged(state)
-                // Можно добавить логику при изменении состояния скролла
+                updateNavigationUI(position)
             }
         })
+
+        // Устанавливаем начальное состояние
+        updateNavigationUI(viewPager.currentItem)
     }
 
-    fun switchToNewsTab() {
-        if (isViewInitialized() && isAdded) {
-            viewPager.currentItem = 0
+    private fun switchToPage(position: Int) {
+        if (viewPager.currentItem == position) {
+            // Если нажали на активную вкладку, скроллим к началу
+            if (position == 0) {
+                scrollNewsToTop()
+            }
+        } else {
+            viewPager.currentItem = position
+        }
+    }
+
+    private fun updateNavigationUI(selectedPosition: Int) {
+        // Сбрасываем все цвета на неактивные
+        val inactiveColor = ContextCompat.getColor(requireContext(), R.color.bg_message_right)
+        btnNews.setColorFilter(inactiveColor)
+        btnChats.setColorFilter(inactiveColor)
+        btnGroups.setColorFilter(inactiveColor)
+
+        // Устанавливаем активный цвет
+        val activeColor = ContextCompat.getColor(requireContext(), R.color.black)
+        when (selectedPosition) {
+            0 -> btnNews.setColorFilter(activeColor)
+            1 -> btnChats.setColorFilter(activeColor)
+            2 -> btnGroups.setColorFilter(activeColor)
         }
     }
 
@@ -120,7 +140,6 @@ class HomeFragment : Fragment() {
 
             Log.d(TAG, "scrollNewsToTop: Попытка скролла новостей к началу")
 
-            // Проверяем, что мы на вкладке новостей (позиция 0)
             if (viewPager.currentItem == 0) {
                 val feedFragment = getCurrentFeedFragment()
                 if (feedFragment != null && feedFragment.isAdded) {
@@ -188,6 +207,15 @@ class HomeFragment : Fragment() {
         } catch (e: Exception) {
             Log.e(TAG, "Error getting FeedFragment from adapter", e)
             null
+        }
+    }
+
+    /**
+     * Переключается на вкладку новостей
+     */
+    fun switchToNewsTab() {
+        if (isViewInitialized() && isAdded) {
+            viewPager.currentItem = 0
         }
     }
 

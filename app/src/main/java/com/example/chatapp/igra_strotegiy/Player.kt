@@ -1,42 +1,29 @@
 package com.example.chatapp.igra_strotegiy
 
 data class Player(
-    var resources: Resource = Resource(wood = 100),
+    var resources: Resource = Resource(),
     var buildings: MutableList<Building> = mutableListOf(),
-    var units: MutableList<GameUnit> = mutableListOf() // Замените здесь
+    var units: MutableList<GameUnit> = mutableListOf()
 ) {
     fun addBuilding(building: Building) {
+        building.health = building.maxHealth
         buildings.add(building)
     }
 
     fun collectResources() {
-        val mineCount = buildings.count { it is Building.Mine }
-        resources.wood += mineCount * 5
-    }
-
-    fun hireUnit(unit: GameUnit): Boolean { // Замените здесь
-        return when (unit) {
-            is GameUnit.Soldier -> {
-                if (resources.wood >= 10) {
-                    resources.wood -= 10
-                    units.add(unit)
-                    true
-                } else false
-            }
-            is GameUnit.Archer -> {
-                if (resources.wood >= 15) {
-                    resources.wood -= 15
-                    units.add(unit)
-                    true
-                } else false
-            }
-            is GameUnit.Tank -> {
-                if (resources.wood >= 25) {
-                    resources.wood -= 25
-                    units.add(unit)
-                    true
-                } else false
+        var income = Resource() // все значения = 0
+        buildings.forEach { building ->
+            if (building.isDestroyed()) return@forEach
+            when (building) {
+                is Building.Sawmill -> income.wood += 4 * building.level
+                is Building.Farm -> income.food += 2 * building.level
+                is Building.Well -> income.water += 3 * building.level
+                is Building.Quarry -> income.stone += 3 * building.level
+                is Building.GoldMine -> income.gold += 1 * building.level
+                // TownHall, Barracks и другие — НЕ дают ресурсы
+                else -> {}
             }
         }
+        resources.add(income)
     }
 }

@@ -49,6 +49,9 @@ class ChatWithGigaFragment : Fragment() {
     private var accessToken: String = ""
     private val authScope = "GIGACHAT_API_PERS"
 
+    // Флаг для отслеживания первого запуска
+    private var isFirstLaunch = true
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -89,9 +92,13 @@ class ChatWithGigaFragment : Fragment() {
             adapter = messageAdapter
         }
 
+        // Загружаем существующие сообщения из ViewModel
         viewModel.messages.forEach { message ->
             messageAdapter.addMessage(message)
         }
+
+        // Проверяем наличие сохраненной приветственной фразы
+        checkForWelcomePhrase()
 
         btnSendMessage.setOnClickListener {
             val userMessage = editTextMessage.text.toString().trim()
@@ -132,6 +139,60 @@ class ChatWithGigaFragment : Fragment() {
         val btnOpenDialogs = view.findViewById<ImageButton>(R.id.btnOpenDialogs)
         btnOpenDialogs.setOnClickListener {
             drawerLayout.openDrawer(GravityCompat.END)
+        }
+    }
+
+    /**
+     * Проверяет наличие сохраненной приветственной фразы и добавляет ее в чат
+     */
+    private fun checkForWelcomePhrase() {
+        if (isFirstLaunch && viewModel.messages.isEmpty()) {
+            val welcomePhrase = getSavedWelcomePhraseFromActivity()
+            welcomePhrase?.let { phrase ->
+                // Добавляем приветственную фразу как сообщение от бота
+                addWelcomeMessage(phrase)
+                // Очищаем сохраненную фразу после использования
+                clearSavedWelcomePhraseInActivity()
+            }
+            isFirstLaunch = false
+        }
+    }
+
+    /**
+     * Добавляет приветственное сообщение в чат
+     */
+    private fun addWelcomeMessage(phrase: String) {
+        // Добавляем сообщение от бота с приветствием
+        viewModel.addMessage(phrase, false)
+        messageAdapter.addMessage(GigaMessage(phrase, false))
+        recyclerView.scrollToPosition(viewModel.messages.size - 1)
+
+        Log.d("ChatFragment", "Welcome message added: $phrase")
+
+        // Опционально: можно автоматически отправить это сообщение боту для получения ответа
+        // getBotResponse(phrase)
+    }
+
+    /**
+     * Получает сохраненную приветственную фразу из MainActivity
+     */
+    private fun getSavedWelcomePhraseFromActivity(): String? {
+        return try {
+            (activity as? com.example.chatapp.activities.MainActivity)?.getSavedWelcomePhrase()
+        } catch (e: Exception) {
+            Log.e("ChatFragment", "Error getting welcome phrase from activity", e)
+            null
+        }
+    }
+
+    /**
+     * Очищает сохраненную приветственную фразу в MainActivity
+     */
+    private fun clearSavedWelcomePhraseInActivity() {
+        try {
+            (activity as? com.example.chatapp.activities.MainActivity)?.clearSavedWelcomePhrase()
+        } catch (e: Exception) {
+            Log.e("ChatFragment", "Error clearing welcome phrase in activity", e)
         }
     }
 
@@ -182,6 +243,8 @@ class ChatWithGigaFragment : Fragment() {
                 viewModel.clearAllMessages()
                 messageAdapter.updateMessages(emptyList())
                 recyclerView.scrollToPosition(0)
+                // Сбрасываем флаг первого запуска при очистке
+                isFirstLaunch = true
             }
             .setNegativeButton("Нет") { dialog, _ ->
                 dialog.dismiss()
