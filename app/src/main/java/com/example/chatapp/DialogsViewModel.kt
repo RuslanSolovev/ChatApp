@@ -8,10 +8,9 @@ import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.example.chatapp.SavedDialog
-import com.example.chatapp.models.GigaMessage
+import com.example.chatapp.privetstvie_giga.GigaMessage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class DialogsViewModel(application: Application) : AndroidViewModel(application) {
 

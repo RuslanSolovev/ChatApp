@@ -1,4 +1,4 @@
-package com.example.chatapp.viewmodels
+package com.example.chatapp.privetstvie_giga
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider

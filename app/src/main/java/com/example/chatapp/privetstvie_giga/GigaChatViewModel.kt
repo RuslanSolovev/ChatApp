@@ -1,9 +1,9 @@
-package com.example.chatapp.viewmodels
+package com.example.chatapp.privetstvie_giga
+
 
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.example.chatapp.models.GigaMessage
 import com.example.chatapp.utils.MessageStorage
 import kotlinx.coroutines.launch
 

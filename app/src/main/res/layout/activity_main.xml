@@ -52,6 +52,16 @@
             android:layout_gravity="end"
             android:orientation="horizontal">
 
+            <!-- Кнопка анкеты -->
+            <ImageButton
+                android:id="@+id/btnQuestionnaire"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:src="@drawable/ic_questionnaire"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Анкета"
+                android:layout_marginEnd="8dp"/>
+
             <!-- Кнопка для музыки -->
             <ImageButton
                 android:id="@+id/btnMusic"
@@ -75,7 +85,7 @@
 
     </androidx.appcompat.widget.Toolbar>
 
-    <!-- Основной контент - РАСШИРЯЕМ ДО САМОГО НИЗА -->
+    <!-- Основной контент -->
     <FrameLayout
         android:id="@+id/fragment_container"
         android:layout_width="match_parent"
@@ -128,16 +138,28 @@
                         app:tint="#666666"/>
                 </LinearLayout>
 
-                <!-- Сообщение -->
+                <!-- Часть 2: Контекстный вопрос из анкеты -->
                 <TextView
-                    android:id="@+id/tvWelcomeMessage"
+                    android:id="@+id/tvWelcomeQuestion"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Как ваши дела сегодня?"
+                    android:text="Формирую вопрос на основе ваших интересов..."
                     android:textSize="14sp"
                     android:textColor="#666666"
                     android:layout_marginTop="8dp"
                     android:lineSpacingExtra="2dp"/>
+
+                <!-- Часть 3: Анализ диалога (продолжение темы) -->
+                <TextView
+                    android:id="@+id/tvWelcomeContext"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Анализирую наши предыдущие обсуждения..."
+                    android:textSize="14sp"
+                    android:textColor="@color/black"
+                    android:textStyle="italic"
+                    android:lineSpacingExtra="2dp"
+                    android:layout_marginTop="4dp"/>
 
                 <!-- Кнопки действий -->
                 <LinearLayout
@@ -167,6 +189,7 @@
                         android:background="@drawable/btn_outline_small"
                         android:textColor="#666666"
                         android:layout_marginStart="8dp"/>
+
                 </LinearLayout>
 
             </LinearLayout>
@@ -175,7 +198,7 @@
 
     </FrameLayout>
 
-    <!-- Полупрозрачная навигация СВЕРХУ контента -->
+    <!-- Полупрозрачная навигация -->
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottomNavigation"
         android:layout_width="match_parent"

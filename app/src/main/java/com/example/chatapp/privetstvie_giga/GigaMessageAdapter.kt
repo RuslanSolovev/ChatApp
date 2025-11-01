@@ -1,11 +1,10 @@
-package com.example.chatapp.adapters
+package com.example.chatapp.privetstvie_giga
 
 import android.view.LayoutInflater
 import android.view.ViewGroup
 import androidx.recyclerview.widget.RecyclerView
 import com.example.chatapp.databinding.ItemUserMessageBinding
 import com.example.chatapp.databinding.ItemBotMessageBinding
-import com.example.chatapp.models.GigaMessage
 
 class GigaMessageAdapter : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 

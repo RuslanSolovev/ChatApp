@@ -1,11 +1,14 @@
 package com.example.chatapp.igra_strotegiy
 
 data class Enemy(
-    val id: Int = 0,
-    val name: String = "Enemy",
+    var id: Int = 0,
+    var name: String = "Enemy",
     var health: Int = 50,
-    val attackPower: Int = 10
+    var attackPower: Int = 10
 ) {
+    // Конструктор без аргументов для Firebase
+    constructor() : this(0, "Enemy", 50, 10)
+
     fun attack(player: Player): AttackResult {
         val aliveUnits = player.units.filter { it.health > 0 }
 
@@ -38,11 +41,4 @@ data class Enemy(
     }
 
     fun isAlive(): Boolean = health > 0
-}
-
-sealed class AttackResult {
-    object UnitsAttacked : AttackResult()
-    data class UnitsKilled(val unitTypes: List<String>) : AttackResult()
-    data class BaseAttacked(val damage: Int, val currentHp: Int, val maxHp: Int) : AttackResult()
-    object NoTarget : AttackResult()
 }

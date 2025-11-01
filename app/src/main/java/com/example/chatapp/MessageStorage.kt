@@ -1,7 +1,7 @@
 package com.example.chatapp.utils
 
 import android.content.Context
-import com.example.chatapp.models.GigaMessage
+import com.example.chatapp.privetstvie_giga.GigaMessage
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 

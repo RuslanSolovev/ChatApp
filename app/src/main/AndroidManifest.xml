@@ -74,6 +74,7 @@
         <activity
             android:name=".activities.SplashActivity"
             android:theme="@style/SplashTheme"
+            android:screenOrientation="portrait"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -81,27 +82,69 @@
             </intent-filter>
         </activity>
 
+        <!-- ========== СТРАТЕГИЯ ИГРА (ВСЕ ВЕРТИКАЛЬНЫЕ) ========== -->
+        <activity
+            android:name=".igra_strotegiy.MultiplayerLobbyActivity"
+            android:label="Многопользовательская игра"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+
+        <!-- ИЗМЕНЕНО: было landscape -->
+        <activity
+            android:name=".igra_strotegiy.MultiplayerGameActivity"
+            android:label="Стратегия"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+
+        <activity
+            android:name=".igra_strotegiy.TutorialActivity"
+            android:label="Обучение"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+
+        <activity
+            android:name=".igra_strotegiy.StrategyGameMenuActivity"
+            android:label="Цивилизация"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+
+        <!-- ИЗМЕНЕНО: было landscape -->
+        <activity
+            android:name=".igra_strotegiy.StrategyGameActivity"
+            android:label="Стратегия"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+
         <!-- Auth Activity -->
         <activity
             android:name=".activities.AuthActivity"
+            android:screenOrientation="portrait"
             android:exported="false"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
 
         <!-- Main Activity -->
         <activity
             android:name=".activities.MainActivity"
+            android:screenOrientation="portrait"
             android:exported="true"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
 
-        <!-- Maps Activity (новый) -->
+        <!-- Maps Activity -->
         <activity
             android:name=".location.MapsActivity"
+            android:screenOrientation="portrait"
             android:exported="false"
             android:theme="@style/Theme.Filosoff" />
+
+        <activity
+            android:name=".privetstvie_giga.UserQuestionnaireActivity"
+            android:theme="@style/Theme.ChatApp.Questionnaire"
+            android:exported="false" />
 
         <!-- Alarm Activities -->
         <activity
             android:name=".budilnik.AlarmActivity"
+            android:screenOrientation="portrait"
             android:exported="true"
             android:launchMode="singleTask"
             android:theme="@style/Theme.ChatApp"
@@ -116,89 +159,120 @@
         <!-- Mozgi Activities -->
         <activity
             android:name=".mozgi.ui.QuizActivity"
+            android:screenOrientation="portrait"
             android:exported="false"
             android:theme="@style/Theme.ChatApp"
             android:windowSoftInputMode="adjustResize" />
 
         <activity
             android:name=".mozgi.ui.ResultActivity"
+            android:screenOrientation="portrait"
             android:exported="false"
             android:theme="@style/Theme.ChatApp" />
 
         <activity
             android:name=".mozgi.ui.LeaderboardActivity"
+            android:screenOrientation="portrait"
             android:exported="false"
             android:theme="@style/Theme.ChatApp" />
 
         <activity
             android:name=".mozgi.ui.StartQuizActivity"
+            android:screenOrientation="portrait"
             android:exported="false"
             android:theme="@style/Theme.ChatApp" />
 
         <activity
             android:name=".mozgi.ui.CategoriesActivity"
-            android:exported="false"
             android:screenOrientation="portrait"
+            android:exported="false"
             android:theme="@style/Theme.ChatApp" />
 
         <!-- Music Activity -->
         <activity
             android:name=".muzika.ui.MusicMainActivity"
-            android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar"/>
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.MaterialComponents.DayNight.NoActionBar"
+            android:exported="false"/>
 
         <!-- Step Counter Activity -->
         <activity
             android:name=".StepCounterActivity"
+            android:screenOrientation="portrait"
             android:exported="false"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
 
-        <!-- Game Activities -->
+        <!-- Game Activities (ВСЕ ВЕРТИКАЛЬНЫЕ) -->
         <activity
             android:name=".pamyat.MemoryGameActivity"
             android:screenOrientation="portrait"
-            android:theme="@style/Theme.ChatApp" />
+            android:theme="@style/Theme.ChatApp"
+            android:exported="false" />
 
-        <activity android:name=".AdditionGameMenuActivity" />
-        <activity android:name=".AdditionGameActivity" />
-        <activity android:name=".GuessNumberMenuActivity" />
-        <activity android:name=".GuessNumberGameActivity" />
+        <activity
+            android:name=".AdditionGameMenuActivity"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+        <activity
+            android:name=".AdditionGameActivity"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+        <activity
+            android:name=".GuessNumberMenuActivity"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+        <activity
+            android:name=".GuessNumberGameActivity"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+
+        <!-- ИЗМЕНЕНО: шахматы тоже в вертикальной ориентации -->
         <activity
             android:name=".chess.ChessActivity"
             android:label="Шахматы"
+            android:screenOrientation="portrait"
             android:exported="true" />
 
         <!-- Chat Activities -->
-        <activity android:name="SozdanieBeseda" />
-        <activity android:name="DiscussionActivity" />
+        <activity
+            android:name="SozdanieBeseda"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+        <activity
+            android:name="DiscussionActivity"
+            android:screenOrientation="portrait"
+            android:exported="false" />
         <activity
             android:name=".activities.CreateChatActivity"
+            android:screenOrientation="portrait"
             android:exported="false"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
         <activity
             android:name=".activities.ChatDetailActivity"
+            android:screenOrientation="portrait"
             android:exported="false"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
         <activity
             android:name=".activities.SelectUsersActivity"
+            android:screenOrientation="portrait"
             android:exported="false"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
-
-        <activity
-            android:name=".igra_strotegiy.StrategyGameActivity"
-            android:exported="false" />
 
         <!-- Profile Activities -->
         <activity
             android:name=".activities.UserProfileActivity"
+            android:screenOrientation="portrait"
             android:exported="false" />
         <activity
             android:name=".activities.ProfileActivity"
+            android:screenOrientation="portrait"
             android:exported="false"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
 
         <!-- Other Activities -->
         <activity
             android:name=".TopUsersActivity"
+            android:screenOrientation="portrait"
             android:exported="false"
             android:parentActivityName=".StepCounterActivity"
             android:theme="@style/Theme.ChatApp.NoActionBar">
@@ -209,16 +283,19 @@
 
         <activity
             android:name=".location.FriendsListActivity"
+            android:screenOrientation="portrait"
             android:exported="false"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
 
         <activity
             android:name=".activities.FullScreenImageActivity"
+            android:screenOrientation="portrait"
             android:exported="false"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
 
         <activity
             android:name=".LocationSettingsActivity"
+            android:screenOrientation="portrait"
             android:exported="false" />
 
         <!-- Services -->

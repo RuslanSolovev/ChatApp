@@ -23,7 +23,7 @@
     <color name="divider">#E0E0E0</color>
 
     <color name="external_news_bg">#4CAF50</color>
-
+    <color name="hint_text">#9E9E9E</color>
     <color name="grey">#FF9E9E9E</color>
     <color name="yellow_background">#EBEBB9</color>
 

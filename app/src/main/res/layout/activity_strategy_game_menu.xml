@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:background="@drawable/bg_gradient"
+    android:gravity="center">
+
+    <!-- Заголовок -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Цивилизация: Выбор режима"
+        android:textSize="28sp"
+        android:textColor="@color/white"
+        android:gravity="center"
+        android:textStyle="bold"
+        android:layout_marginBottom="60dp"
+        android:shadowColor="@color/black"
+        android:shadowDx="2"
+        android:shadowDy="2"
+        android:shadowRadius="4" />
+
+    <!-- Кнопка одиночной игры -->
+    <Button
+        android:id="@+id/btnSinglePlayer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="🎮 Одиночная игра"
+        android:textSize="18sp"
+        android:padding="16dp"
+        android:layout_marginBottom="16dp"
+        android:backgroundTint="#4CAF50"
+        android:textColor="@color/white" />
+
+    <!-- Кнопка многопользовательской игры -->
+    <Button
+        android:id="@+id/btnMultiplayer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="👥 Многопользовательская"
+        android:textSize="18sp"
+        android:padding="16dp"
+        android:layout_marginBottom="16dp"
+        android:backgroundTint="#2196F3"
+        android:textColor="@color/white" />
+
+    <!-- Кнопка обучения -->
+    <Button
+        android:id="@+id/btnTutorial"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="📚 Обучение"
+        android:textSize="18sp"
+        android:padding="16dp"
+        android:layout_marginBottom="40dp"
+        android:backgroundTint="#FF9800"
+        android:textColor="@color/white" />
+
+    <!-- Кнопка назад -->
+    <Button
+        android:id="@+id/btnBack"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Назад"
+        android:textSize="16sp"
+        android:padding="12dp"
+        android:backgroundTint="#757575"
+        android:textColor="@color/white" />
+
+</LinearLayout>

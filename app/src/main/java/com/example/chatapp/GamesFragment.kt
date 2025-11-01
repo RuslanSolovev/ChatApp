@@ -11,7 +11,7 @@ import com.example.chatapp.AdditionGameMenuActivity
 import com.example.chatapp.GuessNumberMenuActivity
 import com.example.chatapp.R
 import com.example.chatapp.chess.ChessActivity
-import com.example.chatapp.igra_strotegiy.StrategyGameActivity
+import com.example.chatapp.igra_strotegiy.StrategyGameMenuActivity
 import com.example.chatapp.pamyat.MemoryGameActivity
 
 class GamesFragment : Fragment() {
@@ -32,6 +32,7 @@ class GamesFragment : Fragment() {
         val cardAdditionGame = view.findViewById<CardView>(R.id.card_addition_game)
         val cardChess = view.findViewById<CardView>(R.id.card_chess)
         val cardMemoryGame = view.findViewById<CardView>(R.id.card_memory_game)
+        val cardStrategyGame = view.findViewById<CardView>(R.id.card_strategy_game)
 
         // Устанавливаем обработчики кликов на карточки
         cardGuessNumber.setOnClickListener {
@@ -50,11 +51,9 @@ class GamesFragment : Fragment() {
             startActivity(Intent(requireContext(), MemoryGameActivity::class.java))
         }
 
-        // Находим карточку "Стратегия"
-        val cardStrategyGame = view.findViewById<CardView>(R.id.card_strategy_game)
-
+        // Теперь стратегия ведет в меню выбора режима
         cardStrategyGame.setOnClickListener {
-            startActivity(Intent(requireContext(), StrategyGameActivity::class.java))
+            startActivity(Intent(requireContext(), StrategyGameMenuActivity::class.java))
         }
     }
 }

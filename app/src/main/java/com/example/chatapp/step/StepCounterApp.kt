@@ -12,9 +12,6 @@ import androidx.work.*
 import com.example.chatapp.ForegroundServiceLauncher
 import com.example.chatapp.LocationWorker
 import com.example.chatapp.StepCounterWorker
-import com.example.chatapp.step.StepCounterService
-import com.example.chatapp.step.StepCounterViewModel
-import com.example.chatapp.utils.PhilosophyQuoteWorker
 import com.onesignal.OneSignal
 import com.yandex.mapkit.MapKitFactory
 import kotlinx.coroutines.*

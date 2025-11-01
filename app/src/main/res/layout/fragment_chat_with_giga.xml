@@ -4,116 +4,187 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/drawer_layout"
     android:layout_width="match_parent"
-    android:layout_height="match_parent">
+    android:layout_height="match_parent"
+    android:fitsSystemWindows="false">
 
     <!-- Основной контент -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:padding="16dp">
+        android:background="@color/white"
+        android:fitsSystemWindows="false">
 
+        <!-- Заголовок чата - КОМПАКТНЫЙ -->
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="48dp"
             android:orientation="horizontal"
-            android:gravity="center_vertical">
-
-            <ImageButton
-                android:id="@+id/btnClearDialog"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Очистить диалог"
-                android:padding="8dp"
-                android:src="@drawable/ic_delete" />
-
-            <View
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
-
-            <ImageButton
-                android:id="@+id/btnSaveDialog"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Сохранить диалог"
-                android:padding="8dp"
-                android:src="@drawable/ic_save" />
+            android:background="@color/primary_color"
+            android:paddingVertical="8dp"
+            android:paddingHorizontal="12dp"
+            android:elevation="2dp">
 
             <ImageButton
                 android:id="@+id/btnOpenDialogs"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
-                android:contentDescription="Открыть диалоги"
-                android:padding="8dp"
-                android:src="@drawable/ic_menu" />
+                android:src="@drawable/ic_history"
+                android:contentDescription="История диалогов"
+                app:tint="@color/white"
+                android:padding="6dp" />
+
+            <TextView
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="Чат с ассистентом"
+                android:textColor="@color/white"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:layout_gravity="center_vertical" />
+
+            <!-- Кнопка очистки диалога перенесена наверх -->
+            <ImageButton
+                android:id="@+id/btnClearDialog"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_close"
+                android:contentDescription="Очистить диалог"
+                app:tint="@color/white"
+                android:padding="6dp"
+                android:layout_marginEnd="8dp" />
+
+            <ImageButton
+                android:id="@+id/btnSaveDialog"
+                android:layout_width="36dp"
+                android:layout_height="36dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_save"
+                android:contentDescription="Сохранить диалог"
+                app:tint="@color/white"
+                android:padding="6dp" />
 
         </LinearLayout>
 
+        <!-- Контейнер для сообщений - НАЧИНАЕТСЯ ПОСЛЕ ЗАГОЛОВКА -->
         <androidx.recyclerview.widget.RecyclerView
             android:id="@+id/recyclerViewMessages"
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:padding="8dp"
-            android:clipToPadding="false"
-            android:paddingBottom="16dp"/>
+            android:background="@android:color/transparent"
+            android:paddingHorizontal="8dp"
+            android:paddingTop="4dp"
+            android:paddingBottom="60dp"
+        android:clipToPadding="false"
+        android:scrollbars="vertical" />
 
+        <!-- Панель ввода сообщения - ПОЛНОСТЬЮ ПРОЗРАЧНАЯ И КОМПАКТНАЯ -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:paddingBottom="100dp">
+            android:background="@android:color/transparent"
+        android:paddingVertical="8dp"
+        android:paddingHorizontal="12dp"
+            android:layout_marginBottom="100dp"
+        android:elevation="4dp">
 
-            <EditText
-                android:id="@+id/editTextMessage"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:hint="Введите сообщение..."
-                android:padding="8dp"
-                android:layout_marginStart="5dp"
-                android:background="@drawable/bg_message_right"/>
-
-            <ImageButton
-                android:id="@+id/btnSendMessage"
-                android:layout_width="50dp"
-                android:layout_height="40dp"
-                android:background="?attr/selectableItemBackgroundBorderless"
-                android:src="@drawable/ic_send"
-                android:contentDescription="Отправить сообщение"
-                app:tint="#1CE215"
-                android:scaleType="centerInside" />
-        </LinearLayout>
-    </LinearLayout>
-
-    <!-- Панель сохраненных диалогов (справа) -->
-    <LinearLayout
-        android:layout_width="300dp"
-        android:layout_height="match_parent"
-        android:layout_gravity="end"
-        android:orientation="vertical"
-        android:background="@android:color/white"
-        android:padding="16dp">
-
-        <TextView
-            android:layout_width="match_parent"
+        <EditText
+            android:id="@+id/editTextMessage"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="Сохраненные диалоги"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:paddingBottom="16dp" />
+            android:layout_weight="1"
+            android:layout_marginHorizontal="8dp"
+            android:hint="Введите сообщение..."
+            android:textColorHint="@color/bg_message_right"
+            android:background="@drawable/transparent_nav_background"
+            android:paddingVertical="12dp"
+        android:paddingHorizontal="16dp"
+        android:textSize="16sp"
+        android:maxLines="5"
+        android:gravity="center_vertical"
+        android:imeOptions="actionSend"
+        android:inputType="textMultiLine" />
 
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/recyclerViewSavedDialogs"
-            android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1" />
+        <ImageButton
+            android:id="@+id/btnSendMessage"
+            android:layout_width="44dp"
+        android:layout_height="44dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_send"
+        android:contentDescription="Отправить сообщение"
+        app:tint="@color/primary_color"
+        android:padding="10dp" />
 
     </LinearLayout>
 
-</androidx.drawerlayout.widget.DrawerLayout>
+</LinearLayout>
+
+    <!-- Боковая панель для сохраненных диалогов -->
+<LinearLayout
+android:layout_width="320dp"
+android:layout_height="match_parent"
+android:layout_gravity="end"
+android:orientation="vertical"
+android:background="@color/white"
+android:elevation="16dp"
+android:fitsSystemWindows="false">
+
+<!-- Заголовок боковой панели -->
+<LinearLayout
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:background="@color/primary_color"
+    android:paddingVertical="16dp"
+    android:paddingHorizontal="20dp">
+
+    <TextView
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:text="Сохраненные диалоги"
+        android:textColor="@color/white"
+        android:textSize="18sp"
+        android:textStyle="bold" />
+
+    <ImageButton
+        android:id="@+id/btnCloseDialogs"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:background="?attr/selectableItemBackgroundBorderless"
+        android:src="@drawable/ic_close"
+        android:contentDescription="Закрыть"
+        app:tint="@color/white"
+        android:padding="8dp" />
+
+</LinearLayout>
+
+<!-- Список сохраненных диалогов -->
+<androidx.recyclerview.widget.RecyclerView
+    android:id="@+id/recyclerViewSavedDialogs"
+    android:layout_width="match_parent"
+    android:layout_height="0dp"
+    android:layout_weight="1"
+    android:padding="8dp" />
+
+<!-- Подсказка если диалогов нет -->
+<TextView
+    android:id="@+id/tvEmptyDialogs"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:text="Нет сохраненных диалогов"
+    android:textColor="@color/secondary_text"
+    android:textSize="14sp"
+    android:gravity="center"
+    android:padding="24dp"
+    android:visibility="gone" />
+
+</LinearLayout>
+
+    </androidx.drawerlayout.widget.DrawerLayout>

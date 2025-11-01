@@ -1,0 +1,266 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Основные массивы -->
+    <string-array name="gender_options">
+        <item>Выберите пол</item>
+        <item>Мужской</item>
+        <item>Женский</item>
+        <item>Другой</item>
+        <item>Предпочитаю не указывать</item>
+    </string-array>
+
+    <string-array name="relationship_options">
+        <item>Выберите статус</item>
+        <item>Холост/Не замужем</item>
+        <item>В отношениях</item>
+        <item>Помолвлен(а)</item>
+        <item>Женат/Замужем</item>
+        <item>В гражданском браке</item>
+        <item>Разведен/Разведена</item>
+        <item>Вдовец/Вдова</item>
+        <item>В поиске</item>
+    </string-array>
+
+    <string-array name="work_schedule_options">
+        <item>Выберите график</item>
+        <item>Полный день (5/2)</item>
+        <item>Неполный день</item>
+        <item>Гибкий график</item>
+        <item>Сменный график</item>
+        <item>Вахтовый метод</item>
+        <item>Удаленная работа</item>
+        <item>Гибридный формат</item>
+        <item>Фриланс</item>
+        <item>Проектная работа</item>
+        <item>Безработный</item>
+        <item>Студент</item>
+        <item>Пенсионер</item>
+        <item>В декрете</item>
+        <item>Предприниматель</item>
+    </string-array>
+
+    <string-array name="wakeup_time_options">
+        <item>Выберите время</item>
+        <item>Очень рано (до 6 утра)</item>
+        <item>Рано (6-7 утра)</item>
+        <item>Нормально (7-8 утра)</item>
+        <item>Поздно (8-9 утра)</item>
+        <item>Очень поздно (после 9 утра)</item>
+        <item>Зависит от дня</item>
+    </string-array>
+
+    <string-array name="workout_frequency_options">
+        <item>Выберите частоту</item>
+        <item>Ежедневно</item>
+        <item>5-6 раз в неделю</item>
+        <item>3-4 раза в неделю</item>
+        <item>1-2 раза в неделю</item>
+        <item>Несколько раз в месяц</item>
+        <item>Редко</item>
+        <item>Сезонно</item>
+        <item>Не занимаюсь</item>
+        <item>Планирую начать</item>
+    </string-array>
+
+    <string-array name="reading_habit_options">
+        <item>Выберите привычку</item>
+        <item>Читаю ежедневно</item>
+        <item>Читаю несколько раз в неделю</item>
+        <item>Читаю 1-2 раза в неделю</item>
+        <item>Читаю иногда</item>
+        <item>Читаю редко</item>
+        <item>Читаю только по работе/учебе</item>
+        <item>Не читаю</item>
+        <item>Слушаю аудиокниги</item>
+    </string-array>
+
+    <string-array name="personality_options">
+        <item>Выберите тип</item>
+        <item>Интроверт</item>
+        <item>Экстраверт</item>
+        <item>Амбиверт</item>
+        <item>Не знаю</item>
+        <item>Зависит от ситуации</item>
+    </string-array>
+
+    <string-array name="communication_style_options">
+        <item>Выберите стиль</item>
+        <item>Формальный</item>
+        <item>Неформальный</item>
+        <item>Юмористический</item>
+        <item>Серьезный</item>
+        <item>Прямой</item>
+        <item>Дипломатичный</item>
+        <item>Эмпатичный</item>
+        <item>Деловой</item>
+        <item>Дружеский</item>
+    </string-array>
+
+    <string-array name="stress_management_options">
+        <item>Выберите метод</item>
+        <item>Спорт</item>
+        <item>Музыка</item>
+        <item>Чтение</item>
+        <item>Медитация</item>
+        <item>Йога</item>
+        <item>Прогулки</item>
+        <item>Хобби</item>
+        <item>Общение с друзьями</item>
+        <item>Сон</item>
+        <item>Фильмы/сериалы</item>
+        <item>Видеоигры</item>
+        <item>Творчество</item>
+        <item>Путешествия</item>
+        <item>Еда</item>
+        <item>Шоппинг</item>
+        <item>Ничего не делаю</item>
+        <item>Другое</item>
+    </string-array>
+
+    <!-- Новые массивы для дополнительных полей -->
+    <string-array name="fitness_level_options">
+        <item>Выберите уровень</item>
+        <item>Начинающий</item>
+        <item>Любитель</item>
+        <item>Продвинутый</item>
+        <item>Профессионал</item>
+        <item>Спортсмен</item>
+        <item>Не занимаюсь спортом</item>
+        <item>Восстанавливаюсь</item>
+        <item>Поддерживаю форму</item>
+    </string-array>
+
+    <string-array name="travel_frequency_options">
+        <item>Выберите частоту</item>
+        <item>Очень часто (каждый месяц)</item>
+        <item>Часто (раз в 2-3 месяца)</item>
+        <item>Умеренно (раз в полгода)</item>
+        <item>Иногда (раз в год)</item>
+        <item>Редко (раз в несколько лет)</item>
+        <item>Никогда не путешествую</item>
+        <item>Только по работе</item>
+        <item>Люблю, но нет возможности</item>
+    </string-array>
+
+    <string-array name="cooking_habit_options">
+        <item>Выберите привычку</item>
+        <item>Готовлю ежедневно</item>
+        <item>Готовлю часто</item>
+        <item>Готовлю иногда</item>
+        <item>Готовлю редко</item>
+        <item>Не готовлю</item>
+        <item>Люблю экспериментировать</item>
+        <item>Готовлю по выходным</item>
+        <item>Заказываю еду</item>
+    </string-array>
+
+    <string-array name="sleep_quality_options">
+        <item>Выберите качество</item>
+        <item>Отлично</item>
+        <item>Хорошо</item>
+        <item>Нормально</item>
+        <item>Плохо</item>
+        <item>Очень плохо</item>
+        <item>Не высыпаюсь</item>
+        <item>Бессонница</item>
+        <item>Зависит от дня</item>
+    </string-array>
+
+    <string-array name="social_activity_options">
+        <item>Выберите активность</item>
+        <item>Очень общительный</item>
+        <item>Общительный</item>
+        <item>Умеренно общительный</item>
+        <item>Скрытный</item>
+        <item>Застенчивый</item>
+        <item>Зависит от настроения</item>
+        <item>Предпочитаю одиночество</item>
+    </string-array>
+
+    <string-array name="learning_style_options">
+        <item>Выберите стиль</item>
+        <item>Визуал</item>
+        <item>Аудиал</item>
+        <item>Кинестетик</item>
+        <item>Чтение/письмо</item>
+        <item>Практика</item>
+        <item>Смешанный</item>
+        <item>Не знаю</item>
+    </string-array>
+
+    <string-array name="pet_types_options">
+        <item>Выберите тип</item>
+        <item>Собака</item>
+        <item>Кошка</item>
+        <item>Птица</item>
+        <item>Рыбки</item>
+        <item>Грызун</item>
+        <item>Рептилия</item>
+        <item>Другое</item>
+        <item>Нет питомцев</item>
+    </string-array>
+
+    <string-array name="season_options">
+        <item>Выберите сезон</item>
+        <item>Весна</item>
+        <item>Лето</item>
+        <item>Осень</item>
+        <item>Зима</item>
+        <item>Люблю все сезоны</item>
+        <item>Зависит от погоды</item>
+    </string-array>
+
+    <string-array name="music_genre_options">
+        <item>Выберите жанр</item>
+        <item>Поп</item>
+        <item>Рок</item>
+        <item>Хип-хоп</item>
+        <item>Электроника</item>
+        <item>Джаз</item>
+        <item>Классика</item>
+        <item>Инди</item>
+        <item>Метал</item>
+        <item>RIB</item>
+        <item>Кантри</item>
+        <item>Регги</item>
+        <item>Фолк</item>
+        <item>Разное</item>
+        <item>Не слушаю музыку</item>
+    </string-array>
+
+    <string-array name="movie_genre_options">
+        <item>Выберите жанр</item>
+        <item>Комедия</item>
+        <item>Драма</item>
+        <item>Боевик</item>
+        <item>Триллер</item>
+        <item>Ужасы</item>
+        <item>Фантастика</item>
+        <item>Фэнтези</item>
+        <item>Мелодрама</item>
+        <item>Детектив</item>
+        <item>Приключения</item>
+        <item>Аниме</item>
+        <item>Документальные</item>
+        <item>Арт-хаус</item>
+        <item>Не смотрю фильмы</item>
+    </string-array>
+
+    <string-array name="cuisine_options">
+        <item>Выберите кухню</item>
+        <item>Русская</item>
+        <item>Итальянская</item>
+        <item>Японская</item>
+        <item>Китайская</item>
+        <item>Мексиканская</item>
+        <item>Французская</item>
+        <item>Грузинская</item>
+        <item>Тайская</item>
+        <item>Индийская</item>
+        <item>Вегетарианская</item>
+        <item>Средиземноморская</item>
+        <item>Американская</item>
+        <item>Разная</item>
+        <item>Не имею предпочтений</item>
+    </string-array>
+</resources>

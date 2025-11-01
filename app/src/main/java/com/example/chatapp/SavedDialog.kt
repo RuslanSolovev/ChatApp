@@ -1,6 +1,6 @@
 package com.example.chatapp
 
-import com.example.chatapp.models.GigaMessage
+import com.example.chatapp.privetstvie_giga.GigaMessage
 import java.io.Serializable
 
 data class SavedDialog(
