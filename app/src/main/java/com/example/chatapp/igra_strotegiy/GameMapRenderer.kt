@@ -1,3 +1,4 @@
+// com.example.chatapp.igra_strotegiy.GameMapRenderer.kt
 package com.example.chatapp.igra_strotegiy
 
 import android.content.Context
@@ -15,6 +16,7 @@ class GameMapRenderer(
     private val context: Context,
     private val gameLogic: GameLogic,
     private val allPlayers: List<GamePlayer>? = null,
+    private val myUid: String? = null, // ← ДОБАВЛЕНО: чтобы различать свои и чужие армии
     private val onCellClick: (MapCell) -> Unit
 ) {
     fun render(): LinearLayout {
@@ -71,7 +73,46 @@ class GameMapRenderer(
             }
         }
 
-        // Враги
+        // === 🔥 ОТРИСОВКА АРМИЙ (мультиплеер) ===
+        if (allPlayers != null) {
+            val armiesHere = mutableListOf<Pair<Army, GamePlayer>>()
+            for (player in allPlayers) {
+                val armies = player.gameLogic.armies.filter {
+                    it.position.x == cell.x && it.position.y == cell.y && it.isAlive()
+                }
+                armies.forEach { army ->
+                    armiesHere.add(Pair(army, player))
+                }
+            }
+
+            if (armiesHere.isNotEmpty()) {
+                // Берём первую армию для отображения
+                val (army, owner) = armiesHere.first()
+                val isOwn = owner.uid == myUid
+
+                // В GameMapRenderer.kt, внутри блока отрисовки армий
+                imageView.setImageResource(
+                    if (isOwn) R.drawable.ic_army_own else R.drawable.ic_army_enemy
+                )
+
+                // Подпись
+                val totalUnits = army.units.size
+                val ownerName = if (isOwn) "Ты" else owner.displayName.take(6)
+                textView.text = "$ownerName\nАрмия\n$totalUnits юн."
+
+                // Цвет текста: зелёный — свой, красный — чужой
+                textView.setTextColor(
+                    if (isOwn) ContextCompat.getColor(context, android.R.color.holo_green_light)
+                    else ContextCompat.getColor(context, android.R.color.holo_red_light)
+                )
+
+                frame.addView(imageView)
+                frame.addView(textView)
+                return frame
+            }
+        }
+
+        // Враги (одиночная игра)
         val enemyEntry = gameLogic.enemyPositions.entries.find { (_, pos) ->
             pos.first == cell.x && pos.second == cell.y
         }

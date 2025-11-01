@@ -15,6 +15,10 @@ data class GameLogic(
     val enemyPositions: MutableMap<String, Pair<Int, Int>> = mutableMapOf(),
     var enemyBase: EnemyBase? = null,
     var lastAttackMessage: String = "",
+
+    // В GameLogic.kt, в тело класса
+    var armies: MutableList<Army> = mutableListOf(),
+
     var currentEvent: String? = null,
     var townHallPosition: Position = Position(0, 0)
 ) {
@@ -168,6 +172,36 @@ data class GameLogic(
         if (!hasOtherEnemy) {
             gameMap.setCellType(x, y, "empty")
         }
+    }
+
+    fun createArmy(unitCounts: Map<String, Int>): Army? {
+        val availableUnits = player.units.filter { it.health > 0 }.toMutableList()
+        val selectedUnits = mutableListOf<GameUnit>()
+
+        for ((unitType, count) in unitCounts) {
+            val found = availableUnits
+                .filter { it.type == unitType }
+                .take(count)
+            if (found.size < count) return null
+            selectedUnits.addAll(found)
+            availableUnits.removeAll(found)
+        }
+
+        player.units = availableUnits // оставшиеся — для защиты
+
+        return Army(
+            id = System.currentTimeMillis().toString(),
+            units = selectedUnits,
+            position = player.townHallPosition,
+            hasMovedThisTurn = false
+        )
+    }
+
+    fun returnArmyToTownHall(armyId: String): Boolean {
+        val army = armies.find { it.id == armyId } ?: return false
+        player.units.addAll(army.units.filter { it.health > 0 })
+        armies.remove(army)
+        return true
     }
 
     // Остальные методы без изменений...

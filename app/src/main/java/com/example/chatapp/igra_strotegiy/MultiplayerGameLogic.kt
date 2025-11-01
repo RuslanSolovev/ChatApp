@@ -1,8 +1,10 @@
+// com.example.chatapp.igra_strotegiy.MultiplayerGameLogic.kt
 package com.example.chatapp.igra_strotegiy
 
 import com.example.chatapp.models.User
 import com.google.firebase.database.DatabaseReference
 import kotlinx.coroutines.tasks.await
+import kotlin.math.abs
 
 class MultiplayerGameLogic(private val database: DatabaseReference) {
     private val gamesRef = database.child("multiplayer_games")
@@ -116,10 +118,22 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
         if (game.currentTurnUid != playerUid) return false
         val player = game.getPlayer(playerUid) ?: return false
 
-        val updatedLogic = applyActions(player.gameLogic.deepCopy(), actions)
+        val updatedLogic = applyActions(game, player.gameLogic.deepCopy(), actions)
         gamesRef.child(gameId).child("players").child(playerUid).child("gameLogic").setValue(updatedLogic).await()
 
-        // Обработка атаки на вражескую ратушу
+        // 🔥 НОВОЕ: Обработка перемещения армии и боя между армиями
+        for (action in actions) {
+            when (action) {
+                is GameAction.MoveArmy -> {
+                    resolveArmyCombat(gameId, playerUid, updatedLogic, action.armyId)
+                    resolveArmyAttackOnTownHall(gameId, playerUid, updatedLogic, action)
+                }
+
+                else -> {}
+            }
+        }
+
+        // Обработка атаки на вражескую ратушу (старый способ — оставляем для совместимости)
         val attackTownHallAction = actions.find { it is GameAction.AttackEnemyTownHall }
         if (attackTownHallAction is GameAction.AttackEnemyTownHall) {
             val targetUid = attackTownHallAction.targetPlayerUid
@@ -130,7 +144,6 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
                 val damage = updatedLogic.player.units.filter { it.health > 0 }.sumOf { it.attackPower }
                 if (damage > 0) {
                     townHall.takeDamage(damage)
-                    // 🔥 ГАРАНТИРУЕМ обновление в списке
                     val index = targetLogic.player.buildings.indexOfFirst { it is Building.TownHall }
                     if (index != -1) {
                         targetLogic.player.buildings[index] = townHall
@@ -144,10 +157,12 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
             }
         }
 
-        // Завершение хода → сбор ресурсов
+        // Завершение хода → сбор ресурсов + сброс флагов армий
         if (actions.any { it is GameAction.NextTurn }) {
             val logicAfterTurn = updatedLogic.deepCopy()
             logicAfterTurn.nextTurn()
+            // Сбрасываем флаги перемещения у армий
+            logicAfterTurn.armies.forEach { it.hasMovedThisTurn = false }
             gamesRef.child(gameId).child("players").child(playerUid).child("gameLogic").setValue(logicAfterTurn).await()
             val next = game.getNextPlayerUid()
             gamesRef.child(gameId).child("currentTurnUid").setValue(next).await()
@@ -158,8 +173,117 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
         return true
     }
 
-    private fun applyActions(gameLogic: GameLogic, actions: List<GameAction>): GameLogic {
+    // 🔥 НОВОЕ: Бой между армиями
+    private suspend fun resolveArmyCombat(gameId: String, attackerUid: String, logic: GameLogic, armyId: String) {
+        val army = logic.armies.find { it.id == armyId } ?: return
+        val allPlayersSnapshot = gamesRef.child(gameId).child("players").get().await()
+        val allPlayers = mutableMapOf<String, GamePlayer>()
+
+        // Загружаем всех игроков
+        allPlayersSnapshot.children.forEach { playerSnapshot ->
+            val uid = playerSnapshot.key ?: return@forEach
+            val gameLogic = FirebaseGameMapper.parseGameLogic(playerSnapshot.child("gameLogic"))
+            allPlayers[uid] = GamePlayer(gameLogic = gameLogic)
+        }
+
+        // Ищем вражеские армии на той же позиции
+        for ((uid, player) in allPlayers) {
+            if (uid == attackerUid) continue // пропускаем атакующего
+
+            val enemyArmies = player.gameLogic.armies.filter {
+                it.position == army.position && it.isAlive()
+            }
+
+            for (enemyArmy in enemyArmies) {
+                // Бой между армиями: обмен уроном
+                val attackPower = army.totalAttackPower()
+                val defensePower = enemyArmy.totalAttackPower()
+
+                // Урон по вражеской армии
+                if (attackPower > 0 && enemyArmy.units.isNotEmpty()) {
+                    val damagePerUnit = attackPower / enemyArmy.units.size.coerceAtLeast(1)
+                    enemyArmy.units.forEach { u -> u.health -= damagePerUnit }
+                }
+
+                // Урон по атакующей армии
+                if (defensePower > 0 && army.units.isNotEmpty()) {
+                    val damagePerUnit = defensePower / army.units.size.coerceAtLeast(1)
+                    army.units.forEach { u -> u.health -= damagePerUnit }
+                }
+
+                // Удаляем мёртвых юнитов
+                enemyArmy.units.removeIf { it.health <= 0 }
+                army.units.removeIf { it.health <= 0 }
+
+                // Сохраняем изменения вражеской армии
+                gamesRef.child(gameId).child("players").child(uid).child("gameLogic").setValue(player.gameLogic).await()
+            }
+        }
+
+        // Сохраняем изменения атакующей армии
+        gamesRef.child(gameId).child("players").child(attackerUid).child("gameLogic").setValue(logic).await()
+    }
+
+    // 🔥 НОВОЕ: Атака армией на ратушу
+    private suspend fun resolveArmyAttackOnTownHall(
+        gameId: String,
+        attackerUid: String,
+        logic: GameLogic,
+        moveAction: GameAction.MoveArmy
+    ) {
+        val army = logic.armies.find { it.id == moveAction.armyId } ?: return
+        val targetPos = Position(moveAction.targetX, moveAction.targetY)
+
+        // Ищем игрока, чья ратуша на этой позиции
+        val allPlayersSnapshot = gamesRef.child(gameId).child("players").get().await()
+        for (playerSnapshot in allPlayersSnapshot.children) {
+            val targetUid = playerSnapshot.key ?: continue
+            if (targetUid == attackerUid) continue // нельзя атаковать себя
+
+            val targetLogic = FirebaseGameMapper.parseGameLogic(playerSnapshot.child("gameLogic"))
+            val townHallPos = targetLogic.player.townHallPosition
+            if (townHallPos != targetPos) continue
+
+            val townHall = targetLogic.player.buildings.find { it is Building.TownHall && !it.isDestroyed() } ?: continue
+            val defendingUnits = targetLogic.player.units.filter { it.health > 0 }
+
+            if (defendingUnits.isNotEmpty()) {
+                // Бой с защитниками
+                val armyPower = army.totalAttackPower()
+                defendingUnits.forEach { u -> u.health -= armyPower / defendingUnits.size }
+                army.units.forEach { u ->
+                    u.health -= defendingUnits.sumOf { it.attackPower } / army.units.size.coerceAtLeast(1)
+                }
+                targetLogic.player.units.removeIf { it.health <= 0 }
+                army.units.removeIf { it.health <= 0 }
+            } else {
+                // Атака ратуши
+                val damage = army.totalAttackPower()
+                if (damage > 0) {
+                    townHall.takeDamage(damage)
+                    val idx = targetLogic.player.buildings.indexOfFirst { it is Building.TownHall }
+                    if (idx != -1) {
+                        targetLogic.player.buildings[idx] = townHall
+                    }
+                    if (townHall.isDestroyed()) {
+                        gamesRef.child(gameId).child("winnerUid").setValue(attackerUid).await()
+                        gamesRef.child(gameId).child("gameState").setValue(GameState.FINISHED).await()
+                    }
+                }
+            }
+
+            // Сохраняем цель
+            gamesRef.child(gameId).child("players").child(targetUid).child("gameLogic").setValue(targetLogic).await()
+            // Сохраняем атакующего
+            gamesRef.child(gameId).child("players").child(attackerUid).child("gameLogic").setValue(logic).await()
+            return
+        }
+    }
+
+    private fun applyActions(game: MultiplayerGame, gameLogic: GameLogic, actions: List<GameAction>): GameLogic {
         val updated = gameLogic.deepCopy()
+
+        // === Валидация ===
         for (action in actions) {
             when (action) {
                 is GameAction.BuildBuilding -> {
@@ -196,9 +320,48 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
                         throw Exception("Можно эволюционировать только в следующую эру")
                     }
                 }
+                is GameAction.CreateArmy -> {
+                    val availableUnits = updated.player.units.filter { it.health > 0 }
+                    val grouped = availableUnits.groupBy { it.type }
+                    for ((unitType, count) in action.unitCounts) {
+                        val availableCount = grouped[unitType]?.size ?: 0
+                        if (availableCount < count) {
+                            throw Exception("Недостаточно юнитов типа $unitType")
+                        }
+                    }
+                }
+                is GameAction.MoveArmy -> {
+                    val army = updated.armies.find { it.id == action.armyId } ?: throw Exception("Армия не найдена")
+                    if (army.hasMovedThisTurn) throw Exception("Армия уже перемещалась")
+                    val dx = abs(army.position.x - action.targetX)
+                    val dy = abs(army.position.y - action.targetY)
+                    if (dx + dy > 2) throw Exception("Армия может двигаться не более чем на 2 клетки")
+                    // 🔥 Запрет заходить на занятые клетки
+                    for (otherPlayer in game.players.values) {
+                        // Чужая или своя ратуша
+                        if (otherPlayer.gameLogic.player.townHallPosition.x == action.targetX &&
+                            otherPlayer.gameLogic.player.townHallPosition.y == action.targetY) {
+                            throw Exception("Нельзя заходить на ратушу")
+                        }
+                        // Любая армия
+                        if (otherPlayer.gameLogic.armies.any {
+                                it.position.x == action.targetX && it.position.y == action.targetY && it.isAlive()
+                            }) {
+                            throw Exception("Нельзя заходить на клетку с армией")
+                        }
+                    }
+                }
+                is GameAction.ReturnArmyToTownHall -> {
+                    val army = updated.armies.find { it.id == action.armyId } ?: throw Exception("Армия не найдена")
+                    val dist = abs(army.position.x - updated.player.townHallPosition.x) +
+                            abs(army.position.y - updated.player.townHallPosition.y)
+                    if (dist > 1) throw Exception("Армия слишком далеко от ратуши")
+                }
                 else -> {}
             }
         }
+
+        // === Применение ===
         for (action in actions) {
             when (action) {
                 is GameAction.BuildBuilding -> updated.buildBuildingOnMap(action.building, action.x, action.y)
@@ -209,6 +372,22 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
                 is GameAction.NextTurn -> {}
                 is GameAction.AttackEnemyTownHall -> {}
                 is GameAction.EvolveToEra -> updated.evolveTo(action.targetEra)
+                is GameAction.CreateArmy -> {
+                    val army = updated.createArmy(action.unitCounts)
+                    if (army != null) updated.armies.add(army)
+                    else throw Exception("Не удалось создать армию")
+                }
+                is GameAction.MoveArmy -> {
+                    val army = updated.armies.find { it.id == action.armyId }
+                    if (army != null) {
+                        army.position = Position(action.targetX, action.targetY)
+                        army.hasMovedThisTurn = true
+                    }
+                }
+                is GameAction.ReturnArmyToTownHall -> {
+                    updated.returnArmyToTownHall(action.armyId)
+                }
+                else -> {}
             }
         }
         return updated

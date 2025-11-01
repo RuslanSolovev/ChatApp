@@ -104,6 +104,29 @@ object FirebaseGameMapper {
         }
     }
 
+    private fun parseArmy(armySnapshot: DataSnapshot): Army? {
+        return try {
+            val id = armySnapshot.child("id").getValue(String::class.java) ?: ""
+            val hasMoved = armySnapshot.child("hasMovedThisTurn").getValue(Boolean::class.java) ?: false
+            val posX = armySnapshot.child("position").child("x").getValue(Int::class.java) ?: 0
+            val posY = armySnapshot.child("position").child("y").getValue(Int::class.java) ?: 0
+            val position = Position(posX, posY)
+
+            val units = mutableListOf<GameUnit>()
+            if (armySnapshot.child("units").exists()) {
+                armySnapshot.child("units").children.forEach { unitSnapshot ->
+                    val unit = parseUnit(unitSnapshot)
+                    unit?.let { units.add(it) }
+                }
+            }
+
+            Army(id = id, units = units, position = position, hasMovedThisTurn = hasMoved)
+        } catch (e: Exception) {
+            Log.e("FirebaseGameMapper", "Error parsing army", e)
+            null
+        }
+    }
+
     fun parseGameLogic(gameLogicSnapshot: DataSnapshot): GameLogic {
         return try {
             Log.d("FirebaseGameMapper", "Parsing GameLogic from snapshot")
@@ -111,6 +134,13 @@ object FirebaseGameMapper {
 
             if (gameLogicSnapshot.child("player").exists()) {
                 parsePlayerData(gameLogicSnapshot.child("player"), gameLogic.player)
+            }
+            // Внутри parseGameLogic, после парсинга units:
+            if (gameLogicSnapshot.child("armies").exists()) {
+                gameLogicSnapshot.child("armies").children.forEach { armySnapshot ->
+                    val army = parseArmy(armySnapshot)
+                    army?.let { gameLogic.armies.add(it) }
+                }
             }
 
             // Парсинг врагов (опционально)

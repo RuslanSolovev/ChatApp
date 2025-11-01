@@ -9,4 +9,8 @@ sealed class GameAction {
     data class AttackEnemyTownHall(val targetPlayerUid: String) : GameAction()
     data class EvolveToEra(val targetEra: Era) : GameAction() // ← ДОБАВЛЕНО
     object NextTurn : GameAction()
+    data class CreateArmy(val unitCounts: Map<String, Int>) : GameAction()
+    data class MoveArmy(val armyId: String, val targetX: Int, val targetY: Int) : GameAction()
+    data class ReturnArmyToTownHall(val armyId: String) : GameAction()
+    data class AttackWithArmy(val armyId: String, val targetX: Int, val targetY: Int) : GameAction()
 }

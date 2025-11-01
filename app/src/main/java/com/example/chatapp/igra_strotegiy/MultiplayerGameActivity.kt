@@ -8,6 +8,7 @@ import android.view.View
 import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.core.widget.addTextChangedListener
 import androidx.lifecycle.lifecycleScope
 import com.example.chatapp.R
 import com.example.chatapp.models.User
@@ -15,6 +16,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.*
 import kotlinx.coroutines.*
 import kotlinx.coroutines.tasks.await
+import kotlin.math.abs
 
 class MultiplayerGameActivity : AppCompatActivity() {
     private lateinit var auth: FirebaseAuth
@@ -38,6 +40,7 @@ class MultiplayerGameActivity : AppCompatActivity() {
     private var lastMapUpdate = 0L
     private var lastSharedMapHash = 0
     private var lastUpdate = 0L
+    private var selectedArmy: Army? = null // ← состояние выделенной армии
 
     // Управление слушателями
     private var gameListener: ValueEventListener? = null
@@ -52,26 +55,16 @@ class MultiplayerGameActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_multiplayer_game)
-
-        // Быстрая инициализация
         auth = FirebaseAuth.getInstance()
         database = FirebaseDatabase.getInstance().reference
         multiplayerLogic = MultiplayerGameLogic(database)
-
         if (gameId.isEmpty()) {
             showErrorAndFinish("Ошибка: ID игры не получен")
             return
         }
-
-        initViews() // Только UI элементы
+        initViews()
         showLoadingState()
-
-        // Асинхронная загрузка данных
-        lifecycleScope.launch {
-            loadGameDataAsync()
-        }
-
-        // Настройка слушателя игроков для мгновенного обновления здоровья ратуши
+        lifecycleScope.launch { loadGameDataAsync() }
         setupPlayersListener()
     }
 
@@ -85,12 +78,9 @@ class MultiplayerGameActivity : AppCompatActivity() {
         tvResources = findViewById(R.id.tvResources)
         tvUnits = findViewById(R.id.tvUnits)
         tvPlayersSummary = findViewById(R.id.tvPlayersSummary)
-
         btnBuild.setOnClickListener { showBuildingMenu() }
         btnEndTurn.setOnClickListener { endTurn() }
         btnLeaveGame.setOnClickListener { leaveGame() }
-
-        // Изначально скрываем кнопки до загрузки данных
         btnBuild.visibility = View.GONE
         btnEndTurn.visibility = View.GONE
     }
@@ -106,20 +96,15 @@ class MultiplayerGameActivity : AppCompatActivity() {
     private suspend fun loadGameDataAsync() = withContext(Dispatchers.IO) {
         try {
             Log.d(TAG, "Начало асинхронной загрузки данных игры")
-
             val uid = auth.currentUser?.uid
             val isSpectator = determineSpectatorStatus(uid)
-
             withContext(Dispatchers.Main) {
                 this@MultiplayerGameActivity.isSpectator = isSpectator
                 updateUIForSpectator()
-                setupGameListener() // Теперь в основном потоке
+                setupGameListener()
             }
-
             loadCurrentUserAsync()
-
             Log.d(TAG, "Асинхронная загрузка данных завершена")
-
         } catch (e: Exception) {
             Log.e(TAG, "Ошибка загрузки данных игры", e)
             withContext(Dispatchers.Main) {
@@ -129,17 +114,10 @@ class MultiplayerGameActivity : AppCompatActivity() {
     }
 
     private suspend fun determineSpectatorStatus(uid: String?): Boolean = withContext(Dispatchers.IO) {
-        if (uid == null) {
-            Log.d(TAG, "Пользователь не авторизован - наблюдатель")
-            return@withContext true
-        }
-
-        return@withContext try {
-            val snapshot = database.child("multiplayer_games").child(gameId).child("players").child(uid)
-                .get().await()
-            val isPlayer = snapshot.exists()
-            Log.d(TAG, "Статус игрока: $isPlayer")
-            !isPlayer
+        if (uid == null) return@withContext true
+        try {
+            val snapshot = database.child("multiplayer_games").child(gameId).child("players").child(uid).get().await()
+            !snapshot.exists()
         } catch (e: Exception) {
             Log.e(TAG, "Ошибка определения статуса наблюдателя", e)
             true
@@ -169,19 +147,13 @@ class MultiplayerGameActivity : AppCompatActivity() {
     }
 
     private fun setupGameListener() {
-        // Удалить предыдущий слушатель
-        gameListener?.let {
-            database.child("multiplayer_games").child(gameId).removeEventListener(it)
-        }
-
+        gameListener?.let { database.child("multiplayer_games").child(gameId).removeEventListener(it) }
         gameListener = database.child("multiplayer_games").child(gameId)
             .addValueEventListener(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
-                    // Троттлинг обновлений
                     val now = System.currentTimeMillis()
                     if (now - lastUpdate < 200) return
                     lastUpdate = now
-
                     lifecycleScope.launch {
                         try {
                             val oldGame = currentGame
@@ -189,8 +161,6 @@ class MultiplayerGameActivity : AppCompatActivity() {
                             currentGame?.let { newGame ->
                                 withContext(Dispatchers.Main) {
                                     updateGameUI(newGame)
-
-                                    // ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ КАРТЫ ПРИ ИЗМЕНЕНИИ ДАННЫХ ИГРОКОВ
                                     if (oldGame != null && playersDataChanged(oldGame, newGame)) {
                                         Log.d(TAG, "Обнаружено изменение данных игроков - принудительное обновление карты")
                                         lastSharedMapHash = 0
@@ -204,7 +174,6 @@ class MultiplayerGameActivity : AppCompatActivity() {
                         }
                     }
                 }
-
                 override fun onCancelled(e: DatabaseError) {
                     Log.e(TAG, "Ошибка слушателя игры: ${e.message}")
                     Toast.makeText(this@MultiplayerGameActivity, "Ошибка загрузки игры", Toast.LENGTH_SHORT).show()
@@ -212,47 +181,28 @@ class MultiplayerGameActivity : AppCompatActivity() {
             })
     }
 
-    // Проверяем, изменились ли данные игроков (здоровье ратуши и т.д.)
     private fun playersDataChanged(oldGame: MultiplayerGame, newGame: MultiplayerGame): Boolean {
         if (oldGame.players.size != newGame.players.size) return true
-
         for ((uid, oldPlayer) in oldGame.players) {
             val newPlayer = newGame.players[uid] ?: continue
-
-            // Проверяем здоровье ратуши
             val oldTownHall = oldPlayer.gameLogic.player.buildings.find { it is Building.TownHall }
             val newTownHall = newPlayer.gameLogic.player.buildings.find { it is Building.TownHall }
-
-            if (oldTownHall?.health != newTownHall?.health) {
-                Log.d(TAG, "Обнаружено изменение здоровья ратуши: ${oldTownHall?.health} -> ${newTownHall?.health}")
-                return true
-            }
-
-            // Проверяем другие важные данные
+            if (oldTownHall?.health != newTownHall?.health) return true
             if (oldPlayer.gameLogic.player.resources != newPlayer.gameLogic.player.resources) return true
             if (oldPlayer.gameLogic.player.units.size != newPlayer.gameLogic.player.units.size) return true
+            if (oldPlayer.gameLogic.armies.size != newPlayer.gameLogic.armies.size) return true
         }
-
         return false
     }
 
     private fun setupPlayersListener() {
-        // Удалить предыдущий слушатель
-        playersListener?.let {
-            database.child("multiplayer_games").child(gameId).child("players").removeEventListener(it)
-        }
-
+        playersListener?.let { database.child("multiplayer_games").child(gameId).child("players").removeEventListener(it) }
         playersListener = database.child("multiplayer_games").child(gameId).child("players")
             .addValueEventListener(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
-                    Log.d(TAG, "Обновление данных игроков обнаружено")
-
-                    // Принудительно обновляем карту при любом изменении игроков
                     lifecycleScope.launch {
                         lastSharedMapHash = 0
                         lastMapUpdate = 0
-
-                        // Перезагружаем игру
                         try {
                             val gameSnapshot = database.child("multiplayer_games").child(gameId).get().await()
                             val game = FirebaseGameMapper.safeGetMultiplayerGame(gameSnapshot)
@@ -267,7 +217,6 @@ class MultiplayerGameActivity : AppCompatActivity() {
                         }
                     }
                 }
-
                 override fun onCancelled(e: DatabaseError) {
                     Log.e(TAG, "Ошибка слушателя игроков: ${e.message}")
                 }
@@ -279,29 +228,21 @@ class MultiplayerGameActivity : AppCompatActivity() {
         updatePlayersList(game)
         updateCurrentPlayerInfo(game)
         updateButtons(game)
-
-        // Рендеринг карты - с троттлингом и в фоне
-        lifecycleScope.launch {
-            updateMapAsync(game)
-        }
+        lifecycleScope.launch { updateMapAsync(game) }
     }
 
     private suspend fun updateMapAsync(game: MultiplayerGame) = withContext(Dispatchers.Default) {
         val now = System.currentTimeMillis()
-        // Убираем троттлинг при принудительном обновлении
         if (now - lastMapUpdate < MAP_UPDATE_THROTTLE && lastSharedMapHash != 0) {
             Log.d(TAG, "Пропуск обновления карты (троттлинг)")
             return@withContext
         }
-
         try {
             val sharedMap = withContext(Dispatchers.IO) {
                 database.child("multiplayer_games").child(gameId).child("sharedMap")
                     .get().await().getValue(GameMap::class.java) ?: GameMap()
             }
-
             val newHash = sharedMap.cells.hashCode()
-            // Всегда обновляем если хэш изменился ИЛИ принудительное обновление
             if (newHash != lastSharedMapHash || lastSharedMapHash == 0) {
                 Log.d(TAG, "Обновление карты: хэш $lastSharedMapHash -> $newHash")
                 lastSharedMapHash = newHash
@@ -309,8 +250,6 @@ class MultiplayerGameActivity : AppCompatActivity() {
                 withContext(Dispatchers.Main) {
                     renderSharedMapOptimized(game, sharedMap)
                 }
-            } else {
-                Log.d(TAG, "Карта не изменилась, пропускаем рендеринг")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Ошибка загрузки карты", e)
@@ -320,7 +259,6 @@ class MultiplayerGameActivity : AppCompatActivity() {
     private fun prepareRenderLogic(game: MultiplayerGame, sharedMap: GameMap): Pair<GameLogic, List<GamePlayer>> {
         val renderLogic = GameLogic()
         renderLogic.gameMap = sharedMap
-        // Собираем все здания (для не-ратуш), но ратуши будем брать по позиции
         for (player in game.players.values) {
             val activeBuildings = player.gameLogic.player.buildings.filter { !it.isDestroyed() && it !is Building.TownHall }
             renderLogic.player.buildings.addAll(activeBuildings)
@@ -329,10 +267,7 @@ class MultiplayerGameActivity : AppCompatActivity() {
     }
 
     private fun renderSharedMapOptimized(game: MultiplayerGame, sharedMap: GameMap) {
-        if (isRendering) {
-            Log.d(TAG, "Рендеринг уже выполняется, пропускаем")
-            return
-        }
+        if (isRendering) return
         isRendering = true
         lifecycleScope.launch(Dispatchers.Default) {
             try {
@@ -342,7 +277,8 @@ class MultiplayerGameActivity : AppCompatActivity() {
                         val renderer = GameMapRenderer(
                             this@MultiplayerGameActivity,
                             renderLogic,
-                            allPlayers
+                            allPlayers,
+                            auth.currentUser?.uid // ← передаём свой UID для различения армий
                         ) { cell ->
                             if (!isSpectator && isMyTurn()) {
                                 handleCellClickOnSharedMap(cell, game, sharedMap)
@@ -367,12 +303,10 @@ class MultiplayerGameActivity : AppCompatActivity() {
     private fun swapMapView(newView: View) {
         newView.alpha = 0f
         mapContainer.addView(newView)
-
         newView.animate()
             .alpha(1f)
             .setDuration(200)
             .withEndAction {
-                // Удаляем старые view, кроме новой
                 for (i in mapContainer.childCount - 2 downTo 0) {
                     val child = mapContainer.getChildAt(i)
                     if (child != newView) {
@@ -390,7 +324,6 @@ class MultiplayerGameActivity : AppCompatActivity() {
             gravity = Gravity.CENTER
             setPadding(0, 50, 0, 50)
         }
-
         mapContainer.addView(errorView)
         mapContainer.postDelayed({
             if (mapContainer.indexOfChild(errorView) != -1) {
@@ -429,14 +362,11 @@ class MultiplayerGameActivity : AppCompatActivity() {
     private fun updateCurrentPlayerInfo(game: MultiplayerGame) {
         val uid = auth.currentUser?.uid
         val player = uid?.let { game.players[it] }
-
         if (player != null) {
             val eraName = getEraName(player.gameLogic.player.era)
             tvCurrentPlayer.text = "Вы: ${player.displayName} ($eraName)"
-
             val resourcesText = player.gameLogic.player.resources.getAvailableResources(player.gameLogic.player.era)
             tvResources.text = "Ресурсы:\n$resourcesText"
-
             val aliveUnits = player.gameLogic.player.units.filter { it.health > 0 }
             val unitCounts = aliveUnits.groupBy { it.name }.map { "${it.key} (${it.value.size})" }
             val unitsText = if (unitCounts.isEmpty()) "Нет юнитов" else unitCounts.joinToString(", ")
@@ -461,32 +391,236 @@ class MultiplayerGameActivity : AppCompatActivity() {
         return currentGame?.isPlayerTurn(uid) == true
     }
 
-    private fun showBuildingMenu() {
+    // 🔥 ОСНОВНОЙ МЕТОД КЛИКА ПО КЛЕТКЕ
+    private fun handleCellClickOnSharedMap(cell: MapCell, game: MultiplayerGame, sharedMap: GameMap) {
         val uid = auth.currentUser?.uid ?: return
-        val game = currentGame ?: return
-        val logic = game.players[uid]?.gameLogic ?: return
-        val era = logic.player.era
 
-        val buildings = when (era) {
-            Era.STONE_AGE -> arrayOf("Хижина", "Колодец", "Лесопилка", "Рыболовная хижина", "Казармы", "Научный центр")
-            Era.BRONZE_AGE -> arrayOf("Ферма", "Каменоломня", "Золотой рудник", "Кузница", "Казармы", "Научный центр")
-            Era.MIDDLE_AGES -> arrayOf("Железный рудник", "Замок", "Оружейная", "Казармы", "Научный центр")
-            Era.INDUSTRIAL -> arrayOf("Угольная шахта", "Нефтяная вышка", "Фабрика", "Электростанция", "Казармы", "Научный центр")
-            Era.FUTURE -> arrayOf("Солнечная станция", "Ядерный реактор", "Робо-лаборатория", "Казармы", "Научный центр")
-            else -> emptyArray()
+        // Если армия уже выбрана — перемещаем или атакуем
+        if (selectedArmy != null) {
+            val army = selectedArmy!!
+            val dx = abs(army.position.x - cell.x)
+            val dy = abs(army.position.y - cell.y)
+
+            // Проверяем, занята ли целевая клетка (ратуша или армия)
+            var isOccupied = false
+            var targetUid: String? = null
+
+            for ((otherUid, otherPlayer) in game.players) {
+                if (otherUid == uid) continue
+                // Чужая ратуша
+                val pos = otherPlayer.gameLogic.player.townHallPosition
+                if (pos.x == cell.x && pos.y == cell.y) {
+                    isOccupied = true
+                    targetUid = otherUid
+                    break
+                }
+                // Чужая армия
+                if (otherPlayer.gameLogic.armies.any {
+                        it.position.x == cell.x && it.position.y == cell.y && it.isAlive()
+                    }) {
+                    isOccupied = true
+                    targetUid = otherUid
+                    break
+                }
+            }
+
+            if (isOccupied && dx + dy <= 2) {
+                // АТАКА без перемещения
+                lifecycleScope.launch {
+                    try {
+                        val success = multiplayerLogic.makeTurn(
+                            gameId, uid,
+                            listOf(GameAction.AttackWithArmy(army.id, cell.x, cell.y))
+                        )
+                        if (success) {
+                            Toast.makeText(this@MultiplayerGameActivity, "Армия атакует!", Toast.LENGTH_SHORT).show()
+                            updatePlayerState(uid)
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(this@MultiplayerGameActivity, "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+                selectedArmy = null
+                return
+            }
+
+            // Обычное перемещение (только на пустые клетки)
+            if (dx + dy <= 2 && cell.type == "empty") {
+                lifecycleScope.launch {
+                    try {
+                        val success = multiplayerLogic.makeTurn(
+                            gameId, uid,
+                            listOf(GameAction.MoveArmy(army.id, cell.x, cell.y))
+                        )
+                        if (success) {
+                            Toast.makeText(this@MultiplayerGameActivity, "Армия движется!", Toast.LENGTH_SHORT).show()
+                            updatePlayerState(uid)
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(this@MultiplayerGameActivity, "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } else {
+                Toast.makeText(this, "Нельзя двигаться сюда", Toast.LENGTH_SHORT).show()
+            }
+            selectedArmy = null
+            return
         }
 
+        // Проверка своей армии
+        val myLogic = game.players[uid]?.gameLogic ?: return
+        val myArmiesHere = myLogic.armies.filter { it.position.x == cell.x && it.position.y == cell.y && it.isAlive() }
+        if (myArmiesHere.isNotEmpty()) {
+            selectedArmy = myArmiesHere.first()
+            Toast.makeText(this, "Армия выбрана. Кликните на клетку для перемещения или атаки.", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Проверка чужой армии или ратуши → выбор армии для атаки
+        for ((otherUid, otherPlayer) in game.players) {
+            if (otherUid == uid) continue
+            // Чужая армия
+            if (otherPlayer.gameLogic.armies.any { it.position.x == cell.x && it.position.y == cell.y && it.isAlive() }) {
+                showMoveArmyToEnemyDialog(uid, cell.x, cell.y)
+                return
+            }
+            // Чужая ратуша
+            val pos = otherPlayer.gameLogic.player.townHallPosition
+            if (pos.x == cell.x && pos.y == cell.y) {
+                showMoveArmyToEnemyDialog(uid, cell.x, cell.y)
+                return
+            }
+        }
+
+        // Своя ратуша
+        val myPos = myLogic.player.townHallPosition
+        if (cell.type == "town_hall" && myPos.x == cell.x && myPos.y == cell.y) {
+            showTownHallMenu(uid)
+            return
+        }
+
+        // Строительство
+        if (cell.type == "empty" && selectedBuilding != null) {
+            buildOnCell(uid, cell)
+            return
+        }
+
+        // Взаимодействие со зданиями
+        handleBuildingInteraction(uid, cell, game)
+    }
+
+    // 🔥 МЕНЮ РАТУШИ
+    private fun showTownHallMenu(uid: String) {
+        val options = arrayOf("Эволюция", "Сформировать армию")
         AlertDialog.Builder(this)
-            .setTitle("Построить")
-            .setItems(buildings) { _, index ->
-                val building = createBuildingByEraAndIndex(era, index)
-                if (building != null) {
-                    selectedBuilding = building
-                    Toast.makeText(this, "Выбрано: ${building.name}", Toast.LENGTH_SHORT).show()
+            .setTitle("Ратуша")
+            .setItems(options) { _, i ->
+                when (i) {
+                    0 -> showEraMenu(uid)
+                    1 -> showCreateArmyDialog(uid)
                 }
             }
             .show()
     }
+
+    // 🔥 ДИАЛОГ ФОРМИРОВАНИЯ АРМИИ
+    private fun showCreateArmyDialog(uid: String) {
+        val game = currentGame ?: return
+        val logic = game.players[uid]?.gameLogic ?: return
+        val aliveUnits = logic.player.units.filter { it.health > 0 }
+        if (aliveUnits.isEmpty()) {
+            Toast.makeText(this, "Нет юнитов для формирования армии!", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val unitGroups = aliveUnits.groupBy { it.type }
+        val layout = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        val counts = mutableMapOf<String, Int>()
+
+        unitGroups.forEach { (type, units) ->
+            val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL }
+            val label = TextView(this).apply {
+                text = "${units.first().name} (${units.size})"
+                setPadding(0, 0, 16, 0)
+            }
+            val input = EditText(this).apply {
+                setText("0")
+                inputType = android.text.InputType.TYPE_CLASS_NUMBER
+                maxWidth = 80
+            }
+            row.addView(label)
+            row.addView(input)
+            layout.addView(row)
+            counts[type] = 0
+            input.addTextChangedListener { s ->
+                counts[type] = s.toString().toIntOrNull() ?: 0
+            }
+        }
+
+        AlertDialog.Builder(this)
+            .setTitle("Формирование армии")
+            .setView(layout)
+            .setPositiveButton("Создать") { _, _ ->
+                val validCounts = counts.filter { it.value > 0 && it.value <= unitGroups[it.key]?.size ?: 0 }
+                if (validCounts.isEmpty()) {
+                    Toast.makeText(this, "Выберите хотя бы одного юнита", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                lifecycleScope.launch {
+                    try {
+                        val success = multiplayerLogic.makeTurn(gameId, uid, listOf(GameAction.CreateArmy(validCounts)))
+                        if (success) {
+                            Toast.makeText(this@MultiplayerGameActivity, "Армия создана!", Toast.LENGTH_SHORT).show()
+                            updatePlayerState(uid)
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(this@MultiplayerGameActivity, "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    // 🔥 АТАКА НА ВРАГА (выбор армии для перемещения на клетку врага)
+    private fun showMoveArmyToEnemyDialog(uid: String, targetX: Int, targetY: Int) {
+        val game = currentGame ?: return
+        val logic = game.players[uid]?.gameLogic ?: return
+        val movableArmies = logic.armies.filter { !it.hasMovedThisTurn && it.isAlive() }
+        if (movableArmies.isEmpty()) {
+            Toast.makeText(this, "Нет армий для перемещения", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val armyNames = movableArmies.mapIndexed { i, a ->
+            val total = a.units.size
+            "Армия ${i + 1} (${total} юнитов)"
+        }.toTypedArray()
+
+        AlertDialog.Builder(this)
+            .setTitle("Выберите армию для атаки")
+            .setItems(armyNames) { _, index ->
+                val army = movableArmies[index]
+                lifecycleScope.launch {
+                    try {
+                        val success = multiplayerLogic.makeTurn(
+                            gameId, uid,
+                            listOf(GameAction.MoveArmy(army.id, targetX, targetY))
+                        )
+                        if (success) {
+                            Toast.makeText(this@MultiplayerGameActivity, "Армия атакует!", Toast.LENGTH_SHORT).show()
+                            updatePlayerState(uid)
+                        }
+                    } catch (e: Exception) {
+                        Toast.makeText(this@MultiplayerGameActivity, "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    // ОСТАЛЬНЫЕ МЕТОДЫ БЕЗ ИЗМЕНЕНИЙ
 
     private fun createBuildingByEraAndIndex(era: Era, index: Int): Building? {
         return when (era) {
@@ -537,13 +671,37 @@ class MultiplayerGameActivity : AppCompatActivity() {
         }
     }
 
+    private fun showBuildingMenu() {
+        val uid = auth.currentUser?.uid ?: return
+        val game = currentGame ?: return
+        val logic = game.players[uid]?.gameLogic ?: return
+        val era = logic.player.era
+        val buildings = when (era) {
+            Era.STONE_AGE -> arrayOf("Хижина", "Колодец", "Лесопилка", "Рыболовная хижина", "Казармы", "Научный центр")
+            Era.BRONZE_AGE -> arrayOf("Ферма", "Каменоломня", "Золотой рудник", "Кузница", "Казармы", "Научный центр")
+            Era.MIDDLE_AGES -> arrayOf("Железный рудник", "Замок", "Оружейная", "Казармы", "Научный центр")
+            Era.INDUSTRIAL -> arrayOf("Угольная шахта", "Нефтяная вышка", "Фабрика", "Электростанция", "Казармы", "Научный центр")
+            Era.FUTURE -> arrayOf("Солнечная станция", "Ядерный реактор", "Робо-лаборатория", "Казармы", "Научный центр")
+            else -> emptyArray()
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Построить")
+            .setItems(buildings) { _, index ->
+                val building = createBuildingByEraAndIndex(era, index)
+                if (building != null) {
+                    selectedBuilding = building
+                    Toast.makeText(this, "Выбрано: ${building.name}", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .show()
+    }
+
     private fun updatePlayerState(uid: String) {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 val snapshot = database.child("multiplayer_games").child(gameId).child("players").child(uid)
                     .child("gameLogic").get().await()
                 val logic = FirebaseGameMapper.parseGameLogic(snapshot)
-
                 withContext(Dispatchers.Main) {
                     logic?.let { updatedLogic ->
                         val resourcesText = updatedLogic.player.resources.getAvailableResources(updatedLogic.player.era)
@@ -563,7 +721,6 @@ class MultiplayerGameActivity : AppCompatActivity() {
         val game = currentGame ?: return
         val logic = game.players[uid]?.gameLogic ?: return
         val era = logic.player.era
-
         val units = when (era) {
             Era.STONE_AGE -> arrayOf("Пещерный человек", "Охотник", "Всадник на мамонте")
             Era.BRONZE_AGE -> arrayOf("Мечник", "Лучник", "Боевая колесница")
@@ -572,7 +729,6 @@ class MultiplayerGameActivity : AppCompatActivity() {
             Era.FUTURE -> arrayOf("Боевой дрон", "Боевой мех", "Лазерная пушка")
             else -> emptyArray()
         }
-
         AlertDialog.Builder(this)
             .setTitle("Нанять юнита")
             .setItems(units) { _, index ->
@@ -634,125 +790,8 @@ class MultiplayerGameActivity : AppCompatActivity() {
         }
     }
 
-    private fun handleCellClickOnSharedMap(cell: MapCell, game: MultiplayerGame, sharedMap: GameMap) {
-        val uid = auth.currentUser?.uid ?: return
-
-        // Атака на вражескую ратушу
-        if (cell.type == "town_hall") {
-            var isOwnTownHall = false
-            var targetUid: String? = null
-
-            for ((playerUid, player) in game.players) {
-                val pos = player.gameLogic.player.townHallPosition
-                if (pos.x == cell.x && pos.y == cell.y) {
-                    if (playerUid == uid) {
-                        isOwnTownHall = true
-                    } else {
-                        targetUid = playerUid
-                    }
-                    break
-                }
-            }
-
-            if (!isOwnTownHall && targetUid != null) {
-                attackEnemyTownHall(uid, targetUid, game)
-                return
-            }
-
-            if (isOwnTownHall) {
-                showEraMenu(uid)
-                return
-            }
-        }
-
-        // Строительство
-        if (cell.type == "empty" && selectedBuilding != null) {
-            buildOnCell(uid, cell)
-            return
-        }
-
-        // Взаимодействие со зданиями
-        handleBuildingInteraction(uid, cell, game)
-    }
-
-    private fun attackEnemyTownHall(attackerUid: String, targetUid: String, game: MultiplayerGame) {
-        Log.d(TAG, "Начало атаки: атакующий=$attackerUid, цель=$targetUid")
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            try {
-                val myLogicSnapshot = database.child("multiplayer_games").child(gameId).child("players").child(attackerUid).child("gameLogic").get().await()
-                val myLogic = FirebaseGameMapper.parseGameLogic(myLogicSnapshot) ?: return@launch
-
-                val aliveUnits = myLogic.player.units.filter { it.health > 0 }
-                if (aliveUnits.isEmpty()) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(this@MultiplayerGameActivity, "Нет живых юнитов для атаки!", Toast.LENGTH_SHORT).show()
-                    }
-                    return@launch
-                }
-
-                val success = multiplayerLogic.makeTurn(
-                    gameId, attackerUid,
-                    listOf(GameAction.AttackEnemyTownHall(targetUid))
-                )
-
-                if (success) {
-                    withContext(Dispatchers.Main) {
-                        Toast.makeText(
-                            this@MultiplayerGameActivity,
-                            "Атака на ратушу ${game.players[targetUid]?.displayName}!",
-                            Toast.LENGTH_SHORT
-                        ).show()
-
-                        // СИЛЬНОЕ ПРИНУДИТЕЛЬНОЕ ОБНОВЛЕНИЕ
-                        forceRefreshGameData()
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Ошибка атаки на ратушу", e)
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(this@MultiplayerGameActivity, "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-    }
-
-    // МЕТОД ДЛЯ СИЛЬНОГО ПРИНУДИТЕЛЬНОГО ОБНОВЛЕНИЯ
-    private fun forceRefreshGameData() {
-        Log.d(TAG, "Принудительное обновление данных игры")
-
-        // Сбрасываем все кэши
-        lastSharedMapHash = 0
-        lastMapUpdate = 0
-        lastUpdate = 0
-
-        // Принудительно перезагружаем данные игры
-        lifecycleScope.launch {
-            try {
-                val snapshot = database.child("multiplayer_games").child(gameId).get().await()
-                val game = FirebaseGameMapper.safeGetMultiplayerGame(snapshot)
-                withContext(Dispatchers.Main) {
-                    game?.let {
-                        currentGame = it
-                        updateGameUI(it)
-
-                        // Дополнительное обновление через небольшой промежуток времени
-                        lifecycleScope.launch {
-                            delay(500) // Ждем полсекунды для применения изменений в Firebase
-                            lastSharedMapHash = 0
-                            updateGameUI(it)
-                        }
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Ошибка принудительного обновления", e)
-            }
-        }
-    }
-
     private fun buildOnCell(uid: String, cell: MapCell) {
         val building = selectedBuilding ?: return
-
         lifecycleScope.launch {
             try {
                 val success = multiplayerLogic.makeTurn(
@@ -763,8 +802,6 @@ class MultiplayerGameActivity : AppCompatActivity() {
                     Toast.makeText(this@MultiplayerGameActivity, "${building.name} построено!", Toast.LENGTH_SHORT).show()
                     selectedBuilding = null
                     updatePlayerState(uid)
-
-                    // Принудительное обновление карты
                     lastSharedMapHash = 0
                     currentGame?.let { updateGameUI(it) }
                 }
@@ -777,12 +814,11 @@ class MultiplayerGameActivity : AppCompatActivity() {
     private fun handleBuildingInteraction(uid: String, cell: MapCell, game: MultiplayerGame) {
         val myLogic = game.players[uid]?.gameLogic ?: return
         val myBuilding = myLogic.player.buildings.find { it.type == cell.type && !it.isDestroyed() }
-
         if (myBuilding != null) {
             when (myBuilding) {
                 is Building.Barracks -> showBarracksMenu(uid)
                 is Building.ResearchCenter -> showResearchMenu(uid)
-                is Building.TownHall -> showEraMenu(uid)
+                is Building.TownHall -> showTownHallMenu(uid)
                 else -> showUpgradeMenu(uid, myBuilding)
             }
         }
@@ -797,7 +833,6 @@ class MultiplayerGameActivity : AppCompatActivity() {
                         val width = (mapSnapshot["width"] as? Long)?.toInt() ?: 9
                         val height = (mapSnapshot["height"] as? Long)?.toInt() ?: 9
                         val cellsList = mapSnapshot["cells"] as? List<Map<String, *>> ?: return Transaction.success(mutableData)
-
                         val cells = cellsList.mapIndexed { index, cellMap ->
                             val x = index % width
                             val y = index / width
@@ -807,12 +842,10 @@ class MultiplayerGameActivity : AppCompatActivity() {
                                 y = y
                             )
                         }.toMutableList()
-
                         val index = cell.y * width + cell.x
                         if (index in cells.indices) {
                             cells[index] = MapCell(building.type, cell.x, cell.y)
                         }
-
                         val updatedMap = hashMapOf<String, Any?>(
                             "width" to width,
                             "height" to height,
@@ -831,7 +864,6 @@ class MultiplayerGameActivity : AppCompatActivity() {
                         return Transaction.success(mutableData)
                     }
                 }
-
                 override fun onComplete(error: DatabaseError?, committed: Boolean, dataSnapshot: DataSnapshot?) {
                     if (error != null) {
                         Log.e(TAG, "Транзакция не выполнена: ${error.message}")
@@ -844,12 +876,10 @@ class MultiplayerGameActivity : AppCompatActivity() {
         val game = currentGame ?: return
         val logic = game.players[uid]?.gameLogic ?: return
         val researchList = logic.getAvailableResearch()
-
         if (researchList.isEmpty()) {
             Toast.makeText(this, "Нет доступных исследований", Toast.LENGTH_SHORT).show()
             return
         }
-
         val names = researchList.map { it.name }.toTypedArray()
         AlertDialog.Builder(this)
             .setTitle("Исследования")
@@ -880,11 +910,9 @@ class MultiplayerGameActivity : AppCompatActivity() {
         val nextEra = Era.values().getOrNull(logic.player.era.ordinal + 1) ?: return
         val req = GameLogic.ERA_REQUIREMENTS[nextEra] ?: return
         val eraName = getEraName(nextEra)
-
         val costText = "Ресурсы: ${req.resources.getAvailableResources(nextEra)}\n" +
                 "Требуется исследований: ${req.completedResearch}\n" +
                 "У вас: ${logic.player.completedResearch.size}"
-
         AlertDialog.Builder(this)
             .setTitle("Эволюция: $eraName")
             .setMessage(costText)
@@ -917,7 +945,6 @@ class MultiplayerGameActivity : AppCompatActivity() {
             Toast.makeText(this, "Макс. уровень", Toast.LENGTH_SHORT).show()
             return
         }
-
         AlertDialog.Builder(this)
             .setTitle("Улучшить ${building.name}?")
             .setMessage("Уровень ${building.level} → ${building.level + 1}")
@@ -945,13 +972,11 @@ class MultiplayerGameActivity : AppCompatActivity() {
     private fun endTurn() {
         if (!isMyTurn()) return
         val uid = auth.currentUser?.uid ?: return
-
         lifecycleScope.launch {
             try {
                 val success = multiplayerLogic.makeTurn(gameId, uid, listOf(GameAction.NextTurn))
                 if (success) {
                     updatePlayerState(uid)
-                    // Принудительное обновление после завершения хода
                     lastSharedMapHash = 0
                     currentGame?.let { updateGameUI(it) }
                 }
@@ -963,7 +988,6 @@ class MultiplayerGameActivity : AppCompatActivity() {
 
     private fun leaveGame() {
         val uid = auth.currentUser?.uid ?: return
-
         lifecycleScope.launch {
             try {
                 multiplayerLogic.leaveGame(gameId, uid)
@@ -989,20 +1013,9 @@ class MultiplayerGameActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-
-        // Обязательно удаляем слушатели
-        gameListener?.let {
-            database.child("multiplayer_games").child(gameId).removeEventListener(it)
-        }
-
-        playersListener?.let {
-            database.child("multiplayer_games").child(gameId).child("players").removeEventListener(it)
-        }
-
-        mapListener?.let {
-            database.child("multiplayer_games").child(gameId).child("sharedMap").removeEventListener(it)
-        }
-
+        gameListener?.let { database.child("multiplayer_games").child(gameId).removeEventListener(it) }
+        playersListener?.let { database.child("multiplayer_games").child(gameId).child("players").removeEventListener(it) }
+        mapListener?.let { database.child("multiplayer_games").child(gameId).child("sharedMap").removeEventListener(it) }
         Log.d(TAG, "MultiplayerGameActivity уничтожена, слушатели удалены")
     }
 }

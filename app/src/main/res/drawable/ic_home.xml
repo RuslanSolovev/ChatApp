@@ -1,9 +1,34 @@
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="24dp"
     android:height="24dp"
-    android:viewportWidth="24"
-    android:viewportHeight="24">
+    android:viewportWidth="100"
+    android:viewportHeight="100">
+
+    <!-- Дом -->
     <path
-        android:fillColor="#FF000000"
-        android:pathData="M10,20v-6h4v6h5v-8h3L12,3L2,12h3v8z"/>
+        android:fillColor="#ea580c"
+        android:pathData="M50,20 L20,50 L20,80 L80,80 L80,50 Z"/>
+
+    <!-- Дверь -->
+    <path
+        android:fillColor="#0B0B0B"
+        android:pathData="M40,45 L60,45 L60,80 L40,80 Z"/>
+
+    <!-- Новость -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M25,30 L75,30 L75,70 L25,70 Z"/>
+
+    <!-- Линии текста -->
+    <path
+        android:fillColor="#ea580c"
+        android:pathData="M30,35 L70,35 L70,39 L30,39 Z"/>
+
+    <path
+        android:fillColor="#ea580c"
+        android:pathData="M30,42 L65,42 L65,46 L30,46 Z"/>
+
+    <path
+        android:fillColor="#ea580c"
+        android:pathData="M30,49 L55,49 L55,53 L30,53 Z"/>
 </vector>

@@ -35,6 +35,7 @@ import com.google.android.material.internal.ViewUtils.hideKeyboard
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.database.ktx.database
 import com.google.firebase.ktx.Firebase
+import com.google.gson.Gson
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.tasks.await
@@ -85,9 +86,9 @@ class ChatWithGigaFragment : Fragment() {
     companion object {
         private const val TAG = "ChatWithGigaFragment"
         private const val SCROLL_DELAY = 100L
-        private const val GREETING_DELAY = 5000L // Увеличили задержку до 5 секунд
+        private const val GREETING_DELAY = 5000L
         private const val KEYBOARD_DELAY = 100L
-        private const val INIT_DELAY = 1000L // Задержка перед началом инициализации
+        private const val INIT_DELAY = 1000L
     }
 
     override fun onCreateView(
@@ -348,6 +349,112 @@ class ChatWithGigaFragment : Fragment() {
     }
 
     /**
+     * Показ умного приветствия в чате (ИСПРАВЛЕННАЯ версия - ОДНО сообщение)
+     */
+    private fun showSmartChatGreetingAsync() {
+        if (!shouldShowGreeting()) return
+
+        uiScope.launch {
+            try {
+                Log.d(TAG, "Showing CORRECT smart chat greeting...")
+
+                // Загружаем КОНКРЕТНУЮ фразу продолжения
+                val continuationPhrase = withContext(Dispatchers.IO) {
+                    try {
+                        loadContinuationPhraseForChat()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error loading continuation phrase", e)
+                        "Рад нашей беседе! Чем могу помочь?"
+                    }
+                }
+
+                // Показываем ОДНО сообщение с контекстом
+                addWelcomeMessageAsync(continuationPhrase)
+
+                Log.d(TAG, "Single contextual greeting displayed: $continuationPhrase")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error showing smart chat greeting", e)
+                showFallbackGreetingAsync()
+            }
+        }
+    }
+
+    /**
+     * Загружает фразу продолжения для чата
+     */
+    private fun loadContinuationPhraseForChat(): String {
+        return try {
+            val sharedPref = requireContext().getSharedPreferences("chat_prefs", Context.MODE_PRIVATE)
+            val phrase = sharedPref.getString("continuation_phrase", null)
+            // Очищаем после использования
+            sharedPref.edit().remove("continuation_phrase").apply()
+            phrase ?: "Рад нашей беседе! Чем могу помочь?"
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading continuation phrase", e)
+            "Рад нашей беседе! Чем могу помочь?"
+        }
+    }
+
+    /**
+     * Fallback приветствие для чата (асинхронно)
+     */
+    private fun showFallbackChatGreetingAsync() {
+        uiScope.launch {
+            try {
+                val greeting = "Рад нашей беседе! Чем могу помочь?"
+                addWelcomeMessageAsync(greeting)
+                Log.d(TAG, "Fallback greeting shown: $greeting")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in fallback chat greeting", e)
+                showFallbackGreetingAsync()
+            }
+        }
+    }
+
+    /**
+     * Проверка необходимости показа приветствия
+     */
+    private fun shouldShowGreeting(): Boolean {
+        return try {
+            if (viewModel.messages.isEmpty()) return true
+
+            val lastMessageTime = viewModel.messages.lastOrNull()?.timestamp ?: 0L
+            val timeSinceLastMessage = System.currentTimeMillis() - lastMessageTime
+
+            timeSinceLastMessage > 2 * 60 * 60 * 1000 ||
+                    viewModel.messages.size < 3 ||
+                    isFirstLaunch
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking greeting condition", e)
+            true
+        }
+    }
+
+    /**
+     * Добавление приветственного сообщения (UI операция)
+     */
+    private fun addWelcomeMessageAsync(phrase: String) {
+        uiScope.launch {
+            try {
+                viewModel.addMessage(phrase, false)
+                messageAdapter.addMessage(GigaMessage(phrase, false))
+
+                recyclerView.post {
+                    try {
+                        recyclerView.smoothScrollToPosition(viewModel.messages.size - 1)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error scrolling after welcome", e)
+                    }
+                }
+                Log.d(TAG, "Welcome message added: $phrase")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error adding welcome message", e)
+            }
+        }
+    }
+
+    /**
      * Быстрая загрузка существующих сообщений
      */
     private fun loadExistingMessagesFast() {
@@ -506,237 +613,6 @@ class ChatWithGigaFragment : Fragment() {
     }
 
     /**
-     * Показ умного приветствия в чате (асинхронно)
-     */
-    private fun showSmartChatGreetingAsync() {
-        if (!shouldShowGreeting()) return
-
-        uiScope.launch {
-            try {
-                Log.d(TAG, "Showing smart chat greeting...")
-
-                // Загружаем ПОЛНОЕ приветствие из MainActivity в фоне
-                val completeWelcomePhrase = withContext(Dispatchers.IO) {
-                    try {
-                        loadCompleteWelcomePhraseForChat()
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error loading welcome phrase", e)
-                        null
-                    }
-                }
-
-                if (!completeWelcomePhrase.isNullOrEmpty()) {
-                    // Разделяем фразу на части для красивого отображения в фоне
-                    val (greetingPart, questionPart) = withContext(Dispatchers.Default) {
-                        try {
-                            splitWelcomePhrase(completeWelcomePhrase)
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error splitting welcome phrase", e)
-                            Pair("Привет!", "Рад вас видеть!")
-                        }
-                    }
-
-                    // Показываем приветствие
-                    addWelcomeMessageAsync(greetingPart)
-
-                    // Показываем вопрос с дополнительной задержкой
-                    handler.postDelayed({
-                        uiScope.launch {
-                            addContextualQuestionAsync(questionPart)
-                            Log.d(TAG, "Complete welcome phrase displayed: $completeWelcomePhrase")
-                        }
-                    }, 2000) // Дополнительные 2 секунды между частями
-
-                } else {
-                    // Fallback: генерируем приветствие локально в фоне
-                    showFallbackChatGreetingAsync()
-                }
-
-            } catch (e: Exception) {
-                Log.e(TAG, "Error showing smart chat greeting", e)
-                showFallbackGreetingAsync()
-            }
-        }
-    }
-
-    /**
-     * Загрузка полного приветствия для чата
-     */
-    private fun loadCompleteWelcomePhraseForChat(): String? {
-        return try {
-            val sharedPref = requireContext().getSharedPreferences("chat_prefs", Context.MODE_PRIVATE)
-            val phrase = sharedPref.getString("complete_welcome_phrase", null)
-            // Очищаем после использования
-            sharedPref.edit().remove("complete_welcome_phrase").apply()
-            phrase
-        } catch (e: Exception) {
-            Log.e(TAG, "Error loading complete welcome phrase", e)
-            null
-        }
-    }
-
-    /**
-     * Разделение полной фразы на приветствие и вопрос (вычислительная задача)
-     */
-    private fun splitWelcomePhrase(completePhrase: String): Pair<String, String> {
-        return try {
-            val sentences = completePhrase.split('.', '!', '?').map { it.trim() }.filter { it.isNotEmpty() }
-
-            when {
-                sentences.size >= 2 -> {
-                    val greeting = sentences[0] + if (completePhrase.contains('.')) "." else "!"
-                    val question = sentences.subList(1, sentences.size).joinToString(" ") + "?"
-                    Pair(greeting, question)
-                }
-                sentences.size == 1 -> {
-                    val parts = completePhrase.split(',').map { it.trim() }
-                    if (parts.size >= 2) {
-                        val greeting = parts[0] + ","
-                        val question = parts.subList(1, parts.size).joinToString(" ") + "?"
-                        Pair(greeting, question)
-                    } else {
-                        Pair(completePhrase, "Чем могу помочь?")
-                    }
-                }
-                else -> Pair("Привет!", "Как ваши дела?")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error splitting welcome phrase", e)
-            Pair("Привет!", "Рад вас видеть!")
-        }
-    }
-
-    /**
-     * Fallback приветствие для чата (асинхронно)
-     */
-    private fun showFallbackChatGreetingAsync() {
-        uiScope.launch {
-            try {
-                // Часть 1: Основное приветствие в фоне
-                val greeting = withContext(Dispatchers.Default) {
-                    try {
-                        greetingGenerator?.generateContextualGreeting() ?: "Привет!"
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error generating greeting", e)
-                        "Привет!"
-                    }
-                }
-                addWelcomeMessageAsync(greeting)
-
-                // Часть 2: Контекстный вопрос с задержкой
-                handler.postDelayed({
-                    uiScope.launch {
-                        try {
-                            val question = withContext(Dispatchers.Default) {
-                                try {
-                                    greetingGenerator?.generateFollowUpQuestion() ?: "Как ваши дела?"
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "Error generating question", e)
-                                    "Как ваши дела?"
-                                }
-                            }
-                            addContextualQuestionAsync(question)
-
-                            // Сохраняем для будущего использования в фоне
-                            saveWelcomePhraseForChatAsync("$greeting $question")
-                            Log.d(TAG, "Fallback greeting generated: $greeting $question")
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error generating fallback question", e)
-                            addContextualQuestionAsync("Как ваши дела?")
-                        }
-                    }
-                }, 2000) // Дополнительные 2 секунды
-
-            } catch (e: Exception) {
-                Log.e(TAG, "Error in fallback chat greeting", e)
-                showFallbackGreetingAsync()
-            }
-        }
-    }
-
-    /**
-     * Проверка необходимости показа приветствия
-     */
-    private fun shouldShowGreeting(): Boolean {
-        return try {
-            if (viewModel.messages.isEmpty()) return true
-
-            val lastMessageTime = viewModel.messages.lastOrNull()?.timestamp ?: 0L
-            val timeSinceLastMessage = System.currentTimeMillis() - lastMessageTime
-
-            timeSinceLastMessage > 2 * 60 * 60 * 1000 ||
-                    viewModel.messages.size < 3 ||
-                    isFirstLaunch
-        } catch (e: Exception) {
-            Log.e(TAG, "Error checking greeting condition", e)
-            true
-        }
-    }
-
-    /**
-     * Добавление приветственного сообщения (UI операция)
-     */
-    private fun addWelcomeMessageAsync(phrase: String) {
-        uiScope.launch {
-            try {
-                viewModel.addMessage(phrase, false)
-                messageAdapter.addMessage(GigaMessage(phrase, false))
-
-                recyclerView.post {
-                    try {
-                        recyclerView.smoothScrollToPosition(viewModel.messages.size - 1)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error scrolling after welcome", e)
-                    }
-                }
-                Log.d(TAG, "Welcome message added: $phrase")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error adding welcome message", e)
-            }
-        }
-    }
-
-    /**
-     * Добавление контекстного вопроса (UI операция)
-     */
-    private fun addContextualQuestionAsync(question: String) {
-        uiScope.launch {
-            try {
-                viewModel.addMessage(question, false)
-                messageAdapter.addMessage(GigaMessage(question, false))
-
-                recyclerView.post {
-                    try {
-                        recyclerView.smoothScrollToPosition(viewModel.messages.size - 1)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error scrolling after question", e)
-                    }
-                }
-                Log.d(TAG, "Contextual question added: $question")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error adding contextual question", e)
-            }
-        }
-    }
-
-    /**
-     * Показ запасного приветствия
-     */
-    private fun showFallbackGreetingAsync() {
-        uiScope.launch {
-            try {
-                val userName = getCurrentUserName()
-                val greeting = getTimeBasedGreeting()
-                val fallbackMessage = "$greeting, $userName! Рад вас видеть! Чем могу помочь?"
-                addWelcomeMessageAsync(fallbackMessage)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error showing fallback greeting", e)
-                addWelcomeMessageAsync("Привет! Рад вас видеть! Чем могу помочь?")
-            }
-        }
-    }
-
-    /**
      * Асинхронная отправка сообщения пользователя
      */
     private fun sendUserMessageAsync() {
@@ -750,6 +626,9 @@ class ChatWithGigaFragment : Fragment() {
 
         uiScope.launch {
             try {
+                // Сохраняем сообщение в историю
+                saveMessageToHistory(userMessage)
+
                 // Быстро добавляем сообщение пользователя
                 viewModel.addMessage(userMessage, true)
                 messageAdapter.addMessage(GigaMessage(userMessage, true))
@@ -770,6 +649,33 @@ class ChatWithGigaFragment : Fragment() {
             } catch (e: Exception) {
                 Log.e(TAG, "Error sending user message", e)
                 showErrorAsync("Ошибка отправки сообщения")
+            }
+        }
+    }
+
+    /**
+     * Сохраняет сообщения в историю чата
+     */
+    private fun saveMessageToHistory(message: String) {
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val sharedPref = requireContext().getSharedPreferences("chat_history", Context.MODE_PRIVATE)
+                val historyJson = sharedPref.getString("recent_messages", "[]")
+                val messages = Gson().fromJson(historyJson, Array<String>::class.java).toMutableList()
+
+                // Добавляем новое сообщение и ограничиваем размер
+                messages.add(message)
+                if (messages.size > 20) {
+                    messages.removeFirst()
+                }
+
+                // Сохраняем обратно
+                val newHistoryJson = Gson().toJson(messages)
+                sharedPref.edit().putString("recent_messages", newHistoryJson).apply()
+
+                Log.d(TAG, "Message saved to history: ${message.take(50)}...")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving message to history", e)
             }
         }
     }
@@ -982,47 +888,195 @@ class ChatWithGigaFragment : Fragment() {
     }
 
     /**
-     * Создание персонализированного системного сообщения (вычислительная задача)
+     * Создание персонализированного системного сообщения
      */
     private suspend fun buildPersonalizedSystemMessageAsync(): String = withContext(Dispatchers.Default) {
         try {
             val userName = getCurrentUserName()
             val analyzer = contextAnalyzer
             val deepContext = analyzer?.analyzeDeepContext() ?: DeepConversationContext()
+            val profile = userProfile
 
             val prompt = StringBuilder()
             prompt.append("Ты - персональный ассистент, который знает пользователя ОЧЕНЬ хорошо. ")
             prompt.append("Используй ВСЮ информацию ниже для максимально персонализированного общения.\n\n")
 
             prompt.append("КОМАНДА ДЛЯ АССИСТЕНТА:\n")
-            prompt.append("1. Учитывай ВСЮ информацию о пользователе ниже\n")
+            prompt.append("1. Учитывай ВСЮ информацию о пользователе в КАЖДОМ ответе\n")
             prompt.append("2. Будь естественным, дружелюбным и поддерживающим\n")
             prompt.append("3. Проявляй искренний интерес к его жизни\n")
             prompt.append("4. Задавай уместные вопросы на основе его интересов\n")
-            prompt.append("5. Поддерживай естественную беседу как близкий друг\n\n")
+            prompt.append("5. Поддерживай естественную беседу как близкий друг\n")
+            prompt.append("6. Используй конкретные детали из его профиля\n\n")
 
-            prompt.append("ПОЛНАЯ ИНФОРМАЦИЯ О ПОЛЬЗОВАТЕЛЕ:\n")
+            prompt.append("ПОЛНАЯ ИНФОРМАЦИЯ О ПОЛЬЗОВАТЕЛЕ:\n\n")
 
             // Основная информация
+            prompt.append("👤 ОСНОВНАЯ ИНФОРМАЦИЯ:\n")
             prompt.append("- Имя: $userName\n")
-            userProfile?.let { profile ->
-                // Добавляем информацию из профиля...
-                if (profile.gender.isNotEmpty()) prompt.append("- Пол: ${profile.gender}\n")
-                if (profile.getAge() > 0) prompt.append("- Возраст: ${profile.getAge()} лет\n")
-                if (profile.occupation.isNotEmpty()) prompt.append("- Профессия: ${profile.occupation}\n")
-                if (profile.hobbies.isNotEmpty()) prompt.append("- Хобби: ${profile.hobbies}\n")
-                // ... остальная информация из профиля
+            profile?.let { p ->
+                if (p.gender.isNotEmpty()) prompt.append("- Пол: ${p.gender}\n")
+                if (p.getAge() > 0) prompt.append("- Возраст: ${p.getAge()} лет\n")
+                if (p.relationshipStatus.isNotEmpty()) prompt.append("- Семейное положение: ${p.relationshipStatus}\n")
+                if (p.city.isNotEmpty()) prompt.append("- Город: ${p.city}\n")
             }
 
-            // Контекст текущего разговора
-            prompt.append("\nТЕКУЩИЙ КОНТЕКСТ РАЗГОВОРА:\n")
+            // Профессия и работа
+            prompt.append("\n💼 ПРОФЕССИЯ И РАБОТА:\n")
+            profile?.let { p ->
+                if (p.occupation.isNotEmpty()) prompt.append("- Сфера деятельности: ${p.occupation}\n")
+                if (p.jobTitle.isNotEmpty()) prompt.append("- Должность: ${p.jobTitle}\n")
+                if (p.workSchedule.isNotEmpty()) prompt.append("- График работы: ${p.workSchedule}\n")
+                if (p.workStartTime.isNotEmpty()) prompt.append("- Начало работы: ${p.workStartTime}\n")
+                if (p.workEndTime.isNotEmpty()) prompt.append("- Окончание работы: ${p.workEndTime}\n")
+                if (p.dailyCommuteTime > 0) prompt.append("- Время на дорогу: ${p.dailyCommuteTime} мин\n")
+            }
+
+            // Семья и домашние условия
+            prompt.append("\n🏠 СЕМЬЯ И ДОМ:\n")
+            profile?.let { p ->
+                if (p.hasChildren) {
+                    prompt.append("- Есть дети: да\n")
+                    if (p.childrenAges.isNotEmpty()) prompt.append("- Возраст детей: ${p.childrenAges}\n")
+                } else {
+                    prompt.append("- Есть дети: нет\n")
+                }
+                if (p.hasPets) {
+                    prompt.append("- Есть питомцы: да\n")
+                    if (p.petTypes.isNotEmpty()) prompt.append("- Вид питомцев: ${p.petTypes}\n")
+                }
+            }
+
+            // ХОББИ И ИНТЕРЕСЫ
+            prompt.append("\n🎯 ХОББИ И ИНТЕРЕСЫ:\n")
+            profile?.let { p ->
+                if (p.hobbies.isNotEmpty()) prompt.append("- Хобби: ${p.hobbies}\n")
+                if (p.interests.isNotEmpty()) prompt.append("- Интересы: ${p.interests}\n")
+                if (p.sports.isNotEmpty()) prompt.append("- Спорт: ${p.sports}\n")
+                if (p.workoutTypes.isNotEmpty()) prompt.append("- Виды тренировок: ${p.workoutTypes}\n")
+                if (p.fitnessLevel.isNotEmpty()) prompt.append("- Уровень физической подготовки: ${p.fitnessLevel}\n")
+                if (p.workoutFrequency.isNotEmpty()) prompt.append("- Частота тренировок: ${p.workoutFrequency}\n")
+            }
+
+            // ПРЕДПОЧТЕНИЯ
+            prompt.append("\n🎵 ПРЕДПОЧТЕНИЯ:\n")
+            profile?.let { p ->
+                if (p.musicPreferences.isNotEmpty()) prompt.append("- Музыка: ${p.musicPreferences}\n")
+                if (p.movieGenres.isNotEmpty()) prompt.append("- Фильмы: ${p.movieGenres}\n")
+                if (p.foodPreferences.isNotEmpty()) prompt.append("- Еда: ${p.foodPreferences}\n")
+                if (p.favoriteCuisines.isNotEmpty()) prompt.append("- Любимые кухни: ${p.favoriteCuisines}\n")
+                if (p.favoriteSeasons.isNotEmpty()) prompt.append("- Любимые времена года: ${p.favoriteSeasons}\n")
+                if (p.cookingHabit.isNotEmpty()) prompt.append("- Привычки в готовке: ${p.cookingHabit}\n")
+            }
+
+            // ОБРАЗ ЖИЗНИ И РАСПИСАНИЕ
+            prompt.append("\n📅 ОБРАЗ ЖИЗНИ:\n")
+            profile?.let { p ->
+                if (p.wakeUpTime.isNotEmpty()) prompt.append("- Пробуждение: ${p.wakeUpTime}\n")
+                if (p.sleepQuality.isNotEmpty()) prompt.append("- Качество сна: ${p.sleepQuality}\n")
+                if (p.readingHabit.isNotEmpty()) prompt.append("- Привычки чтения: ${p.readingHabit}\n")
+                if (p.travelFrequency.isNotEmpty()) prompt.append("- Частота путешествий: ${p.travelFrequency}\n")
+                if (p.weekendActivities.isNotEmpty()) prompt.append("- Активности на выходных: ${p.weekendActivities}\n")
+            }
+
+            // ЦЕЛИ И РАЗВИТИЕ
+            prompt.append("\n🎯 ЦЕЛИ И РАЗВИТИЕ:\n")
+            profile?.let { p ->
+                if (p.currentGoals.isNotEmpty()) prompt.append("- Текущие цели: ${p.currentGoals}\n")
+                if (p.learningInterests.isNotEmpty()) prompt.append("- Интересы в обучении: ${p.learningInterests}\n")
+                if (p.learningStyle.isNotEmpty()) prompt.append("- Стиль обучения: ${p.learningStyle}\n")
+            }
+
+            // ЛИЧНОСТНЫЕ ХАРАКТЕРИСТИКИ
+            prompt.append("\n💫 ЛИЧНОСТНЫЕ ХАРАКТЕРИСТИКИ:\n")
+            profile?.let { p ->
+                if (p.personalityType.isNotEmpty()) prompt.append("- Тип личности: ${p.personalityType}\n")
+                if (p.communicationStyle.isNotEmpty()) prompt.append("- Стиль общения: ${p.communicationStyle}\n")
+                if (p.stressManagement.isNotEmpty()) prompt.append("- Справление со стрессом: ${p.stressManagement}\n")
+                if (p.socialActivity.isNotEmpty()) prompt.append("- Социальная активность: ${p.socialActivity}\n")
+            }
+
+            // ТЕКУЩИЙ КОНТЕКСТ
+            prompt.append("\n🕒 ТЕКУЩИЙ КОНТЕКСТ:\n")
+            prompt.append("- Время суток: ${deepContext.timeContext.timeOfDay}\n")
             prompt.append("- Настроение: ${deepContext.emotionalState.mood}\n")
             prompt.append("- Уровень энергии: ${deepContext.emotionalState.energyLevel}\n")
-            prompt.append("- Время суток: ${deepContext.timeContext.timeOfDay}\n")
 
-            prompt.append("\nФИНАЛЬНАЯ КОМАНДА: Всегда учитывай эту информацию в ответах! ")
+            // Активные темы из истории
+            if (deepContext.activeTopics.isNotEmpty()) {
+                prompt.append("- Недавние темы обсуждения: ")
+                prompt.append(deepContext.activeTopics.take(3).joinToString { it.name })
+                prompt.append("\n")
+            }
+
+            prompt.append("\n🎯 КОНКРЕТНЫЕ РЕКОМЕНДАЦИИ ДЛЯ ОБЩЕНИЯ:\n")
+
+            // Рекомендации на основе профессии
+            profile?.occupation?.let { occupation ->
+                prompt.append("- Учитывай профессиональную сферу '$occupation' в советах\n")
+            }
+
+            // Рекомендации на основе хобби
+            profile?.hobbies?.takeIf { it.isNotEmpty() }?.let { hobbies ->
+                prompt.append("- Проявляй интерес к хобби: $hobbies\n")
+            }
+
+            // Рекомендации для родителей
+            if (profile?.hasChildren == true) {
+                prompt.append("- Интересуйся детьми и семейными делами\n")
+                prompt.append("- Учитывай родительские обязанности в советах по времени\n")
+            }
+
+            // Рекомендации для спортивных людей
+            if (profile?.fitnessLevel?.isNotEmpty() == true && profile.fitnessLevel != "Не занимаюсь спортом") {
+                prompt.append("- Поддерживай спортивные темы и мотивируй к тренировкам\n")
+                prompt.append("- Учитывай график тренировок\n")
+            }
+
+            // Рекомендации на основе стиля общения
+            profile?.communicationStyle?.let { style ->
+                when (style.lowercase()) {
+                    "юмористический" -> prompt.append("- Используй уместный юмор и будь позитивным\n")
+                    "формальный" -> prompt.append("- Будь уважительным и профессиональным\n")
+                    "серьезный" -> prompt.append("- Будь сосредоточенным и деловым\n")
+                    "дружеский" -> prompt.append("- Будь дружелюбным и открытым\n")
+                    "эмпатичный" -> prompt.append("- Будь чутким и поддерживающим\n")
+                    else -> {}
+                }
+            }
+
+            prompt.append("\n📝 ПРИМЕРЫ ПЕРСОНАЛИЗИРОВАННЫХ ОТВЕТОВ:\n")
+
+            // Примеры для работы
+            profile?.occupation?.let { occupation ->
+                prompt.append("- Вместо 'Как работа?' спроси 'Как продвигаются проекты в $occupation?'\n")
+            }
+
+            // Примеры для хобби
+            profile?.getHobbiesList()?.firstOrNull()?.let { hobby ->
+                prompt.append("- Спроси 'Удалось позаниматься $hobby на этой неделе?'\n")
+            }
+
+            // Примеры для семьи
+            if (profile?.hasChildren == true) {
+                prompt.append("- Спроси 'Как дела у детей? Чем увлекаются?'\n")
+            }
+
+            // Примеры для спорта
+            if (profile?.fitnessLevel?.isNotEmpty() == true) {
+                prompt.append("- Спроси 'Как тренировки? Удается придерживаться графика?'\n")
+            }
+
+            prompt.append("\n🚀 ФИНАЛЬНАЯ КОМАНДА: ")
+            prompt.append("Используй ВСЮ эту информацию в КАЖДОМ ответе! ")
+            prompt.append("Будь максимально персонализированным! ")
+            prompt.append("Задавай вопросы на основе конкретных деталей из профиля! ")
+            prompt.append("Проявляй искренний интерес к его жизни!")
+
+            Log.d(TAG, "Personalized system prompt created with ${profile?.let { "full profile" } ?: "basic info"}")
 
             return@withContext prompt.toString()
+
         } catch (e: Exception) {
             Log.e(TAG, "Error building personalized system message", e)
             return@withContext "Ты - полезный ассистент. Будь дружелюбным и помогай пользователю."
@@ -1348,6 +1402,23 @@ class ChatWithGigaFragment : Fragment() {
         // Перезагружаем приветствие если чат пустой
         if (viewModel.messages.isEmpty()) {
             scheduleDelayedGreeting()
+        }
+    }
+
+    /**
+     * Показ запасного приветствия
+     */
+    private fun showFallbackGreetingAsync() {
+        uiScope.launch {
+            try {
+                val userName = getCurrentUserName()
+                val greeting = getTimeBasedGreeting()
+                val fallbackMessage = "$greeting, $userName! Рад вас видеть! Чем могу помочь?"
+                addWelcomeMessageAsync(fallbackMessage)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error showing fallback greeting", e)
+                addWelcomeMessageAsync("Привет! Рад вас видеть! Чем могу помочь?")
+            }
         }
     }
 }
