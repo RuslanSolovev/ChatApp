@@ -1,6 +1,9 @@
 package com.example.chatapp.igra_strotegiy
 
 import android.app.AlertDialog
+import android.app.Dialog
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.util.Log
 import android.view.Gravity
@@ -40,12 +43,15 @@ class MultiplayerGameActivity : AppCompatActivity() {
     private var lastMapUpdate = 0L
     private var lastSharedMapHash = 0
     private var lastUpdate = 0L
-    private var selectedArmy: Army? = null // ← состояние выделенной армии
+    private var selectedArmy: Army? = null
 
     // Управление слушателями
     private var gameListener: ValueEventListener? = null
     private var playersListener: ValueEventListener? = null
     private var mapListener: ValueEventListener? = null
+
+    // 🔥 ДЛЯ ВИДЕО СРАЖЕНИЙ
+    private var currentBattlePreview: BattlePreview? = null
 
     companion object {
         private const val TAG = "MultiplayerGameActivity"
@@ -278,7 +284,7 @@ class MultiplayerGameActivity : AppCompatActivity() {
                             this@MultiplayerGameActivity,
                             renderLogic,
                             allPlayers,
-                            auth.currentUser?.uid // ← передаём свой UID для различения армий
+                            auth.currentUser?.uid
                         ) { cell ->
                             if (!isSpectator && isMyTurn()) {
                                 handleCellClickOnSharedMap(cell, game, sharedMap)
@@ -391,11 +397,11 @@ class MultiplayerGameActivity : AppCompatActivity() {
         return currentGame?.isPlayerTurn(uid) == true
     }
 
-    // 🔥 ОСНОВНОЙ МЕТОД КЛИКА ПО КЛЕТКЕ
+    // 🔥 ОСНОВНОЙ МЕТОД КЛИКА ПО КЛЕТКЕ - С ВИДЕО СРАЖЕНИЙ
     private fun handleCellClickOnSharedMap(cell: MapCell, game: MultiplayerGame, sharedMap: GameMap) {
         val uid = auth.currentUser?.uid ?: return
 
-        // Если армия уже выбрана — перемещаем или атакуем
+        // Если армия уже выбрана — перемещаем или показываем предпросмотр боя
         if (selectedArmy != null) {
             val army = selectedArmy!!
             val dx = abs(army.position.x - cell.x)
@@ -403,48 +409,41 @@ class MultiplayerGameActivity : AppCompatActivity() {
 
             // Проверяем, занята ли целевая клетка (ратуша или армия)
             var isOccupied = false
-            var targetUid: String? = null
+            var defenderUid: String? = null
 
             for ((otherUid, otherPlayer) in game.players) {
                 if (otherUid == uid) continue
+
                 // Чужая ратуша
                 val pos = otherPlayer.gameLogic.player.townHallPosition
                 if (pos.x == cell.x && pos.y == cell.y) {
                     isOccupied = true
-                    targetUid = otherUid
+                    defenderUid = otherUid
                     break
                 }
+
                 // Чужая армия
                 if (otherPlayer.gameLogic.armies.any {
                         it.position.x == cell.x && it.position.y == cell.y && it.isAlive()
                     }) {
                     isOccupied = true
-                    targetUid = otherUid
+                    defenderUid = otherUid
                     break
                 }
             }
 
-            if (isOccupied && dx + dy <= 2) {
-                // АТАКА без перемещения
-                lifecycleScope.launch {
-                    try {
-                        val success = multiplayerLogic.makeTurn(
-                            gameId, uid,
-                            listOf(GameAction.AttackWithArmy(army.id, cell.x, cell.y))
-                        )
-                        if (success) {
-                            Toast.makeText(this@MultiplayerGameActivity, "Армия атакует!", Toast.LENGTH_SHORT).show()
-                            updatePlayerState(uid)
-                        }
-                    } catch (e: Exception) {
-                        Toast.makeText(this@MultiplayerGameActivity, "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
-                    }
+            if (isOccupied) {
+                // 🔥 ПОКАЗЫВАЕМ ПРЕДПРОСМОТР БОЯ С ВИДЕО
+                if (dx + dy == 1) {
+                    showBattlePreview(uid, army, cell.x, cell.y, game)
+                } else {
+                    Toast.makeText(this, "Для атаки армия должна быть на соседней клетке", Toast.LENGTH_SHORT).show()
                 }
                 selectedArmy = null
                 return
             }
 
-            // Обычное перемещение (только на пустые клетки)
+            // 🔥 ОБЫЧНОЕ ПЕРЕМЕЩЕНИЕ (только на пустые клетки)
             if (dx + dy <= 2 && cell.type == "empty") {
                 lifecycleScope.launch {
                     try {
@@ -472,25 +471,30 @@ class MultiplayerGameActivity : AppCompatActivity() {
         val myArmiesHere = myLogic.armies.filter { it.position.x == cell.x && it.position.y == cell.y && it.isAlive() }
         if (myArmiesHere.isNotEmpty()) {
             selectedArmy = myArmiesHere.first()
-            Toast.makeText(this, "Армия выбрана. Кликните на клетку для перемещения или атаки.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Армия выбрана. Кликните на клетку для перемещения или атаки.", Toast.LENGTH_LONG).show()
             return
         }
 
-        // Проверка чужой армии или ратуши → выбор армии для атаки
+        // 🔥 ПРОВЕРКА ВРАЖЕСКИХ ЦЕЛЕЙ ДЛЯ ВЫБОРА АРМИИ ДЛЯ АТАКИ
+        var enemyTargetFound = false
         for ((otherUid, otherPlayer) in game.players) {
             if (otherUid == uid) continue
-            // Чужая армия
-            if (otherPlayer.gameLogic.armies.any { it.position.x == cell.x && it.position.y == cell.y && it.isAlive() }) {
-                showMoveArmyToEnemyDialog(uid, cell.x, cell.y)
-                return
+
+            // Чужая армия или ратуша
+            val isEnemyArmy = otherPlayer.gameLogic.armies.any {
+                it.position.x == cell.x && it.position.y == cell.y && it.isAlive()
             }
-            // Чужая ратуша
-            val pos = otherPlayer.gameLogic.player.townHallPosition
-            if (pos.x == cell.x && pos.y == cell.y) {
-                showMoveArmyToEnemyDialog(uid, cell.x, cell.y)
-                return
+            val isEnemyTownHall = otherPlayer.gameLogic.player.townHallPosition.x == cell.x &&
+                    otherPlayer.gameLogic.player.townHallPosition.y == cell.y
+
+            if (isEnemyArmy || isEnemyTownHall) {
+                enemyTargetFound = true
+                showArmySelectionForAttack(uid, cell.x, cell.y)
+                break
             }
         }
+
+        if (enemyTargetFound) return
 
         // Своя ратуша
         val myPos = myLogic.player.townHallPosition
@@ -507,6 +511,529 @@ class MultiplayerGameActivity : AppCompatActivity() {
 
         // Взаимодействие со зданиями
         handleBuildingInteraction(uid, cell, game)
+    }
+
+    // 🔥 ОБНОВЛЁННЫЙ МЕТОД ДЛЯ ВЫБОРА АРМИИ ДЛЯ АТАКИ
+    private fun showArmySelectionForAttack(uid: String, targetX: Int, targetY: Int) {
+        val game = currentGame ?: return
+        val logic = game.players[uid]?.gameLogic ?: return
+
+        // Ищем армии на соседних клетках
+        val attackableArmies = logic.armies.filter { army ->
+            army.isAlive() && !army.hasMovedThisTurn &&
+                    abs(army.position.x - targetX) + abs(army.position.y - targetY) == 1
+        }
+
+        if (attackableArmies.isEmpty()) {
+            Toast.makeText(this, "Нет армий на соседних клетках для атаки", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val armyNames = attackableArmies.mapIndexed { i, a ->
+            "Армия ${i + 1} (${a.units.size} юнитов, сила: ${a.totalAttackPower()})"
+        }.toTypedArray()
+
+        AlertDialog.Builder(this)
+            .setTitle("Выберите армию для атаки")
+            .setItems(armyNames) { _, index ->
+                val army = attackableArmies[index]
+                showBattlePreview(uid, army, targetX, targetY, game)
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    // 🔥 НОВЫЙ МЕТОД ДЛЯ ПРЕДПРОСМОТРА БОЯ
+    private fun showBattlePreview(attackerUid: String, attackerArmy: Army, targetX: Int, targetY: Int, game: MultiplayerGame) {
+        // Находим защитника
+        var defenderUid: String? = null
+        var defenderArmy: Army? = null
+        var defenderTownHall: Building.TownHall? = null
+        var defenderName: String? = null
+        var isTownHallAttack = false
+
+        for ((otherUid, otherPlayer) in game.players) {
+            if (otherUid == attackerUid) continue
+
+            // Проверяем вражескую армию
+            val enemyArmy = otherPlayer.gameLogic.armies.find {
+                it.position.x == targetX && it.position.y == targetY && it.isAlive()
+            }
+            if (enemyArmy != null) {
+                defenderUid = otherUid
+                defenderArmy = enemyArmy
+                defenderName = otherPlayer.displayName
+                break
+            }
+
+            // Проверяем вражескую ратушу
+            val pos = otherPlayer.gameLogic.player.townHallPosition
+            if (pos.x == targetX && pos.y == targetY) {
+                defenderUid = otherUid
+                defenderTownHall = otherPlayer.gameLogic.player.buildings
+                    .find { it is Building.TownHall } as? Building.TownHall
+                defenderName = otherPlayer.displayName
+                isTownHallAttack = true
+                break
+            }
+        }
+
+        if (defenderUid == null) {
+            Toast.makeText(this, "Цель для атаки не найдена", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val battlePreview = BattlePreview(
+            attackerArmy = attackerArmy,
+            defenderArmy = defenderArmy,
+            defenderTownHall = defenderTownHall,
+            defenderUid = defenderUid,
+            defenderName = defenderName,
+            targetPosition = Position(targetX, targetY),
+            isTownHallAttack = isTownHallAttack
+        )
+
+        // 🔥 ПОКАЗЫВАЕМ ДИАЛОГ ПОДТВЕРЖДЕНИЯ БОЯ
+        showBattleConfirmationDialog(attackerUid, battlePreview)
+    }
+
+    // 🔥 ИСПРАВЛЕННЫЙ ДИАЛОГ ПОДТВЕРЖДЕНИЯ БОЯ - ВИДЕО ПОСЛЕ НАЧАЛА БОЯ
+    private fun showBattleConfirmationDialog(attackerUid: String, battlePreview: BattlePreview) {
+        val battleResult = battlePreview.calculateBattleResult()
+
+        // Создаем кастомный layout для диалога
+        val dialogView = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(32, 32, 32, 32)
+        }
+
+        // Заголовок
+        val tvTitle = TextView(this).apply {
+            text = "Предпросмотр боя"
+            textSize = 18f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, 16)
+        }
+        dialogView.addView(tvTitle)
+
+        // Контейнер для армий
+        val armiesLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        // Атакующая армия
+        val attackerLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setBackgroundResource(R.drawable.battle_side_background)
+            setPadding(12, 12, 12, 12)
+        }
+
+        val tvAttackerTitle = TextView(this).apply {
+            text = "Ваша армия"
+            textSize = 16f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(ContextCompat.getColor(this@MultiplayerGameActivity, R.color.primaryDarkColor))
+            gravity = Gravity.CENTER
+        }
+        attackerLayout.addView(tvAttackerTitle)
+
+        val tvAttackerUnits = TextView(this).apply {
+            text = formatArmyUnits(battlePreview.attackerArmy)
+            textSize = 12f
+            setPadding(0, 8, 0, 0)
+        }
+        attackerLayout.addView(tvAttackerUnits)
+
+        val tvAttackerPower = TextView(this).apply {
+            text = "Общая сила: ${battlePreview.attackerTotalPower}"
+            textSize = 14f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(0, 4, 0, 0)
+        }
+        attackerLayout.addView(tvAttackerPower)
+
+        armiesLayout.addView(attackerLayout)
+
+        // Разделитель
+        val divider = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(1, 120).apply {
+                setMargins(8, 0, 8, 0)
+            }
+            setBackgroundColor(ContextCompat.getColor(this@MultiplayerGameActivity, R.color.gray))
+        }
+        armiesLayout.addView(divider)
+
+        // Защищающаяся армия
+        val defenderLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setBackgroundResource(R.drawable.battle_side_background)
+            setPadding(12, 12, 12, 12)
+        }
+
+        val tvDefenderTitle = TextView(this).apply {
+            text = if (battlePreview.isTownHallAttack) "Ратуша противника" else "Армия ${battlePreview.defenderName}"
+            textSize = 16f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(ContextCompat.getColor(this@MultiplayerGameActivity, R.color.red))
+            gravity = Gravity.CENTER
+        }
+        defenderLayout.addView(tvDefenderTitle)
+
+        val tvDefenderUnits = TextView(this).apply {
+            text = if (battlePreview.isTownHallAttack) {
+                "Прочность: ${battlePreview.defenderTownHall?.health ?: 0}"
+            } else {
+                formatArmyUnits(battlePreview.defenderArmy!!)
+            }
+            textSize = 12f
+            setPadding(0, 8, 0, 0)
+        }
+        defenderLayout.addView(tvDefenderUnits)
+
+        val tvDefenderPower = TextView(this).apply {
+            text = if (battlePreview.isTownHallAttack) {
+                "Тип: Защитное сооружение"
+            } else {
+                "Общая сила: ${battlePreview.defenderTotalPower}"
+            }
+            textSize = 14f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setPadding(0, 4, 0, 0)
+        }
+        defenderLayout.addView(tvDefenderPower)
+
+        armiesLayout.addView(defenderLayout)
+        dialogView.addView(armiesLayout)
+
+        // Предсказание результата
+        val victoryChance = calculateVictoryChance(battlePreview)
+        val tvPrediction = TextView(this).apply {
+            text = "Шанс победы: ${"%.0f".format(victoryChance * 100)}%"
+            textSize = 14f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setBackgroundColor(ContextCompat.getColor(this@MultiplayerGameActivity, R.color.external_news_bg))
+            setTextColor(ContextCompat.getColor(this@MultiplayerGameActivity, R.color.icon_tint))
+            setPadding(0, 8, 0, 8)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                setMargins(0, 16, 0, 0)
+            }
+        }
+        dialogView.addView(tvPrediction)
+
+        // Подсказка
+        val tvHint = TextView(this).apply {
+            text = "После подтверждения начнется видео сражения"
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTextColor(ContextCompat.getColor(this@MultiplayerGameActivity, R.color.gray))
+            setPadding(0, 8, 0, 0)
+        }
+        dialogView.addView(tvHint)
+
+        AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setPositiveButton("Начать бой!") { _, _ ->
+                // 🔥 ЗАПУСКАЕМ ВИДЕО СРАЗУ ПОСЛЕ ПОДТВЕРЖДЕНИЯ БОЯ
+                showBattleVideoAndExecute(attackerUid, battlePreview, battleResult)
+            }
+            .setNegativeButton("Отмена") { dialog, _ ->
+                dialog.dismiss()
+                selectedArmy = null
+            }
+            .setOnCancelListener {
+                selectedArmy = null
+            }
+            .show()
+    }
+
+    // 🔥 НОВЫЙ МЕТОД ДЛЯ ПОКАЗА ВИДЕО И ВЫПОЛНЕНИЯ БОЯ
+    private fun showBattleVideoAndExecute(attackerUid: String, battlePreview: BattlePreview, battleResult: BattleResult) {
+        currentBattlePreview = battlePreview
+
+        // Определяем какое видео показывать
+        val videoResource = when {
+            battlePreview.isTownHallAttack -> R.raw.battle_army_vs_army
+            else -> R.raw.battle_army_vs_army
+        }
+
+        // Проверяем существование видеоресурса
+        try {
+            val videoUri = Uri.parse("android.resource://${packageName}/$videoResource")
+
+            // Создаем полноэкранный диалог с видео
+            val dialog = Dialog(this, android.R.style.Theme_Black_NoTitleBar_Fullscreen)
+            dialog.setContentView(R.layout.dialog_battle_video)
+
+            val videoView = dialog.findViewById<VideoView>(R.id.videoView)
+            val btnSkip = dialog.findViewById<Button>(R.id.btnSkip)
+            val progressBar = dialog.findViewById<ProgressBar>(R.id.progressBar)
+
+            // Настройка VideoView
+            videoView.setVideoURI(videoUri)
+
+            videoView.setOnPreparedListener { mediaPlayer ->
+                progressBar.visibility = View.GONE
+                mediaPlayer.isLooping = false
+                videoView.start()
+            }
+
+            videoView.setOnCompletionListener {
+                dialog.dismiss()
+                // 🔥 ПОСЛЕ ВИДЕО ВЫПОЛНЯЕМ РЕАЛЬНЫЙ БОЙ И ПОКАЗЫВАЕМ РЕЗУЛЬТАТЫ
+                executeRealBattle(attackerUid, battlePreview, battleResult)
+            }
+
+            videoView.setOnErrorListener { _, what, extra ->
+                Log.e(TAG, "Ошибка воспроизведения видео: $what, $extra")
+                progressBar.visibility = View.GONE
+                // Если видео не загрузилось, выполняем бой сразу
+                dialog.dismiss()
+                executeRealBattle(attackerUid, battlePreview, battleResult)
+                true
+            }
+
+            btnSkip.setOnClickListener {
+                videoView.stopPlayback()
+                dialog.dismiss()
+                // Пользователь пропустил видео - выполняем бой
+                executeRealBattle(attackerUid, battlePreview, battleResult)
+            }
+
+            dialog.setCancelable(false)
+            dialog.show()
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка загрузки видео: ${e.message}")
+            // Если возникла ошибка с видео, выполняем бой сразу
+            executeRealBattle(attackerUid, battlePreview, battleResult)
+        }
+    }
+
+    // 🔥 НОВЫЙ МЕТОД ДЛЯ ВЫПОЛНЕНИЯ РЕАЛЬНОГО БОЯ И ПОКАЗА РЕЗУЛЬТАТОВ
+    private fun executeRealBattle(attackerUid: String, battlePreview: BattlePreview, predictedResult: BattleResult) {
+        lifecycleScope.launch {
+            try {
+                val action = GameAction.ConfirmArmyCombat(
+                    attackerArmyId = battlePreview.attackerArmy.id,
+                    defenderArmyId = battlePreview.defenderArmy?.id,
+                    defenderUid = battlePreview.defenderUid,
+                    targetX = battlePreview.targetPosition.x,
+                    targetY = battlePreview.targetPosition.y,
+                    isTownHallAttack = battlePreview.isTownHallAttack
+                )
+
+                val success = multiplayerLogic.makeTurn(gameId, attackerUid, listOf(action))
+
+                if (success) {
+                    // 🔥 ПОЛУЧАЕМ АКТУАЛЬНЫЕ РЕЗУЛЬТАТЫ БОЯ ИЗ БАЗЫ ДАННЫХ
+                    val actualBattleResult = getActualBattleResult(attackerUid, battlePreview)
+                    // Показываем результаты боя
+                    showBattleResults(attackerUid, actualBattleResult ?: predictedResult)
+                } else {
+                    Toast.makeText(this@MultiplayerGameActivity, "Ошибка выполнения боя", Toast.LENGTH_SHORT).show()
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@MultiplayerGameActivity, "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // 🔥 МЕТОД ДЛЯ ПОЛУЧЕНИЯ АКТУАЛЬНЫХ РЕЗУЛЬТАТОВ БОЯ ИЗ БАЗЫ ДАННЫХ
+    private suspend fun getActualBattleResult(attackerUid: String, battlePreview: BattlePreview): BattleResult? {
+        return withContext(Dispatchers.IO) {
+            try {
+                // Получаем актуальные данные об армиях после боя
+                val attackerSnapshot = database.child("multiplayer_games").child(gameId)
+                    .child("players").child(attackerUid).child("gameLogic").get().await()
+                val attackerLogic = FirebaseGameMapper.parseGameLogic(attackerSnapshot)
+
+                val attackerArmy = attackerLogic?.armies?.find { it.id == battlePreview.attackerArmy.id }
+
+                // Создаем актуальный результат боя
+                val result = BattleResult()
+
+                if (attackerArmy != null) {
+                    result.attackerSurvivedUnits = if (attackerArmy.isAlive()) listOf(attackerArmy) else emptyList()
+                    result.attackerPowerRemaining = attackerArmy.totalAttackPower()
+
+                    // Определяем победу на основе состояния армии
+                    result.victory = attackerArmy.isAlive() &&
+                            (battlePreview.isTownHallAttack || battlePreview.defenderArmy == null)
+                } else {
+                    result.attackerSurvivedUnits = emptyList()
+                    result.attackerPowerRemaining = 0
+                    result.victory = false
+                }
+
+                return@withContext result
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка получения актуальных результатов боя", e)
+                return@withContext null
+            }
+        }
+    }
+
+    // 🔥 МЕТОД ДЛЯ ФОРМАТИРОВАНИЯ СПИСКА ЮНИТОВ АРМИИ
+    private fun formatArmyUnits(army: Army): String {
+        val unitGroups = army.units.groupBy { it.name }
+        return unitGroups.entries.joinToString("\n") { (name, units) ->
+            "• $name: ${units.size} шт. (сила: ${units.sumOf { it.attackPower }})"
+        }
+    }
+
+    // 🔥 РАСЧЕТ ШАНСА ПОБЕДЫ
+    private fun calculateVictoryChance(battlePreview: BattlePreview): Double {
+        val attackerPower = battlePreview.attackerTotalPower.toDouble()
+        val defenderPower = battlePreview.defenderTotalPower.toDouble()
+
+        return if (attackerPower + defenderPower > 0) {
+            attackerPower / (attackerPower + defenderPower)
+        } else {
+            0.5
+        }
+    }
+
+    // 🔥 ДИАЛОГ РЕЗУЛЬТАТОВ БОЯ
+    private fun showBattleResults(attackerUid: String, battleResult: BattleResult) {
+        // Создаем кастомный layout для результатов
+        val dialogView = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(32, 32, 32, 32)
+        }
+
+        // Заголовок
+        val tvTitle = TextView(this).apply {
+            text = "Результаты боя"
+            textSize = 18f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setPadding(0, 0, 0, 16)
+        }
+        dialogView.addView(tvTitle)
+
+        // Результат
+        val tvBattleResult = TextView(this).apply {
+            text = battleResult.getResultMessage()
+            textSize = 16f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            gravity = Gravity.CENTER
+            setTextColor(if (battleResult.victory) ContextCompat.getColor(this@MultiplayerGameActivity, R.color.primaryDarkColor)
+            else ContextCompat.getColor(this@MultiplayerGameActivity, R.color.red))
+            setPadding(0, 0, 0, 16)
+        }
+        dialogView.addView(tvBattleResult)
+
+        // Контейнер для потерь
+        val lossesLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        // Потери атакующего
+        val attackerLossLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setBackgroundResource(R.drawable.battle_result_background)
+            setPadding(12, 12, 12, 12)
+        }
+
+        val tvAttackerTitle = TextView(this).apply {
+            text = "Ваши потери"
+            textSize = 14f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(ContextCompat.getColor(this@MultiplayerGameActivity, R.color.colorAccent))
+            gravity = Gravity.CENTER
+        }
+        attackerLossLayout.addView(tvAttackerTitle)
+
+        val attackerLossText = if (battleResult.attackerSurvivedUnits.isNotEmpty()) {
+            "Выжившие: ${battleResult.attackerSurvivedUnits.sumOf { it.units.size }} юнитов\n" +
+                    "Оставшаяся сила: ${battleResult.attackerPowerRemaining}"
+        } else {
+            "Армия уничтожена"
+        }
+
+        val tvAttackerLosses = TextView(this).apply {
+            text = attackerLossText
+            textSize = 12f
+            setPadding(0, 4, 0, 0)
+        }
+        attackerLossLayout.addView(tvAttackerLosses)
+
+        lossesLayout.addView(attackerLossLayout)
+
+        // Разделитель
+        val divider = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(1, 80).apply {
+                setMargins(8, 0, 8, 0)
+            }
+            setBackgroundColor(ContextCompat.getColor(this@MultiplayerGameActivity, R.color.gray))
+        }
+        lossesLayout.addView(divider)
+
+        // Потери защитника
+        val defenderLossLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            setBackgroundResource(R.drawable.battle_result_background)
+            setPadding(12, 12, 12, 12)
+        }
+
+        val tvDefenderTitle = TextView(this).apply {
+            text = "Потери врага"
+            textSize = 14f
+            setTypeface(typeface, android.graphics.Typeface.BOLD)
+            setTextColor(ContextCompat.getColor(this@MultiplayerGameActivity, R.color.red))
+            gravity = Gravity.CENTER
+        }
+        defenderLossLayout.addView(tvDefenderTitle)
+
+        val defenderLossText = if (battleResult.townHallDestroyed) {
+            "Ратуша уничтожена!"
+        } else if (battleResult.defenderSurvivedUnits.isNotEmpty()) {
+            "Выжившие: ${battleResult.defenderSurvivedUnits.sumOf { it.units.size }} юнитов\n" +
+                    "Оставшаяся сила: ${battleResult.defenderPowerRemaining}"
+        } else if (battleResult.townHallHealthRemaining > 0) {
+            "Ратуша повреждена\nОсталось прочности: ${battleResult.townHallHealthRemaining}"
+        } else {
+            "Армия уничтожена"
+        }
+
+        val tvDefenderLosses = TextView(this).apply {
+            text = defenderLossText
+            textSize = 12f
+            setPadding(0, 4, 0, 0)
+        }
+        defenderLossLayout.addView(tvDefenderLosses)
+
+        lossesLayout.addView(defenderLossLayout)
+        dialogView.addView(lossesLayout)
+
+        AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setPositiveButton("OK") { dialog, _ ->
+                dialog.dismiss()
+                updatePlayerState(attackerUid)
+                lastSharedMapHash = 0
+                currentGame?.let { updateGameUI(it) }
+                selectedArmy = null
+            }
+            .setCancelable(false)
+            .show()
     }
 
     // 🔥 МЕНЮ РАТУШИ
@@ -581,46 +1108,6 @@ class MultiplayerGameActivity : AppCompatActivity() {
             .setNegativeButton("Отмена", null)
             .show()
     }
-
-    // 🔥 АТАКА НА ВРАГА (выбор армии для перемещения на клетку врага)
-    private fun showMoveArmyToEnemyDialog(uid: String, targetX: Int, targetY: Int) {
-        val game = currentGame ?: return
-        val logic = game.players[uid]?.gameLogic ?: return
-        val movableArmies = logic.armies.filter { !it.hasMovedThisTurn && it.isAlive() }
-        if (movableArmies.isEmpty()) {
-            Toast.makeText(this, "Нет армий для перемещения", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val armyNames = movableArmies.mapIndexed { i, a ->
-            val total = a.units.size
-            "Армия ${i + 1} (${total} юнитов)"
-        }.toTypedArray()
-
-        AlertDialog.Builder(this)
-            .setTitle("Выберите армию для атаки")
-            .setItems(armyNames) { _, index ->
-                val army = movableArmies[index]
-                lifecycleScope.launch {
-                    try {
-                        val success = multiplayerLogic.makeTurn(
-                            gameId, uid,
-                            listOf(GameAction.MoveArmy(army.id, targetX, targetY))
-                        )
-                        if (success) {
-                            Toast.makeText(this@MultiplayerGameActivity, "Армия атакует!", Toast.LENGTH_SHORT).show()
-                            updatePlayerState(uid)
-                        }
-                    } catch (e: Exception) {
-                        Toast.makeText(this@MultiplayerGameActivity, "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
-                    }
-                }
-            }
-            .setNegativeButton("Отмена", null)
-            .show()
-    }
-
-    // ОСТАЛЬНЫЕ МЕТОДЫ БЕЗ ИЗМЕНЕНИЙ
 
     private fun createBuildingByEraAndIndex(era: Era, index: Int): Building? {
         return when (era) {
@@ -717,10 +1204,12 @@ class MultiplayerGameActivity : AppCompatActivity() {
         }
     }
 
+    // 🔥 ОБНОВЛЁННЫЙ МЕТОД ДЛЯ ПОКАЗА МЕНЮ КАЗАРМ
     private fun showBarracksMenu(uid: String) {
         val game = currentGame ?: return
         val logic = game.players[uid]?.gameLogic ?: return
         val era = logic.player.era
+
         val units = when (era) {
             Era.STONE_AGE -> arrayOf("Пещерный человек", "Охотник", "Всадник на мамонте")
             Era.BRONZE_AGE -> arrayOf("Мечник", "Лучник", "Боевая колесница")
@@ -729,15 +1218,132 @@ class MultiplayerGameActivity : AppCompatActivity() {
             Era.FUTURE -> arrayOf("Боевой дрон", "Боевой мех", "Лазерная пушка")
             else -> emptyArray()
         }
+
         AlertDialog.Builder(this)
-            .setTitle("Нанять юнита")
+            .setTitle("Нанять юнитов")
             .setItems(units) { _, index ->
-                val unit = createUnitByEraAndIndex(era, index)
-                if (unit != null) {
-                    hireUnit(uid, unit)
-                }
+                showUnitQuantityDialog(uid, era, index)
             }
             .show()
+    }
+
+    // 🔥 НОВЫЙ МЕТОД ДЛЯ ВЫБОРА КОЛИЧЕСТВА ЮНИТОВ
+    private fun showUnitQuantityDialog(uid: String, era: Era, unitIndex: Int) {
+        val unit = createUnitByEraAndIndex(era, unitIndex) ?: return
+        val cost = getUnitCost(unit)
+
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(32, 32, 32, 32)
+        }
+
+        // Название юнита и стоимость
+        val tvInfo = TextView(this).apply {
+            text = "${unit.name}\nСтоимость за 1: ${cost.getAvailableResources(era)}"
+            setPadding(0, 0, 0, 16)
+        }
+        layout.addView(tvInfo)
+
+        // Поле для ввода количества
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+        }
+
+        val tvLabel = TextView(this).apply {
+            text = "Количество:"
+            setPadding(0, 0, 16, 0)
+        }
+
+        val etQuantity = EditText(this).apply {
+            setText("1")
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            maxWidth = 120
+        }
+
+        row.addView(tvLabel)
+        row.addView(etQuantity)
+        layout.addView(row)
+
+        // Кнопки +/-
+        val buttonRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(0, 16, 0, 0)
+        }
+
+        val btnMinus = Button(this).apply {
+            text = "-"
+            setOnClickListener {
+                val current = etQuantity.text.toString().toIntOrNull() ?: 1
+                if (current > 1) {
+                    etQuantity.setText((current - 1).toString())
+                }
+            }
+        }
+
+        val btnPlus = Button(this).apply {
+            text = "+"
+            setOnClickListener {
+                val current = etQuantity.text.toString().toIntOrNull() ?: 1
+                etQuantity.setText((current + 1).toString())
+            }
+        }
+
+        buttonRow.addView(btnMinus)
+        buttonRow.addView(btnPlus)
+        layout.addView(buttonRow)
+
+        AlertDialog.Builder(this)
+            .setTitle("Наем юнитов")
+            .setView(layout)
+            .setPositiveButton("Нанять") { _, _ ->
+                val quantity = etQuantity.text.toString().toIntOrNull() ?: 1
+                if (quantity > 0) {
+                    hireUnits(uid, unit, quantity)
+                } else {
+                    Toast.makeText(this, "Введите корректное количество", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    // 🔥 ОБНОВЛЁННЫЙ МЕТОД ДЛЯ НАЙМА ЮНИТОВ
+    private fun hireUnits(uid: String, unit: GameUnit, quantity: Int) {
+        if (quantity <= 0) return
+
+        lifecycleScope.launch {
+            try {
+                val success = multiplayerLogic.makeTurn(gameId, uid, listOf(GameAction.HireUnit(unit, quantity)))
+                if (success) {
+                    Toast.makeText(this@MultiplayerGameActivity, "Нанято $quantity ${unit.name}!", Toast.LENGTH_SHORT).show()
+                    updatePlayerState(uid)
+                }
+            } catch (e: Exception) {
+                Toast.makeText(this@MultiplayerGameActivity, "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    // 🔥 МЕТОД ДЛЯ ПОЛУЧЕНИЯ СТОИМОСТИ ЮНИТА
+    private fun getUnitCost(unit: GameUnit): Resource {
+        return when (unit) {
+            is GameUnit.Caveman -> Resource(food = 15, wood = 10)
+            is GameUnit.Hunter -> Resource(food = 20, wood = 15, water = 5)
+            is GameUnit.MammothRider -> Resource(food = 50, wood = 30, water = 15)
+            is GameUnit.Swordsman -> Resource(food = 25, stone = 20, gold = 10)
+            is GameUnit.BronzeArcher -> Resource(food = 20, stone = 15, gold = 8)
+            is GameUnit.Chariot -> Resource(food = 60, stone = 40, gold = 25)
+            is GameUnit.Knight -> Resource(food = 35, iron = 25, gold = 15)
+            is GameUnit.Crossbowman -> Resource(food = 30, iron = 20, gold = 12)
+            is GameUnit.Ram -> Resource(food = 40, iron = 50, wood = 30)
+            is GameUnit.Soldier -> Resource(food = 25, iron = 15, coal = 10)
+            is GameUnit.Artillery -> Resource(food = 35, iron = 30, coal = 20, oil = 10)
+            is GameUnit.Tank -> Resource(food = 50, iron = 60, coal = 30, oil = 20)
+            is GameUnit.Drone -> Resource(energy = 40, iron = 20, gold = 15)
+            is GameUnit.Mech -> Resource(energy = 80, iron = 50, gold = 25)
+            is GameUnit.LaserCannon -> Resource(energy = 120, iron = 30, gold = 40)
+            else -> Resource()
+        }
     }
 
     private fun createUnitByEraAndIndex(era: Era, index: Int): GameUnit? {
@@ -773,20 +1379,6 @@ class MultiplayerGameActivity : AppCompatActivity() {
                 else -> null
             }
             else -> null
-        }
-    }
-
-    private fun hireUnit(uid: String, unit: GameUnit) {
-        lifecycleScope.launch {
-            try {
-                val success = multiplayerLogic.makeTurn(gameId, uid, listOf(GameAction.HireUnit(unit)))
-                if (success) {
-                    Toast.makeText(this@MultiplayerGameActivity, "Юнит нанят!", Toast.LENGTH_SHORT).show()
-                    updatePlayerState(uid)
-                }
-            } catch (e: Exception) {
-                Toast.makeText(this@MultiplayerGameActivity, "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
         }
     }
 

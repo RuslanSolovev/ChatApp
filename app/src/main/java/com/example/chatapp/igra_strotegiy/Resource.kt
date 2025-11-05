@@ -97,6 +97,19 @@ data class Resource(
         return getAvailableResources(Era.FUTURE) // Показываем все ресурсы
     }
 
+    // 🔥 ДОБАВИТЬ ЭТОТ МЕТОД:
+    fun multiply(factor: Int) {
+        wood *= factor
+        food *= factor
+        water *= factor
+        stone *= factor
+        gold *= factor
+        iron *= factor
+        coal *= factor
+        oil *= factor
+        energy *= factor
+    }
+
     // Метод для копирования
     fun copy(): Resource {
         return Resource(

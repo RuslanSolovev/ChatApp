@@ -128,6 +128,7 @@ sealed class GameUnit {
         constructor() : this("Артиллерия", 60, 25)
     }
 
+
     @IgnoreExtraProperties
     data class Tank(
         override val name: String = "Танк",

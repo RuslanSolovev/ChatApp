@@ -80,4 +80,17 @@ sealed class Research {
         override val cost = Resource(energy = 150, oil = 100, gold = 80)
         override val era = Era.FUTURE
     }
+
+    // Resource.kt - добавить метод multiply
+    fun Resource.multiply(factor: Int) {
+        wood *= factor
+        food *= factor
+        water *= factor
+        stone *= factor
+        gold *= factor
+        iron *= factor
+        coal *= factor
+        oil *= factor
+        energy *= factor
+    }
 }

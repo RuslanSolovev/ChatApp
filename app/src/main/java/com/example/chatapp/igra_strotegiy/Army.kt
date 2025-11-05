@@ -13,4 +13,13 @@ data class Army(
 
     fun totalAttackPower(): Int = units.filter { it.health > 0 }.sumOf { it.attackPower }
     fun isAlive(): Boolean = units.any { it.health > 0 }
+    fun totalHealth(): Int = units.sumOf { it.health }
+
+    // 🔥 НОВЫЙ МЕТОД ДЛЯ ПРОВЕРКИ ПОЛНОГО УНИЧТОЖЕНИЯ
+    fun isCompletelyDestroyed(): Boolean = units.isEmpty() || units.all { it.health <= 0 }
+
+    // 🔥 МЕТОД ДЛЯ ОЧИСТКИ МЕРТВЫХ ЮНИТОВ
+    fun removeDeadUnits() {
+        units.removeIf { it.health <= 0 }
+    }
 }
