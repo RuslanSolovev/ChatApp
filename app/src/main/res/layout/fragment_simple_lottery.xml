@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:padding="16dp"
+    android:background="#BEFAB4">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="8dp">
+
+        <!-- Заголовок -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🎰 Ежедневная лотерея"
+            android:textSize="28sp"
+            android:textStyle="bold"
+            android:gravity="center"
+            android:textColor="#2c3e50"
+            android:layout_marginBottom="24dp" />
+
+        <!-- Призовой фонд -->
+        <TextView
+            android:id="@+id/tvPrizePool"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Призовой фонд: 0 ₽"
+            android:textSize="22sp"
+            android:gravity="center"
+            android:textColor="#e74c3c"
+            android:textStyle="bold"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Таймер -->
+        <TextView
+            android:id="@+id/tvTimeLeft"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="До розыгрыша: 24ч 00м"
+            android:textSize="16sp"
+            android:gravity="center"
+            android:textColor="#7f8c8d"
+            android:layout_marginBottom="16dp" />
+
+        <TextView
+            android:id="@+id/tvLotteryId"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Лотерея #..."
+            android:textColor="@color/white"
+            android:textSize="12sp"
+            android:gravity="center"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Последний победитель -->
+        <TextView
+            android:id="@+id/tvLastWinner"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textSize="14sp"
+            android:gravity="center"
+            android:background="#e8f5e8"
+            android:padding="12dp"
+            android:layout_marginBottom="16dp"
+            android:visibility="gone"
+            android:clickable="true"
+            android:focusable="true" />
+
+        <!-- АДМИН ПАНЕЛЬ - показывается только админам -->
+        <LinearLayout
+            android:id="@+id/adminPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:background="#ffeaa7"
+            android:padding="12dp"
+            android:layout_marginBottom="16dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="👑 ПАНЕЛЬ АДМИНИСТРАТОРА"
+                android:textSize="16sp"
+                android:textStyle="bold"
+                android:gravity="center"
+                android:layout_marginBottom="8dp" />
+
+            <Button
+                android:id="@+id/btnAdminPanel"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="⚙️ Управление лотереей"
+                android:textSize="14sp"
+                android:backgroundTint="#e74c3c"
+                android:layout_marginBottom="8dp" />
+
+            <Button
+                android:id="@+id/btnDrawWinner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="🎰 Запустить розыгрыш"
+                android:textSize="14sp"
+                android:backgroundTint="#3498db" />
+
+        </LinearLayout>
+
+        <!-- Банковские реквизиты -->
+        <TextView
+            android:id="@+id/tvBankDetails"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🏦 ПЕРЕВОД НА КАРТУ\n\n💳 Номер карты:\n5536 9140 1234 5678\n\n👤 Получатель:\nИван Иванов\n\n💰 СТОИМОСТЬ БИЛЕТОВ:\n• 1 билет = 100 рублей\n• 3 билета = 300 рублей\n• 5 билетов = 500 рублей\n• 10 билетов = 1000 рублей\n\n📱 Можно перевести через любой банк"
+            android:textSize="14sp"
+            android:lineSpacingExtra="6dp"
+            android:background="@drawable/bg_gradient_game"
+            android:padding="20dp"
+            android:layout_marginBottom="16dp"
+            android:clickable="true"
+            android:focusable="true" />
+
+        <!-- КНОПКА АДМИН-ПАНЕЛИ ДЛЯ БЫСТРОГО ДОСТУПА -->
+        <Button
+            android:id="@+id/btnQuickAdminPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="⚙️ Управление лотереей"
+            android:textSize="16sp"
+            android:backgroundTint="#9b59b6"
+            android:layout_marginBottom="8dp"
+            android:visibility="gone" />
+
+        <Button
+            android:id="@+id/btnHistory"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="📊 История розыгрышей"
+            android:textSize="16sp"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Кнопка покупки билетов -->
+        <Button
+            android:id="@+id/btnBuyTickets"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🎫 КУПИТЬ БИЛЕТЫ"
+            android:textSize="16sp"
+            android:backgroundTint="#3498db"
+            android:layout_marginBottom="8dp" />
+
+        <!-- Кнопка подтверждения перевода -->
+        <Button
+            android:id="@+id/btnConfirmPayment"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="✅ Я ПЕРЕВЕЛ(А) ДЕНЬГИ"
+            android:textSize="16sp"
+            android:backgroundTint="#27ae60"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Статус платежа -->
+        <TextView
+            android:id="@+id/tvPaymentStatus"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:gravity="center"
+            android:textSize="14sp"
+            android:background="#e8f5e8"
+            android:padding="12dp"
+            android:visibility="gone"
+            android:layout_marginBottom="16dp" />
+
+        <!-- Количество билетов -->
+        <TextView
+            android:id="@+id/tvTicketCount"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Ваши билеты: 0"
+            android:gravity="center"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            android:layout_marginBottom="12dp" />
+
+        <!-- Проверить билеты -->
+        <Button
+            android:id="@+id/btnCheckTickets"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="📋 Мои билеты (0)"
+            android:textSize="16sp"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_marginBottom="20dp" />
+
+        <!-- Прогресс бар -->
+        <ProgressBar
+            android:id="@+id/progressBar"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:visibility="gone" />
+
+        <!-- Инструкция -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="🎯 КАК УЧАСТВОВАТЬ:\n\n1️⃣ Нажмите 'КУПИТЬ БИЛЕТЫ'\n2️⃣ Выберите количество\n3️⃣ Переведите деньги на карту\n4️⃣ Нажмите 'Я ПЕРЕВЕЛ(А)'\n5️⃣ Ожидайте подтверждения\n6️⃣ Получите билеты!\n\n🏆 90% от суммы - призовой фонд\n⏰ Розыгрыш каждые 24 часа\n🎫 Чем больше билетов - тем выше шанс!"
+            android:textSize="12sp"
+            android:lineSpacingExtra="4dp"
+            android:background="#FFFFFF"
+            android:padding="16dp"
+            android:layout_marginTop="8dp"
+            android:textColor="#2c3e50" />
+
+    </LinearLayout>
+</ScrollView>

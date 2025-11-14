@@ -12,8 +12,10 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Rect
 import android.location.Geocoder
+import android.os.Build
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
@@ -187,7 +189,7 @@ class MapFragment : Fragment() {
         locationUpdateHandler.postDelayed(locationUpdateRunnable, 15000)
         locationRestartHandler.postDelayed(locationRestartRunnable, 45000)
         fixTouchInterception()
-        startLocationTracking()
+        checkLocationPermissionsAndStart()
         ioScope.launch {
             delay(100)
             withContext(Dispatchers.Main) {
@@ -218,6 +220,82 @@ class MapFragment : Fragment() {
             }
         }, 1000)
     }
+
+    private fun openAppSettings() {
+        val intent = Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = android.net.Uri.parse("package:${requireContext().packageName}")
+        }
+        startActivity(intent)
+    }
+
+    private fun checkLocationPermissionsAndStart() {
+        val finePermission = ContextCompat.checkSelfPermission(
+            requireContext(),
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+        val backgroundPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            ContextCompat.checkSelfPermission(
+                requireContext(),
+                Manifest.permission.ACCESS_BACKGROUND_LOCATION
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+
+        if (finePermission) {
+            if (backgroundPermission) {
+                startLocationTracking()
+            } else {
+                AlertDialog.Builder(requireContext())
+                    .setTitle("Требуется разрешение")
+                    .setMessage("Для постоянного отслеживания местоположения необходимо разрешить доступ к геопозиции в фоне. Перейдите в настройки приложения.")
+                    .setPositiveButton("Настройки") { _, _ -> openAppSettings() }
+                    .setNegativeButton("Отмена", null)
+                    .show()
+            }
+        } else {
+            requestPermissions(
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
+                1001
+            )
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 1001) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val backgroundPermission = ContextCompat.checkSelfPermission(
+                        requireContext(),
+                        Manifest.permission.ACCESS_BACKGROUND_LOCATION
+                    ) == PackageManager.PERMISSION_GRANTED
+
+                    if (!backgroundPermission) {
+                        AlertDialog.Builder(requireContext())
+                            .setTitle("Фоновое местоположение")
+                            .setMessage("Приложению нужно разрешение на определение местоположения в фоне для корректной работы. Перейдите в настройки приложения.")
+                            .setPositiveButton("Настройки") { _, _ -> openAppSettings() }
+                            .setNegativeButton("Позже", null)
+                            .show()
+                    } else {
+                        startLocationTracking()
+                    }
+                } else {
+                    startLocationTracking()
+                }
+            } else {
+                Toast.makeText(requireContext(), "Разрешение на местоположение необходимо", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+
 
     private fun loadUserDataWithThrottle() {
         val currentTime = System.currentTimeMillis()

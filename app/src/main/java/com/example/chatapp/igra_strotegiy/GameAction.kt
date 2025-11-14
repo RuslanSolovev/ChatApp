@@ -23,4 +23,13 @@ sealed class GameAction {
         val targetY: Int,
         val isTownHallAttack: Boolean = false
     ) : GameAction()
+
+    data class LoadArmyIntoTransport(
+        val transportArmyId: String,
+        val cargoArmyId: String
+    ) : GameAction()
+
+    data class UnloadArmyFromTransport(val transportArmyId: String, val targetX: Int, val targetY: Int) : GameAction()
+
+
 }

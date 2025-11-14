@@ -77,6 +77,14 @@ sealed class Building {
     }
 
     @IgnoreExtraProperties
+    class Shipyard : Building() {
+        override val name: String = "Верфь"
+        override val type: String = "shipyard"
+        override val buildCost: Resource = Resource(food = 40, wood = 30, stone = 20)
+
+}
+
+    @IgnoreExtraProperties
     class GoldMine : Building() {
         override val name: String = "Золотой рудник"
         override val type: String = "gold_mine"

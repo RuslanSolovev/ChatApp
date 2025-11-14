@@ -132,54 +132,26 @@ data class BattlePreview(
         )
     }
 
-    // 🔥 ВСПОМОГАТЕЛЬНЫЙ МЕТОД ДЛЯ СОЗДАНИЯ КОПИИ ЮНИТА С ИЗМЕНЕННЫМ ЗДОРОВЬЕМ
     private fun createUnitCopyWithHealth(unit: GameUnit, newHealth: Int): GameUnit {
         return when (unit) {
-            is GameUnit.Caveman -> GameUnit.Caveman().apply {
-                health = newHealth.coerceAtLeast(0)
-            }
-            is GameUnit.Hunter -> GameUnit.Hunter().apply {
-                health = newHealth.coerceAtLeast(0)
-            }
-            is GameUnit.MammothRider -> GameUnit.MammothRider().apply {
-                health = newHealth.coerceAtLeast(0)
-            }
-            is GameUnit.Swordsman -> GameUnit.Swordsman().apply {
-                health = newHealth.coerceAtLeast(0)
-            }
-            is GameUnit.BronzeArcher -> GameUnit.BronzeArcher().apply {
-                health = newHealth.coerceAtLeast(0)
-            }
-            is GameUnit.Chariot -> GameUnit.Chariot().apply {
-                health = newHealth.coerceAtLeast(0)
-            }
-            is GameUnit.Knight -> GameUnit.Knight().apply {
-                health = newHealth.coerceAtLeast(0)
-            }
-            is GameUnit.Crossbowman -> GameUnit.Crossbowman().apply {
-                health = newHealth.coerceAtLeast(0)
-            }
-            is GameUnit.Ram -> GameUnit.Ram().apply {
-                health = newHealth.coerceAtLeast(0)
-            }
-            is GameUnit.Soldier -> GameUnit.Soldier().apply {
-                health = newHealth.coerceAtLeast(0)
-            }
-            is GameUnit.Artillery -> GameUnit.Artillery().apply {
-                health = newHealth.coerceAtLeast(0)
-            }
-            is GameUnit.Tank -> GameUnit.Tank().apply {
-                health = newHealth.coerceAtLeast(0)
-            }
-            is GameUnit.Drone -> GameUnit.Drone().apply {
-                health = newHealth.coerceAtLeast(0)
-            }
-            is GameUnit.Mech -> GameUnit.Mech().apply {
-                health = newHealth.coerceAtLeast(0)
-            }
-            is GameUnit.LaserCannon -> GameUnit.LaserCannon().apply {
-                health = newHealth.coerceAtLeast(0)
-            }
+            is GameUnit.Caveman -> GameUnit.Caveman().apply { health = newHealth.coerceAtLeast(0) }
+            is GameUnit.Hunter -> GameUnit.Hunter().apply { health = newHealth.coerceAtLeast(0) }
+            is GameUnit.MammothRider -> GameUnit.MammothRider().apply { health = newHealth.coerceAtLeast(0) }
+            is GameUnit.Swordsman -> GameUnit.Swordsman().apply { health = newHealth.coerceAtLeast(0) }
+            is GameUnit.BronzeArcher -> GameUnit.BronzeArcher().apply { health = newHealth.coerceAtLeast(0) }
+            is GameUnit.Chariot -> GameUnit.Chariot().apply { health = newHealth.coerceAtLeast(0) }
+            is GameUnit.Knight -> GameUnit.Knight().apply { health = newHealth.coerceAtLeast(0) }
+            is GameUnit.Crossbowman -> GameUnit.Crossbowman().apply { health = newHealth.coerceAtLeast(0) }
+            is GameUnit.Ram -> GameUnit.Ram().apply { health = newHealth.coerceAtLeast(0) }
+            is GameUnit.Soldier -> GameUnit.Soldier().apply { health = newHealth.coerceAtLeast(0) }
+            is GameUnit.Artillery -> GameUnit.Artillery().apply { health = newHealth.coerceAtLeast(0) }
+            is GameUnit.Tank -> GameUnit.Tank().apply { health = newHealth.coerceAtLeast(0) }
+            is GameUnit.Drone -> GameUnit.Drone().apply { health = newHealth.coerceAtLeast(0) }
+            is GameUnit.Mech -> GameUnit.Mech().apply { health = newHealth.coerceAtLeast(0) }
+            is GameUnit.LaserCannon -> GameUnit.LaserCannon().apply { health = newHealth.coerceAtLeast(0) }
+            is GameUnit.FishingBoat -> GameUnit.FishingBoat().apply { health = newHealth.coerceAtLeast(0) }
+            is GameUnit.WarGalley -> GameUnit.WarGalley().apply { health = newHealth.coerceAtLeast(0) }
+            is GameUnit.TransportBarge -> GameUnit.TransportBarge().apply { health = newHealth.coerceAtLeast(0) }
             else -> throw IllegalArgumentException("Неизвестный тип юнита: ${unit::class.java.simpleName}")
         }
     }

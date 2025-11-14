@@ -104,28 +104,6 @@ object FirebaseGameMapper {
         }
     }
 
-    private fun parseArmy(armySnapshot: DataSnapshot): Army? {
-        return try {
-            val id = armySnapshot.child("id").getValue(String::class.java) ?: ""
-            val hasMoved = armySnapshot.child("hasMovedThisTurn").getValue(Boolean::class.java) ?: false
-            val posX = armySnapshot.child("position").child("x").getValue(Int::class.java) ?: 0
-            val posY = armySnapshot.child("position").child("y").getValue(Int::class.java) ?: 0
-            val position = Position(posX, posY)
-
-            val units = mutableListOf<GameUnit>()
-            if (armySnapshot.child("units").exists()) {
-                armySnapshot.child("units").children.forEach { unitSnapshot ->
-                    val unit = parseUnit(unitSnapshot)
-                    unit?.let { units.add(it) }
-                }
-            }
-
-            Army(id = id, units = units, position = position, hasMovedThisTurn = hasMoved)
-        } catch (e: Exception) {
-            Log.e("FirebaseGameMapper", "Error parsing army", e)
-            null
-        }
-    }
 
     fun parseGameLogic(gameLogicSnapshot: DataSnapshot): GameLogic {
         return try {
@@ -191,6 +169,38 @@ object FirebaseGameMapper {
         } catch (e: Exception) {
             Log.e("FirebaseGameMapper", "Error parsing game logic: ${e.message}", e)
             GameLogic() // Возвращаем пустой GameLogic вместо выброса исключения
+        }
+    }
+
+    private fun parseArmy(armySnapshot: DataSnapshot): Army? {
+        return try {
+            val id = armySnapshot.child("id").getValue(String::class.java) ?: ""
+            val hasMoved = armySnapshot.child("hasMovedThisTurn").getValue(Boolean::class.java) ?: false
+            val posX = armySnapshot.child("position").child("x").getValue(Int::class.java) ?: 0
+            val posY = armySnapshot.child("position").child("y").getValue(Int::class.java) ?: 0
+            val position = Position(posX, posY)
+
+            val units = mutableListOf<GameUnit>()
+            if (armySnapshot.child("units").exists()) {
+                armySnapshot.child("units").children.forEach { unitSnapshot ->
+                    val unit = parseUnit(unitSnapshot)
+                    unit?.let { units.add(it) }
+                }
+            }
+
+            val army = Army(id = id, units = units, position = position, hasMovedThisTurn = hasMoved)
+
+            // 🔥 ВАЖНО: Парсим перевозимую армию
+            if (armySnapshot.child("carriedArmy").exists()) {
+                val carriedArmy = parseArmy(armySnapshot.child("carriedArmy"))
+                army.carriedArmy = carriedArmy
+                Log.d("FirebaseGameMapper", "Parsed carried army for transport $id: ${carriedArmy?.units?.size ?: 0} units")
+            }
+
+            army
+        } catch (e: Exception) {
+            Log.e("FirebaseGameMapper", "Error parsing army", e)
+            null
         }
     }
 
@@ -286,7 +296,6 @@ object FirebaseGameMapper {
         }
     }
 
-    // ✅ ИСПРАВЛЕННЫЙ МЕТОД: ручное создание объектов зданий
     private fun parseBuilding(buildingSnapshot: DataSnapshot): Building? {
         return try {
             val type = buildingSnapshot.child("type").getValue(String::class.java) ?: return null
@@ -317,6 +326,7 @@ object FirebaseGameMapper {
                 "barracks" -> Building.Barracks()
                 "research_center" -> Building.ResearchCenter()
                 "town_hall" -> Building.TownHall()
+                "shipyard" -> Building.Shipyard()  // ← ЭТО ДОБАВЬ!
                 else -> {
                     Log.w("FirebaseGameMapper", "Unknown building type: $type")
                     return null
@@ -353,11 +363,126 @@ object FirebaseGameMapper {
                 "Drone" -> unitSnapshot.getValue(GameUnit.Drone::class.java)
                 "Mech" -> unitSnapshot.getValue(GameUnit.Mech::class.java)
                 "LaserCannon" -> unitSnapshot.getValue(GameUnit.LaserCannon::class.java)
+                // 🔥 ДОБАВИТЬ КОРАБЛИ:
+                "FishingBoat" -> unitSnapshot.getValue(GameUnit.FishingBoat::class.java)
+                "WarGalley" -> unitSnapshot.getValue(GameUnit.WarGalley::class.java)
+                "TransportBarge" -> unitSnapshot.getValue(GameUnit.TransportBarge::class.java)
                 else -> null
             }
         } catch (e: Exception) {
             Log.e("FirebaseGameMapper", "Error parsing unit: ${e.message}")
             null
+        }
+    }
+
+    fun armyToMap(army: Army): Map<String, Any?> {
+        return mapOf(
+            "id" to army.id,
+            "hasMovedThisTurn" to army.hasMovedThisTurn,
+            "position" to mapOf(
+                "x" to army.position.x,
+                "y" to army.position.y
+            ),
+            "units" to army.units.map { unitToMap(it) },
+            // 🔥 ВАЖНО: Сохраняем carriedArmy рекурсивно
+            "carriedArmy" to army.carriedArmy?.let { armyToMap(it) }
+        )
+    }
+
+    private fun unitToMap(unit: GameUnit): Map<String, Any?> {
+        return when (unit) {
+            is GameUnit.Caveman -> mapOf(
+                "type" to "Caveman",
+                "health" to unit.health,
+                "attackPower" to unit.attackPower
+            )
+            is GameUnit.Hunter -> mapOf(
+                "type" to "Hunter",
+                "health" to unit.health,
+                "attackPower" to unit.attackPower
+            )
+            is GameUnit.MammothRider -> mapOf(
+                "type" to "MammothRider",
+                "health" to unit.health,
+                "attackPower" to unit.attackPower
+            )
+            is GameUnit.Swordsman -> mapOf(
+                "type" to "Swordsman",
+                "health" to unit.health,
+                "attackPower" to unit.attackPower
+            )
+            is GameUnit.BronzeArcher -> mapOf(
+                "type" to "BronzeArcher",
+                "health" to unit.health,
+                "attackPower" to unit.attackPower
+            )
+            is GameUnit.Chariot -> mapOf(
+                "type" to "Chariot",
+                "health" to unit.health,
+                "attackPower" to unit.attackPower
+            )
+            is GameUnit.Knight -> mapOf(
+                "type" to "Knight",
+                "health" to unit.health,
+                "attackPower" to unit.attackPower
+            )
+            is GameUnit.Crossbowman -> mapOf(
+                "type" to "Crossbowman",
+                "health" to unit.health,
+                "attackPower" to unit.attackPower
+            )
+            is GameUnit.Ram -> mapOf(
+                "type" to "Ram",
+                "health" to unit.health,
+                "attackPower" to unit.attackPower
+            )
+            is GameUnit.Soldier -> mapOf(
+                "type" to "Soldier",
+                "health" to unit.health,
+                "attackPower" to unit.attackPower
+            )
+            is GameUnit.Artillery -> mapOf(
+                "type" to "Artillery",
+                "health" to unit.health,
+                "attackPower" to unit.attackPower
+            )
+            is GameUnit.Tank -> mapOf(
+                "type" to "Tank",
+                "health" to unit.health,
+                "attackPower" to unit.attackPower
+            )
+            is GameUnit.Drone -> mapOf(
+                "type" to "Drone",
+                "health" to unit.health,
+                "attackPower" to unit.attackPower
+            )
+            is GameUnit.Mech -> mapOf(
+                "type" to "Mech",
+                "health" to unit.health,
+                "attackPower" to unit.attackPower
+            )
+            is GameUnit.LaserCannon -> mapOf(
+                "type" to "LaserCannon",
+                "health" to unit.health,
+                "attackPower" to unit.attackPower
+            )
+            // 🔥 КОРАБЛИ
+            is GameUnit.FishingBoat -> mapOf(
+                "type" to "FishingBoat",
+                "health" to unit.health,
+                "attackPower" to unit.attackPower
+            )
+            is GameUnit.WarGalley -> mapOf(
+                "type" to "WarGalley",
+                "health" to unit.health,
+                "attackPower" to unit.attackPower
+            )
+            is GameUnit.TransportBarge -> mapOf(
+                "type" to "TransportBarge",
+                "health" to unit.health,
+                "attackPower" to unit.attackPower
+            )
+            else -> emptyMap()
         }
     }
 

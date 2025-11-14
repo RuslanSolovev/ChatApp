@@ -48,7 +48,7 @@
         android:layout_height="0dp"
         android:layout_weight="1"
         android:layout_marginBottom="12dp"
-        android:background="@android:color/white"
+        android:background="@drawable/trava2"
         android:elevation="2dp"
         android:padding="4dp">
 

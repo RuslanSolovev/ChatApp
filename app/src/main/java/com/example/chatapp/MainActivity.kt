@@ -1,6 +1,11 @@
 package com.example.chatapp.activities
 
 import android.Manifest
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ObjectAnimator
+import android.animation.PropertyValuesHolder
+import android.animation.ValueAnimator
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -11,12 +16,17 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import android.view.View
+import android.view.animation.AccelerateDecelerateInterpolator
+import android.view.animation.AccelerateInterpolator
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
 import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.PopupMenu
 import androidx.cardview.widget.CardView
 import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.animation.doOnEnd
 import androidx.core.content.ContextCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -34,6 +44,10 @@ import com.bumptech.glide.Glide
 import com.bumptech.glide.load.engine.DiskCacheStrategy
 import com.example.chatapp.BuildConfig
 import com.example.chatapp.R
+import com.example.chatapp.api.AuthRetrofitInstance
+import com.example.chatapp.api.GigaChatRequest
+import com.example.chatapp.api.Message
+import com.example.chatapp.api.RetrofitInstance
 import com.example.chatapp.budilnik.AlarmActivity
 import com.example.chatapp.databinding.ActivityMainBinding
 import com.example.chatapp.fragments.*
@@ -53,6 +67,7 @@ import com.example.chatapp.step.StepCounterService
 import com.example.chatapp.step.StepCounterServiceWorker
 import com.example.chatapp.utils.PhilosophyQuoteWorker
 import com.google.android.material.bottomnavigation.BottomNavigationView
+import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.ktx.auth
 import com.google.firebase.database.ktx.database
@@ -60,6 +75,9 @@ import com.google.firebase.ktx.Firebase
 import com.google.gson.Gson
 import kotlinx.coroutines.*
 import kotlinx.coroutines.tasks.await
+import retrofit2.Call
+import retrofit2.Callback
+import retrofit2.Response
 import java.util.*
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -83,6 +101,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnMaybeLater: Button
     private lateinit var btnCloseWelcome: ImageButton
 
+    // Новые переменные для анимированного приветствия
+    private lateinit var progressWelcome: LinearProgressIndicator
+    private lateinit var welcomeContent: LinearLayout
+    private lateinit var ivWelcomeAvatar: ImageView
+
     // Атомарные флаги для предотвращения многократного запуска
     private val isLocationServiceStarting = AtomicBoolean(false)
     private val isStepServiceStarting = AtomicBoolean(false)
@@ -104,6 +127,11 @@ class MainActivity : AppCompatActivity() {
     // Флаги для отслеживания состояния приветствия
     private var isWelcomeSequenceRunning = false
     private var welcomeSequenceJob: Job? = null
+
+    // AI анализ переменные
+    private var aiAnalysisJob: Job? = null
+    private var cachedAIContinuation: String? = null
+    private var lastAIAnalysisTime: Long = 0
 
     // Диспетчеры с ограниченным параллелизмом
     private val initDispatcher = Dispatchers.Default.limitedParallelism(2)
@@ -162,12 +190,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+
+        private const val AI_ANALYSIS_CACHE_TIME = 300000L // 5 минут
+
         private const val TAG = "MainActivity"
         private const val HOME_FRAGMENT_TAG = "home_fragment"
         private const val CHAT_FRAGMENT_TAG = "chat_fragment"
         private const val STEPS_FRAGMENT_TAG = "steps_fragment"
         private const val MAPS_FRAGMENT_TAG = "maps_fragment"
         private const val GAMES_FRAGMENT_TAG = "games_fragment"
+
+        private const val LOTTERY_FRAGMENT_TAG = "lottery_fragment"
 
         // Имена для WorkManager
         private const val STEP_SERVICE_WORK_NAME = "StepCounterServicePeriodicWork"
@@ -252,8 +285,81 @@ class MainActivity : AppCompatActivity() {
             btnStartChat = binding.btnStartChat
             btnMaybeLater = binding.btnMaybeLater
             btnCloseWelcome = binding.btnCloseWelcome
+
+            // Новые элементы для анимированного приветствия
+            progressWelcome = binding.progressWelcome
+            welcomeContent = binding.welcomeContent
+            ivWelcomeAvatar = binding.ivWelcomeAvatar
+
+            // Настройка внешнего вида
+            setupWelcomeCardAppearance()
         } catch (e: Exception) {
             Log.e(TAG, "Error initializing welcome widget", e)
+        }
+    }
+
+    /**
+     * Настройка внешнего вида приветственной карточки
+     */
+    private fun setupWelcomeCardAppearance() {
+        // Загружаем аватар пользователя
+        loadUserAvatarToWelcome()
+    }
+
+    /**
+     * Загрузка аватара в приветствие
+     */
+    private fun loadUserAvatarToWelcome() {
+        try {
+            val currentUser = auth.currentUser
+            currentUser?.let { user ->
+                // Загружаем данные пользователя из Firebase Database
+                lifecycleScope.launch(ioDispatcher) {
+                    try {
+                        val snapshot = Firebase.database.reference
+                            .child("users")
+                            .child(user.uid)
+                            .get()
+                            .await()
+
+                        if (snapshot.exists()) {
+                            val userData = snapshot.getValue(User::class.java)
+                            userData?.let { userData ->
+                                withContext(uiDispatcher) {
+                                    // Используем тот же подход что и в updateToolbarUserInfo
+                                    userData.profileImageUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                                        Glide.with(this@MainActivity)
+                                            .load(url)
+                                            .circleCrop()
+                                            .placeholder(R.drawable.ic_default_profile)
+                                            .error(R.drawable.ic_default_profile)
+                                            .diskCacheStrategy(DiskCacheStrategy.ALL)
+                                            .into(ivWelcomeAvatar)
+                                    } ?: run {
+                                        ivWelcomeAvatar.setImageResource(R.drawable.ic_default_profile)
+                                    }
+                                }
+                            }
+                        } else {
+                            // Если данных нет в базе, используем стандартную аватарку
+                            withContext(uiDispatcher) {
+                                ivWelcomeAvatar.setImageResource(R.drawable.ic_default_profile)
+                            }
+                        }
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error loading user data for avatar", e)
+                        withContext(uiDispatcher) {
+                            ivWelcomeAvatar.setImageResource(R.drawable.ic_default_profile)
+                        }
+                    }
+                }
+            } ?: run {
+                // Если пользователь не авторизован
+                ivWelcomeAvatar.setImageResource(R.drawable.ic_default_profile)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading avatar to welcome card", e)
+            ivWelcomeAvatar.setImageResource(R.drawable.ic_default_profile)
         }
     }
 
@@ -263,12 +369,87 @@ class MainActivity : AppCompatActivity() {
     private fun setupBasicClickListeners() {
         btnStartChat.setOnClickListener {
             lifecycleScope.launch(uiDispatcher) {
+                animateButtonClick(btnStartChat)
                 switchToChatAsync()
             }
         }
 
-        btnMaybeLater.setOnClickListener { hideWelcomeMessage() }
-        btnCloseWelcome.setOnClickListener { hideWelcomeMessage() }
+        btnMaybeLater.setOnClickListener {
+            lifecycleScope.launch(uiDispatcher) {
+                animateButtonClick(btnMaybeLater)
+                hideWelcomeMessage()
+            }
+        }
+
+        btnCloseWelcome.setOnClickListener {
+            lifecycleScope.launch(uiDispatcher) {
+                animateButtonClick(btnCloseWelcome)
+                hideWelcomeMessage()
+            }
+        }
+    }
+
+    /**
+     * Анимация нажатия кнопки
+     */
+    private suspend fun animateButtonClick(view: View) = withContext(uiDispatcher) {
+        try {
+            val scaleDown = ObjectAnimator.ofPropertyValuesHolder(
+                view,
+                PropertyValuesHolder.ofFloat("scaleX", 0.95f),
+                PropertyValuesHolder.ofFloat("scaleY", 0.95f)
+            ).apply {
+                duration = 100
+            }
+
+            val scaleUp = ObjectAnimator.ofPropertyValuesHolder(
+                view,
+                PropertyValuesHolder.ofFloat("scaleX", 1f),
+                PropertyValuesHolder.ofFloat("scaleY", 1f)
+            ).apply {
+                duration = 100
+            }
+
+            scaleDown.start()
+            scaleDown.doOnEnd {
+                scaleUp.start()
+            }
+
+            // Ждем завершения анимации
+            delay(200)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error animating button click", e)
+        }
+    }
+
+    /**
+     * Анимация нажатия кнопки
+     */
+    private fun animateButtonClick(view: View, action: () -> Unit) {
+        val scaleDown = ObjectAnimator.ofPropertyValuesHolder(
+            view,
+            PropertyValuesHolder.ofFloat("scaleX", 0.95f),
+            PropertyValuesHolder.ofFloat("scaleY", 0.95f)
+        ).apply {
+            duration = 100
+        }
+
+        val scaleUp = ObjectAnimator.ofPropertyValuesHolder(
+            view,
+            PropertyValuesHolder.ofFloat("scaleX", 1f),
+            PropertyValuesHolder.ofFloat("scaleY", 1f)
+        ).apply {
+            duration = 100
+        }
+
+        scaleDown.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) {
+                scaleUp.start()
+                action()
+            }
+        })
+
+        scaleDown.start()
     }
 
     /**
@@ -284,7 +465,7 @@ class MainActivity : AppCompatActivity() {
                 binding.bottomNavigation.selectedItemId = R.id.nav_home
                 currentFragmentTag = HOME_FRAGMENT_TAG
             } else {
-
+                // Фрагмент уже существует
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error loading initial fragment", e)
@@ -395,7 +576,7 @@ class MainActivity : AppCompatActivity() {
                 setupToolbar()
                 setupBottomNavigation()
 
-                // Запускаем поэтапное приветствие с задержками
+                // Запускаем AI-улучшенное поэтапное приветствие
                 startStagedWelcomeSequence()
 
                 // Проверка разрешений после загрузки UI
@@ -447,7 +628,6 @@ class MainActivity : AppCompatActivity() {
     private suspend fun loadAdditionalData() = withContext(ioDispatcher) {
         try {
             // Дополнительные данные которые не критичны для запуска
-            // Можно добавить здесь загрузку кэша, аналитику и т.д.
         } catch (e: Exception) {
             Log.e(TAG, "Error loading additional data", e)
         }
@@ -461,17 +641,973 @@ class MainActivity : AppCompatActivity() {
             val userName = getUserName()
             val greeting = getTimeBasedGreeting()
             tvWelcomeTitle.text = "$greeting, $userName!"
-            tvWelcomeQuestion.text = "Формирую вопрос на основе ваших интересов..."
-            tvWelcomeContext.text = "Анализирую наши предыдущие обсуждения..."
-            welcomeCard.visibility = View.VISIBLE
-            Log.d(TAG, "Instant basic greeting shown")
+
+            // Сбрасываем состояния
+            resetWelcomeCardState()
+
+            // Запускаем анимацию появления
+            startWelcomeCardEntranceAnimation()
+
+            Log.d(TAG, "Instant basic greeting shown with animation")
         } catch (e: Exception) {
             Log.e(TAG, "Error showing instant greeting", e)
         }
     }
 
+    private fun showPopupMenu(view: View) {
+        try {
+            val popup = PopupMenu(this, view)
+            popup.menuInflater.inflate(R.menu.main_menu, popup.menu)
+
+            popup.setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    R.id.menu_profile -> {
+                        try {
+                            startActivity(Intent(this, ProfileActivity::class.java))
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error starting ProfileActivity", e)
+                        }
+                        true
+                    }
+                    R.id.menu_questionnaire -> {
+                        startUserQuestionnaireActivity()
+                        true
+                    }
+                    R.id.menu_mozgi -> {
+                        try {
+                            startActivity(Intent(this, CategoriesActivity::class.java))
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error starting CategoriesActivity", e)
+                        }
+                        true
+                    }
+                    R.id.menu_alarm -> {
+                        try {
+                            startActivity(Intent(this, AlarmActivity::class.java))
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error starting AlarmActivity", e)
+                        }
+                        true
+                    }
+                    // ДОБАВЬТЕ ЭТОТ КЕЙС ДЛЯ ЛОТЕРЕИ
+                    R.id.menu_lottery -> {
+                        try {
+                            switchToLotteryFragment()
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error switching to lottery fragment", e)
+                            Toast.makeText(this, "Ошибка открытия лотереи", Toast.LENGTH_SHORT).show()
+                        }
+                        true
+                    }
+                    R.id.menu_logout -> {
+                        logoutUser()
+                        true
+                    }
+                    else -> false
+                }
+            }
+            popup.show()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing popup menu", e)
+        }
+    }
+
     /**
-     * Запускает поэтапное отображение приветствия с задержками (ОПТИМИЗИРОВАННАЯ версия)
+     * Переключается на фрагмент лотереи
+     */
+    private fun switchToLotteryFragment() {
+        lifecycleScope.launch(uiDispatcher) {
+            try {
+                if (::welcomeCard.isInitialized && welcomeCard.visibility == View.VISIBLE) {
+                    hideWelcomeMessage()
+                }
+
+                safeSwitchToFragment(LOTTERY_FRAGMENT_TAG) {
+                    com.example.chatapp.loterey.SimpleLotteryFragment()
+                }
+
+                binding.bottomNavigation.selectedItemId = -1
+
+                Log.d(TAG, "Switched to lottery fragment")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error switching to lottery fragment", e)
+                Toast.makeText(this@MainActivity, "Ошибка открытия лотереи", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /**
+     * Сброс состояния карточки
+     */
+    private fun resetWelcomeCardState() {
+        welcomeCard.visibility = View.VISIBLE
+        welcomeCard.alpha = 0f
+        welcomeCard.scaleX = 0.9f
+        welcomeCard.scaleY = 0.9f
+        welcomeCard.translationY = -50f
+
+        progressWelcome.visibility = View.VISIBLE
+        progressWelcome.progress = 0
+
+        welcomeContent.visibility = View.GONE
+        welcomeContent.alpha = 0f
+    }
+
+    /**
+     * Анимация появления карточки
+     */
+    private fun startWelcomeCardEntranceAnimation() {
+        val entranceAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 600
+            interpolator = OvershootInterpolator(0.8f)
+
+            addUpdateListener { animation ->
+                val progress = animation.animatedValue as Float
+                welcomeCard.alpha = progress
+                welcomeCard.scaleX = 0.9f + 0.1f * progress
+                welcomeCard.scaleY = 0.9f + 0.1f * progress
+                welcomeCard.translationY = -50f * (1 - progress)
+            }
+
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    startContentLoadingSequence()
+                }
+            })
+        }
+
+        entranceAnimator.start()
+    }
+
+    /**
+     * Последовательность загрузки контента
+     */
+    private fun startContentLoadingSequence() {
+        // Анимация прогресс-бара
+        val progressAnimator = ValueAnimator.ofInt(0, 100).apply {
+            duration = 1500
+            interpolator = AccelerateDecelerateInterpolator()
+
+            addUpdateListener { animation ->
+                progressWelcome.progress = animation.animatedValue as Int
+            }
+
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    showWelcomeContent()
+                }
+            })
+        }
+
+        progressAnimator.start()
+    }
+
+    /**
+     * Показ контента с анимацией
+     */
+    private fun showWelcomeContent() {
+        welcomeContent.visibility = View.VISIBLE
+
+        val contentAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 400
+            interpolator = DecelerateInterpolator()
+
+            addUpdateListener { animation ->
+                val progress = animation.animatedValue as Float
+                welcomeContent.alpha = progress
+                welcomeContent.translationY = 20f * (1 - progress)
+            }
+
+            addListener(object : AnimatorListenerAdapter() {
+                override fun onAnimationEnd(animation: Animator) {
+                    progressWelcome.visibility = View.GONE
+                }
+            })
+        }
+
+        contentAnimator.start()
+    }
+
+    /**
+     * Анимация изменения текста
+     */
+    private fun animateTextChange(textView: TextView, newText: String) {
+        val fadeOut = ObjectAnimator.ofFloat(textView, "alpha", 1f, 0f).apply {
+            duration = 150
+        }
+
+        val fadeIn = ObjectAnimator.ofFloat(textView, "alpha", 0f, 1f).apply {
+            duration = 150
+        }
+
+        fadeOut.addListener(object : AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: Animator) {
+                textView.text = newText
+                fadeIn.start()
+            }
+        })
+
+        fadeOut.start()
+    }
+
+
+
+    /**
+     * Асинхронное сохранение сгенерированной фразы для чата
+     */
+    private fun saveCompleteWelcomePhraseForChatAsync(continuationPhrase: String? = null) {
+        lifecycleScope.launch(initDispatcher) {
+            try {
+                // Берем либо переданную фразу, либо текущую из TextView
+                val phraseToSave = continuationPhrase ?: tvWelcomeContext.text.toString()
+
+                // Проверяем, что это не начальная заглушка
+                if (phraseToSave != "Анализирую наши предыдущие обсуждения..." &&
+                    phraseToSave != "Формирую вопрос на основе ваших интересов...") {
+
+                    // Очищаем предыдущие сохраненные фразы
+                    val sharedPref = getSharedPreferences("chat_prefs", MODE_PRIVATE)
+                    sharedPref.edit()
+                        .remove("complete_welcome_phrase")
+                        .remove("welcome_phrase")
+                        .putString("continuation_phrase", phraseToSave)
+                        .apply()
+
+                    Log.d(TAG, "Generated continuation phrase saved for chat: $phraseToSave")
+                } else {
+                    Log.w(TAG, "Skipping save - placeholder text detected: $phraseToSave")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error saving continuation phrase", e)
+            }
+        }
+    }
+
+    /**
+     * Асинхронный переход к чату (использует сгенерированную фразу)
+     */
+    private suspend fun switchToChatAsync() = withContext(uiDispatcher) {
+        Log.d(TAG, "Start chat clicked")
+        hideWelcomeMessage()
+        saveLastChatTime()
+
+        // Берем сохраненную сгенерированную фразу
+        val continuationPhrase = withContext(ioDispatcher) {
+            val sharedPref = getSharedPreferences("chat_prefs", MODE_PRIVATE)
+            sharedPref.getString("continuation_phrase", null)
+        }
+
+        // Если есть сгенерированная фраза - используем ее, иначе fallback
+        val finalPhrase = if (!continuationPhrase.isNullOrEmpty() &&
+            continuationPhrase != "Анализирую наши предыдущие обсуждения...") {
+            continuationPhrase
+        } else {
+            // Fallback: генерируем простую фразу на основе времени
+            generateTimeBasedGreetingFallback()
+        }
+
+        // Сохраняем фразу для чата
+        saveWelcomePhraseForChat(finalPhrase)
+        safeSwitchToFragment(CHAT_FRAGMENT_TAG) { ChatWithGigaFragment() }
+        binding.bottomNavigation.selectedItemId = R.id.nav_gigachat
+
+        Log.d(TAG, "Switching to chat with phrase: $finalPhrase")
+    }
+
+    /**
+     * Генерирует fallback-фразу на основе времени суток
+     */
+    private fun generateTimeBasedGreetingFallback(): String {
+        val calendar = Calendar.getInstance()
+        val hour = calendar.get(Calendar.HOUR_OF_DAY)
+
+        return when (hour) {
+            in 5..11 -> "Доброе утро! Чем могу помочь?"
+            in 12..17 -> "Добрый день! Как ваши дела?"
+            in 18..23 -> "Добрый вечер! Что хотите обсудить?"
+            else -> "Привет! Чем могу быть полезен?"
+        }
+    }
+
+    /**
+     * AI анализ истории чата для генерации контекстного продолжения
+     */
+    private suspend fun analyzeChatHistoryWithAI(): String? = withContext(ioDispatcher) {
+        val startTime = System.currentTimeMillis()
+
+        return@withContext try {
+            Log.d(TAG, "Starting AI analysis of chat history...")
+
+            // Загружаем последние сообщения
+            val recentMessages = loadRecentChatHistoryForAI()
+            if (recentMessages.isEmpty()) {
+                Log.d(TAG, "No recent messages for AI analysis")
+                return@withContext null
+            }
+
+            Log.d(TAG, "Found ${recentMessages.size} messages for AI analysis")
+
+            // Получаем токен для API
+            val token = getAuthTokenForAnalysis()
+            if (token.isEmpty()) {
+                Log.w(TAG, "No auth token for AI analysis")
+                return@withContext null
+            }
+
+            // Формируем промпт для анализа
+            val analysisPrompt = buildAnalysisPrompt(recentMessages)
+
+            // Отправляем запрос к API с таймаутом
+            val continuation = withTimeout(5000L) {
+                sendAnalysisRequest(token, analysisPrompt)
+            }
+
+            logAIAnalysisPerformance(startTime, true, recentMessages.size)
+            Log.d(TAG, "AI analysis completed: ${continuation?.take(50)}...")
+            continuation
+
+        } catch (e: TimeoutCancellationException) {
+            Log.w(TAG, "AI analysis timeout")
+            logAIAnalysisPerformance(startTime, false, 0)
+            null
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in AI chat history analysis", e)
+            logAIAnalysisPerformance(startTime, false, 0)
+            null
+        }
+    }
+
+    /**
+     * Загружает историю чата для AI анализа (последние 6 сообщений)
+     */
+    private suspend fun loadRecentChatHistoryForAI(): List<String> = withContext(ioDispatcher) {
+        return@withContext try {
+            val sharedPref = getSharedPreferences("chat_history", MODE_PRIVATE)
+            val historyJson = sharedPref.getString("recent_messages", "[]")
+            val messages = Gson().fromJson(historyJson, Array<String>::class.java).toList()
+
+            // Берем последние 6 сообщений и фильтруем короткие/незначимые
+            messages.takeLast(6).filter { message ->
+                message.length > 5 &&
+                        !message.contains("привет", ignoreCase = true) &&
+                        !message.contains("пока", ignoreCase = true) &&
+                        !message.contains("спасибо", ignoreCase = true) &&
+                        !message.contains("ок", ignoreCase = true) &&
+                        !message.contains("хорошо", ignoreCase = true)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading chat history for AI", e)
+            emptyList()
+        }
+    }
+
+    /**
+     * Строит детальный промпт для анализа истории чата
+     */
+    private fun buildAnalysisPrompt(messages: List<String>): String {
+        val conversationHistory = formatConversationHistory(messages)
+        val lastUserMessage = findLastUserMessage(messages)
+        val mainTopics = extractMainTopics(messages)
+
+        return """
+        # ЗАДАЧА: Сгенерируй ЕСТЕСТВЕННОЕ продолжение диалога
+        
+        ## КОНТЕКСТ:
+        Ты - персональный ассистент, который хорошо знает пользователя. 
+        Ты анализируешь историю общения, чтобы предложить релевантное продолжение.
+        
+        ## ИСТОРИЯ ДИАЛОГА (последние сообщения):
+        $conversationHistory
+        
+        ## АНАЛИЗ КОНТЕКСТА:
+        - Основные темы: ${mainTopics.take(3).joinToString(", ")}
+        - Последнее сообщение пользователя: "${lastUserMessage?.take(100)}"
+        - Количество сообщений в истории: ${messages.size}
+        
+        ## ТРЕБОВАНИЯ К ОТВЕТУ:
+        1. **Формат**: Только ОДНА законченная фраза
+        2. **Стиль**: Дружелюбный, естественный, вовлеченный
+        3. **Фокус**: Продолжай существующие темы, не вводи новые
+        4. **Длина**: 10-25 слов, читабельно и естественно
+        5. **Тон**: Поддерживающий, проявляющий интерес
+        
+        ## СТРАТЕГИИ ПРОДОЛЖЕНИЯ:
+        ${getContinuationStrategies(mainTopics, lastUserMessage)}
+        
+        ## ПРИМЕРЫ ХОРОШИХ ПРОДОЛЖЕНИЙ:
+        - "Как продвигается тот проект, о котором ты рассказывал? Есть новости?"
+        - "Ты упоминал, что хотел попробовать новое хобби - удалось начать?"
+        - "Насчет твоей идеи по работе - получилось ее обсудить с коллегами?"
+        - "Как самочувствие после тех занятий спортом? Удалось восстановиться?"
+        - "Ты рассказывал о планах на выходные - как они прошли?"
+        
+        ## ЧТО НЕ ДЕЛАТЬ:
+        ❌ Не предлагай новые случайные темы
+        ❌ Не задавай общих вопросов ("Как дела?")
+        ❌ Не используй маркеры списков или нумерацию
+        ❌ Не пиши слишком длинные или сложные фразы
+        ❌ Не повторяй дословно предыдущие сообщения
+        
+        ## ФИНАЛЬНАЯ ФРАЗА ПРОДОЛЖЕНИЯ:
+    """.trimIndent()
+    }
+
+    /**
+     * Форматирует историю диалога для лучшей читаемости
+     */
+    private fun formatConversationHistory(messages: List<String>): String {
+        return messages.mapIndexed { index, message ->
+            val speaker = if (index % 2 == 0) "👤 ПОЛЬЗОВАТЕЛЬ" else "🤖 АССИСТЕНТ"
+            val shortenedMessage = if (message.length > 150) {
+                message.take(147) + "..."
+            } else {
+                message
+            }
+            "$speaker: $shortenedMessage"
+        }.joinToString("\n")
+    }
+
+    /**
+     * Находит последнее сообщение пользователя
+     */
+    private fun findLastUserMessage(messages: List<String>): String? {
+        return messages.withIndex()
+            .filter { it.index % 2 == 0 } // Сообщения пользователя (четные индексы)
+            .lastOrNull()
+            ?.value
+    }
+
+    /**
+     * Извлекает основные темы из истории
+     */
+    private fun extractMainTopics(messages: List<String>): List<String> {
+        val topicKeywords = mapOf(
+            "работа" to listOf("работа", "проект", "задача", "коллеги", "начальник", "офис", "встреча"),
+            "семья" to listOf("семья", "дети", "муж", "жена", "родители", "ребенок"),
+            "хобби" to listOf("хобби", "увлечение", "творчество", "рисование", "музыка", "спорт"),
+            "здоровье" to listOf("здоровье", "самочувствие", "врач", "болезнь", "тренировка"),
+            "путешествия" to listOf("путешествие", "отпуск", "поездка", "отель", "билеты"),
+            "планы" to listOf("план", "цель", "мечта", "будущее", "намерение"),
+            "проблемы" to listOf("проблема", "сложность", "трудность", "переживание", "стресс")
+        )
+
+        val topicScores = mutableMapOf<String, Int>()
+
+        messages.forEach { message ->
+            val lowerMessage = message.lowercase()
+            topicKeywords.forEach { (topic, keywords) ->
+                keywords.forEach { keyword ->
+                    if (lowerMessage.contains(keyword)) {
+                        topicScores[topic] = topicScores.getOrDefault(topic, 0) + 1
+                    }
+                }
+            }
+        }
+
+        return topicScores.entries
+            .sortedByDescending { it.value }
+            .take(3)
+            .map { it.key }
+    }
+
+    /**
+     * Генерирует умные стратегии продолжения на основе анализа тем и контекста
+     */
+    private fun getContinuationStrategies(mainTopics: List<String>, lastUserMessage: String?): String {
+        val strategies = mutableListOf<String>()
+
+        // Анализ тем с приоритетами
+        analyzeTopicsForStrategies(mainTopics, strategies)
+
+        // Глубокий анализ последнего сообщения пользователя
+        analyzeLastMessageForStrategies(lastUserMessage, strategies)
+
+        // Добавление контекстных стратегий
+        addContextualStrategies(strategies, mainTopics, lastUserMessage)
+
+        // Fallback стратегии если не найдено конкретных
+        if (strategies.isEmpty()) {
+            addFallbackStrategies(strategies, mainTopics)
+        }
+
+        // Ограничиваем количество стратегий для фокуса
+        return strategies.take(5).joinToString("\n")
+    }
+
+    /**
+     * Анализирует основные темы для генерации стратегий
+     */
+    private fun analyzeTopicsForStrategies(mainTopics: List<String>, strategies: MutableList<String>) {
+        if (mainTopics.isEmpty()) return
+
+        val primaryTopic = mainTopics.first()
+        val secondaryTopics = mainTopics.drop(1)
+
+        // Стратегии для основной темы
+        val primaryStrategies = listOf(
+            "• Сфокусируйся на теме '$primaryTopic' - это доминирующая тема в обсуждении",
+            "• Развивай тему '$primaryTopic' с новыми аспектами или вопросами",
+            "• Свяжи текущий разговор с предыдущими обсуждениями '$primaryTopic'",
+            "• Предложи практические советы или идеи по теме '$primaryTopic'"
+        )
+        strategies.add(primaryStrategies.random())
+
+        // Стратегии для вторичных тем если есть
+        if (secondaryTopics.isNotEmpty()) {
+            val secondaryTopic = secondaryTopics.first()
+            strategies.add("• Упомяни смежную тему '$secondaryTopic' для расширения диалога")
+        }
+
+        // Стратегия для множественных тем
+        if (mainTopics.size >= 3) {
+            strategies.add("• Найди связи между различными темами обсуждения")
+        }
+    }
+
+    /**
+     * Глубокий анализ последнего сообщения пользователя
+     */
+    private fun analyzeLastMessageForStrategies(lastUserMessage: String?, strategies: MutableList<String>) {
+        lastUserMessage?.let { message ->
+            val cleanMessage = message.trim().lowercase()
+
+            // Анализ типа сообщения
+            when {
+                // Вопросы
+                cleanMessage.contains("?") -> {
+                    strategies.addAll(listOf(
+                        "• Дай развернутый ответ на вопрос пользователя",
+                        "• Задай встречный вопрос для уточнения деталей",
+                        "• Предложи несколько вариантов ответа",
+                        "• Свяжи ответ с предыдущим контекстом обсуждения"
+                    ))
+                }
+
+                // Эмоционально окрашенные сообщения
+                cleanMessage.contains(Regex("""!( |$)|💪|🔥|🎉|👍|😊|😍|рад|рада|счастлив|круто|супер|здорово""")) -> {
+                    strategies.addAll(listOf(
+                        "• Поддержи позитивный настрой и раздели энтузиазм",
+                        "• Спроси о деталях, которые вызывают такие эмоции",
+                        "• Предложи развить успех или поделиться опытом",
+                        "• Вспомни похожие позитивные моменты из прошлых обсуждений"
+                    ))
+                }
+
+                // Проблемы и сложности
+                cleanMessage.contains(Regex("""проблем|сложн|трудн|переживаю|беспоко|волнуюсь|не могу|не получается|застрял""")) -> {
+                    strategies.addAll(listOf(
+                        "• Прояви эмпатию и предложи эмоциональную поддержку",
+                        "• Задай уточняющие вопросы для понимания корня проблемы",
+                        "• Предложи практические шаги или решения",
+                        "• Напомни о прошлых успехах в преодолении трудностей",
+                        "• Спроси, нужна ли помощь или дополнительные ресурсы"
+                    ))
+                }
+
+                // Планы и намерения
+                cleanMessage.contains(Regex("""планирую|хочу|собираюсь|мечтаю|цель|намерен|буду""")) -> {
+                    strategies.addAll(listOf(
+                        "• Прояви интерес к планам и предложи поддержку",
+                        "• Задай вопросы о деталях реализации",
+                        "• Предложи ресурсы или идеи для помощи",
+                        "• Спроси о возможных препятствиях и как их преодолеть"
+                    ))
+                }
+
+                // Достижения и успехи
+                cleanMessage.contains(Regex("""сделал|достиг|получилось|успех|справился|закончил""")) -> {
+                    strategies.addAll(listOf(
+                        "• Поздравь с достижением и признай усилия",
+                        "• Спроси о процессе и полученном опыте",
+                        "• Предложи поделиться insights с другими",
+                        "• Спроси о следующих целях или вызовах"
+                    ))
+                }
+
+                // Короткие сообщения (менее 30 символов)
+                message.length < 30 -> {
+                    strategies.addAll(listOf(
+                        "• Задай открытый вопрос для развития диалога",
+                        "• Предложи конкретные темы для обсуждения",
+                        "• Вспомни предыдущие темы, которые интересовали пользователя"
+                    ))
+                }
+
+                // Длинные, подробные сообщения
+                message.length > 100 -> {
+                    strategies.addAll(listOf(
+                        "• Выдели ключевые моменты из сообщения",
+                        "• Задай уточняющие вопросы по наиболее важным аспектам",
+                        "• Предложи углубиться в конкретные детали",
+                        "• Свяжи с предыдущими обсуждениями для контекста"
+                    ))
+                }
+            }
+
+            // Анализ конкретных тем в сообщении
+            analyzeSpecificTopicsInMessage(cleanMessage, strategies)
+        }
+    }
+
+    /**
+     * Анализирует конкретные темы в сообщении для более точных стратегий
+     */
+    private fun analyzeSpecificTopicsInMessage(message: String, strategies: MutableList<String>) {
+        val topicPatterns = mapOf(
+            "работа" to listOf(
+                "• Спроси о текущих проектах или задачах",
+                "• Предложи обсудить профессиональное развитие",
+                "• Задай вопрос о рабочей атмосфере или коллегах"
+            ),
+            "семья" to listOf(
+                "• Прояви интерес к благополучию близких",
+                "• Спроси о семейных планах или событиях",
+                "• Предложи поделиться семейными новостями"
+            ),
+            "здоровье" to listOf(
+                "• Прояви заботу о самочувствии",
+                "• Спроси о прогрессе в wellness-целях",
+                "• Предложи обсудить привычки или рутины"
+            ),
+            "хобби" to listOf(
+                "• Прояви интерес к увлечениям",
+                "• Спроси о последних достижениях в хобби",
+                "• Предложи поделиться творческими результатами"
+            ),
+            "путешествия" to listOf(
+                "• Спроси о планах или мечтах о поездках",
+                "• Предложи обсудить предыдущие путешествия",
+                "• Задай вопрос о любимых местах или культурах"
+            ),
+            "обучение" to listOf(
+                "• Прояви интерес к образовательному процессу",
+                "• Спроси о последних инсайтах или открытиях",
+                "• Предложи обсудить применение новых знаний"
+            )
+        )
+
+        topicPatterns.forEach { (topic, topicStrategies) ->
+            if (message.contains(topic)) {
+                strategies.add(topicStrategies.random())
+            }
+        }
+    }
+
+    /**
+     * Добавляет контекстные стратегии на основе комбинации тем и сообщения
+     */
+    private fun addContextualStrategies(strategies: MutableList<String>, mainTopics: List<String>, lastUserMessage: String?) {
+        // Стратегии для нового диалога
+        if (lastUserMessage == null || lastUserMessage.length < 10) {
+            strategies.addAll(listOf(
+                "• Начни с открытого вопроса о текущем состоянии или настроении",
+                "• Предложи несколько тем для обсуждения на выбор",
+                "• Вспомни предыдущие интересные темы из истории общения"
+            ))
+        }
+
+        // Стратегии для продолжения активного диалога
+        if (mainTopics.isNotEmpty() && lastUserMessage != null && lastUserMessage.length > 20) {
+            strategies.addAll(listOf(
+                "• Развивай текущую тему с новой перспективой",
+                "• Спроси о прогрессе или изменениях с прошлого обсуждения",
+                "• Предложи практическое применение обсуждаемых идей"
+            ))
+        }
+
+        // Стратегии для углубления эмоциональной связи
+        strategies.addAll(listOf(
+            "• Прояви искренний интерес к переживаниям пользователя",
+            "• Используй активное слушание в формулировках",
+            "• Предложи поддержку и понимание в сложных темах"
+        ))
+    }
+
+    /**
+     * Добавляет fallback стратегии когда недостаточно контекста
+     */
+    private fun addFallbackStrategies(strategies: MutableList<String>, mainTopics: List<String>) {
+        val fallbackStrategies = mutableListOf(
+            "• Задай открытый вопрос о текущих мыслях или переживаниях",
+            "• Предложи поделиться чем-то новым или интересным",
+            "• Спроси о планах на ближайшее время",
+            "• Прояви интерес к общему самочувствию и настроению",
+            "• Предложи обсудить тему, которая ранее интересовала пользователя"
+        )
+
+        // Добавляем тематические fallback'и если есть темы
+        if (mainTopics.isNotEmpty()) {
+            fallbackStrategies.add("• Вернись к теме '${mainTopics.first()}' и спроси о развитии ситуации")
+        }
+
+        strategies.addAll(fallbackStrategies.shuffled().take(3))
+    }
+
+    private suspend fun sendAnalysisRequest(token: String, prompt: String): String? = withContext(ioDispatcher) {
+        return@withContext try {
+            // Создаем запрос БЕЗ temperature, так как его нет в модели
+            val request = GigaChatRequest(
+                model = "GigaChat",
+                messages = listOf(Message(role = "user", content = prompt)),
+                max_tokens = 100
+                // temperature параметр удален, так как его нет в вашей модели
+            )
+
+            val call = RetrofitInstance.api.sendMessage("Bearer $token", request)
+            val response = call.execute()
+
+            if (response.isSuccessful) {
+                val content = response.body()?.choices?.firstOrNull()?.message?.content
+                content?.trim()?.takeIf { it.isNotEmpty() }
+            } else {
+                Log.w(TAG, "AI analysis API error: ${response.code()}")
+                null
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sending analysis request", e)
+            null
+        }
+    }
+
+    /**
+     * Генерирует конкретное продолжение на основе реального сообщения (ИСПРАВЛЕННАЯ версия)
+     */
+    private fun generateSpecificContinuation(lastMessage: String): String {
+        val cleanMessage = lastMessage.lowercase().trim()
+
+        return when {
+            cleanMessage.contains("работ") && cleanMessage.length > 15 ->
+                "Как продвигаются рабочие задачи? Удалось разобраться с теми вопросами?"
+
+            cleanMessage.contains("проект") && cleanMessage.length > 20 ->
+                "Как развивается проект? Есть прогресс с момента нашего последнего обсуждения?"
+
+            cleanMessage.contains("семь") || cleanMessage.contains("дет") ->
+                "Как дела у семьи? Все ли хорошо?"
+
+            cleanMessage.contains("план") || cleanMessage.contains("цел") ->
+                "Как продвигается достижение ваших целей? Удалось сделать следующие шаги?"
+
+            cleanMessage.contains("проблем") || cleanMessage.contains("сложн") ->
+                "Как обстоят дела с той ситуацией? Удалось найти решение?"
+
+            cleanMessage.contains("иде") && cleanMessage.length > 10 ->
+                "Как продвигается работа над вашей идеей? Появились новые мысли?"
+
+            cleanMessage.contains("путешеств") ->
+                "Как ваши планы на поездку? Удалось что-то организовать?"
+
+            // НОВОЕ: Проверяем, достаточно ли контекста для персонализированного продолжения
+            cleanMessage.length > 25 && hasSubstantialContent(cleanMessage) ->
+                generateEngagingContinuation(lastMessage)
+
+            else -> null.toString() // Возвращаем null вместо шаблонной фразы
+        }
+    }
+
+    /**
+     * Анализирует предыдущие диалоги для продолжения (ОКОНЧАТЕЛЬНАЯ исправленная версия)
+     */
+    private suspend fun analyzePreviousDialogsForContinuation(): String? = withContext(initDispatcher) {
+        return@withContext try {
+            // ПЕРВЫЙ ПРИОРИТЕТ: AI анализ истории чата
+            val aiContinuation = analyzeChatHistoryWithAI()
+            if (!aiContinuation.isNullOrEmpty() && !isGenericContinuation(aiContinuation)) {
+                Log.d(TAG, "Using AI-generated continuation: ${aiContinuation.take(50)}")
+                return@withContext aiContinuation
+            }
+
+            // ВТОРОЙ ПРИОРИТЕТ: Локальный анализ значимых сообщений
+            val chatHistory = loadRecentChatHistory()
+            if (chatHistory.isNotEmpty()) {
+                val lastMeaningfulMessage = findLastMeaningfulMessage(chatHistory)
+                lastMeaningfulMessage?.let { message ->
+                    val specificContinuation = generateSpecificContinuation(message)
+
+                    // ВАЖНО: Если generateSpecificContinuation вернул null,
+                    // значит сообщение не подходит для персонализации
+                    if (specificContinuation != null && !isGenericContinuation(specificContinuation)) {
+                        Log.d(TAG, "Using specific continuation: ${specificContinuation.take(50)}")
+                        return@withContext specificContinuation
+                    } else {
+                        // Используем улучшенную генерацию для вовлечения
+                        val engagingContinuation = generateEngagingContinuation(message)
+                        if (!isGenericContinuation(engagingContinuation)) {
+                            Log.d(TAG, "Using engaging continuation: ${engagingContinuation.take(50)}")
+                            return@withContext engagingContinuation
+                        }
+                    }
+                }
+            }
+
+            // ТРЕТИЙ ПРИОРИТЕТ: Анализ контекста как fallback
+            val analyzer = contextAnalyzer ?: return@withContext null
+            val deepContext = analyzer.analyzeDeepContext()
+            val contextContinuation = generateContextBasedContinuation(deepContext)
+
+            if (!isGenericContinuation(contextContinuation)) {
+                Log.d(TAG, "Using context-based continuation: ${contextContinuation.take(50)}")
+                return@withContext contextContinuation
+            }
+
+            // ЕСЛИ ВСЕ ПРОВАЛИЛОСЬ: возвращаем null, чтобы использовать естественную фразу
+            null
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error analyzing dialog for continuation", e)
+            null
+        }
+    }
+
+    /**
+     * Проверяет, является ли продолжение шаблонным/общим
+     */
+    private fun isGenericContinuation(continuation: String): Boolean {
+        val genericPatterns = listOf(
+            "последнему разговору",
+            "эту тему",
+            "об этом",
+            "про это",
+            "что вы про это думаете",
+            "хотите продолжить эту тему",
+            "возвращаясь к",
+            "помню, мы обсуждали"
+        )
+
+        val lowerContinuation = continuation.lowercase()
+        return genericPatterns.any { lowerContinuation.contains(it) }
+    }
+
+    /**
+     * Проверяет, содержит ли сообщение достаточно содержания для персонализации
+     */
+    private fun hasSubstantialContent(message: String): Boolean {
+        val trivialPhrases = listOf(
+            "привет", "пока", "спасибо", "хорошо", "ок", "понятно", "да", "нет",
+            "как дела", "что нового", "чем занят"
+        )
+
+        return !trivialPhrases.any { message.contains(it) } &&
+                message.split(" ").size > 3 // Более 3 слов
+    }
+
+    /**
+     * Получает токен для анализа
+     */
+    private suspend fun getAuthTokenForAnalysis(): String = withContext(ioDispatcher) {
+        return@withContext try {
+            suspendCoroutine { continuation ->
+                val rqUid = UUID.randomUUID().toString()
+                val authHeader = "Basic M2JhZGQ0NzktNGVjNy00ZmYyLWE4ZGQtNTMyOTViZDgzYzlkOjU4OGRkZDg1LTMzZmMtNDNkYi04MmJmLWFmZDM5Nzk5NmM2MQ=="
+
+                val call = AuthRetrofitInstance.authApi.getAuthToken(
+                    rqUid = rqUid,
+                    authHeader = authHeader,
+                    scope = "GIGACHAT_API_PERS"
+                )
+
+                call.enqueue(object : Callback<com.example.chatapp.api.AuthResponse> {
+                    override fun onResponse(
+                        call: Call<com.example.chatapp.api.AuthResponse>,
+                        response: Response<com.example.chatapp.api.AuthResponse>
+                    ) {
+                        if (response.isSuccessful) {
+                            continuation.resume(response.body()?.access_token ?: "")
+                        } else {
+                            Log.e(TAG, "Auth failed for analysis: ${response.code()}")
+                            continuation.resume("")
+                        }
+                    }
+
+                    override fun onFailure(call: Call<com.example.chatapp.api.AuthResponse>, t: Throwable) {
+                        Log.e(TAG, "Auth network error for analysis", t)
+                        continuation.resume("")
+                    }
+                })
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting auth token for analysis", e)
+            ""
+        }
+    }
+
+
+    /**
+     * Запускает AI анализ в фоне при инициализации
+     */
+    private fun startAIAnalysisBackground() {
+        aiAnalysisJob?.cancel()
+
+        aiAnalysisJob = lifecycleScope.launch(initDispatcher) {
+            try {
+                // Проверяем кэш
+                if (System.currentTimeMillis() - lastAIAnalysisTime < AI_ANALYSIS_CACHE_TIME && cachedAIContinuation != null) {
+                    Log.d(TAG, "Using cached AI analysis")
+                    return@launch
+                }
+
+                // Запускаем анализ только если есть история
+                val hasRecentMessages = withContext(ioDispatcher) {
+                    loadRecentChatHistoryForAI().isNotEmpty()
+                }
+
+                if (hasRecentMessages) {
+                    Log.d(TAG, "Starting background AI analysis...")
+                    cachedAIContinuation = analyzeChatHistoryWithAI()
+                    lastAIAnalysisTime = System.currentTimeMillis()
+                    Log.d(TAG, "Background AI analysis completed")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Background AI analysis failed", e)
+            }
+        }
+    }
+
+    /**
+     * Быстрый метод получения AI продолжения (из кэша или синхронно)
+     */
+    private suspend fun getQuickAIContinuation(): String? = withContext(initDispatcher) {
+        // Пробуем взять из кэша
+        cachedAIContinuation?.let {
+            Log.d(TAG, "Using cached AI continuation")
+            return@withContext it
+        }
+
+        // Если кэша нет, но есть сообщения - быстрый синхронный запрос с таймаутом
+        val hasMessages = withContext(ioDispatcher) {
+            loadRecentChatHistoryForAI().isNotEmpty()
+        }
+
+        if (hasMessages) {
+            try {
+                Log.d(TAG, "Making quick AI analysis request")
+                withTimeout(3000L) { // Таймаут 3 секунды
+                    analyzeChatHistoryWithAI()
+                }
+            } catch (e: TimeoutCancellationException) {
+                Log.w(TAG, "AI analysis timeout, using fallback")
+                null
+            }
+        } else {
+            null
+        }
+    }
+
+    /**
+     * Логирование AI анализа
+     */
+    private fun logAIAnalysisPerformance(startTime: Long, success: Boolean, messageCount: Int) {
+        val duration = System.currentTimeMillis() - startTime
+        Log.d(TAG, "AI Analysis - Duration: ${duration}ms, Success: $success, Messages: $messageCount")
+
+        if (duration > 2000) {
+            Log.w(TAG, "Slow AI analysis: ${duration}ms")
+        }
+    }
+
+    /**
+     * Запускает AI-улучшенное поэтапное отображение приветствия (ИСПРАВЛЕННАЯ версия)
      */
     private fun startStagedWelcomeSequence() {
         try {
@@ -481,51 +1617,91 @@ class MainActivity : AppCompatActivity() {
             }
 
             isWelcomeSequenceRunning = true
-            Log.d(TAG, "Starting OPTIMIZED staged welcome sequence")
+            Log.d(TAG, "Starting IMPROVED AI-enhanced staged welcome sequence")
 
-            // Отменяем предыдущую последовательность если есть
             welcomeSequenceJob?.cancel()
-
             welcomeSequenceJob = lifecycleScope.launch(uiDispatcher) {
                 try {
                     // 1. Мгновенно - базовое приветствие (уже показано)
                     Log.d(TAG, "Stage 1: Basic greeting already shown")
 
-                    // 2. Параллельно запускаем генерацию контекстного вопроса и анализа диалогов
+                    // 2. Параллельно запускаем генерацию вопросов и AI анализ
                     val contextQuestionDeferred = async(initDispatcher) {
                         generateContextualQuestionFromProfile()
+                    }
+
+                    val aiAnalysisDeferred = async(initDispatcher) {
+                        getQuickAIContinuation()
                     }
 
                     val dialogAnalysisDeferred = async(initDispatcher) {
                         analyzePreviousDialogsForContinuation()
                     }
 
-                    // 3. Через 1 секунду - показываем контекстный вопрос (не блокируя UI)
+                    // 3. Через 1 секунду - показываем контекстный вопрос
                     delay(WELCOME_STAGE_2_DELAY)
                     val contextQuestion = contextQuestionDeferred.await()
                     withContext(uiDispatcher) {
-                        tvWelcomeQuestion.text = contextQuestion
+                        animateTextChange(tvWelcomeQuestion, contextQuestion)
                         Log.d(TAG, "Stage 2: Context question shown: $contextQuestion")
                     }
 
-                    // 4. Через 2 секунды - показываем КОНКРЕТНЫЙ анализ диалога (не блокируя UI)
+                    // 4. Через 2 секунды - показываем AI-продолжение или fallback
                     delay(WELCOME_STAGE_3_DELAY - WELCOME_STAGE_2_DELAY)
+
+                    val aiContinuation = aiAnalysisDeferred.await()
                     val dialogAnalysis = dialogAnalysisDeferred.await()
 
                     withContext(uiDispatcher) {
-                        tvWelcomeContext.text = dialogAnalysis ?: generateNaturalContinuationPhrase()
-                        Log.d(TAG, "Stage 3: Dialog analysis shown: ${dialogAnalysis ?: "fallback"}")
-                    }
+                        // УЛУЧШЕННАЯ ЛОГИКА ПРИОРИТЕТОВ:
+                        val finalContinuation = when {
+                            // Приоритет 1: AI анализ (если не шаблонный)
+                            !aiContinuation.isNullOrEmpty() && !isGenericContinuation(aiContinuation) -> {
+                                Log.d(TAG, "Using AI continuation (priority 1)")
+                                aiContinuation
+                            }
+                            // Приоритет 2: Локальный анализ (если не шаблонный)
+                            !dialogAnalysis.isNullOrEmpty() && !isGenericContinuation(dialogAnalysis) -> {
+                                Log.d(TAG, "Using dialog analysis (priority 2)")
+                                dialogAnalysis
+                            }
+                            // Приоритет 3: Естественная фраза на основе времени
+                            else -> {
+                                Log.d(TAG, "Using time-based natural continuation (priority 3)")
+                                generateNaturalContinuationPhrase()
+                            }
+                        }
 
-                    // 5. Сохраняем полную фразу для чата (в фоне)
-                    saveCompleteWelcomePhraseForChatAsync()
+                        // ВАЖНО: Проверяем финальную фразу на шаблонность
+                        val safeContinuation = if (isGenericContinuation(finalContinuation)) {
+                            Log.w(TAG, "Final continuation was generic, using fallback")
+                            generateNaturalContinuationPhrase()
+                        } else {
+                            finalContinuation
+                        }
+
+                        animateTextChange(tvWelcomeContext, safeContinuation)
+
+                        // Сохраняем ТОЛЬКО если это не шаблонная фраза
+                        if (!isGenericContinuation(safeContinuation)) {
+                            saveCompleteWelcomePhraseForChatAsync(safeContinuation)
+                        } else {
+                            Log.w(TAG, "Skipping save - generic continuation detected")
+                        }
+
+                        Log.d(TAG, "Stage 3: Final continuation - " +
+                                "AI: ${aiContinuation?.take(30) ?: "none"}, " +
+                                "Local: ${dialogAnalysis?.take(30) ?: "none"}, " +
+                                "Final: ${safeContinuation.take(30)}")
+                    }
 
                 } catch (e: CancellationException) {
                     Log.d(TAG, "Welcome sequence cancelled")
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error in staged welcome sequence", e)
+                    Log.e(TAG, "Error in improved welcome sequence", e)
                     withContext(uiDispatcher) {
-                        showBasicWelcomeMessage()
+                        // Используем естественное fallback-приветствие
+                        showNaturalFallbackGreeting()
                     }
                 } finally {
                     isWelcomeSequenceRunning = false
@@ -533,13 +1709,23 @@ class MainActivity : AppCompatActivity() {
             }
 
         } catch (e: Exception) {
-            Log.e(TAG, "Error starting staged welcome sequence", e)
-            showBasicWelcomeMessage()
+            Log.e(TAG, "Error starting improved welcome sequence", e)
+            showNaturalFallbackGreeting()
         }
     }
 
     /**
-     * Генерирует контекстный вопрос на основе анкеты пользователя (РАЗНООБРАЗНЫЙ)
+     * Показывает естественное fallback-приветствие без шаблонов
+     */
+    private fun showNaturalFallbackGreeting() {
+        val naturalGreeting = generateNaturalContinuationPhrase()
+        tvWelcomeContext.text = naturalGreeting
+        saveCompleteWelcomePhraseForChatAsync(naturalGreeting)
+        Log.d(TAG, "Natural fallback greeting shown: $naturalGreeting")
+    }
+
+    /**
+     * Генерирует контекстный вопрос на основе анкеты пользователя
      */
     private suspend fun generateContextualQuestionFromProfile(): String = withContext(initDispatcher) {
         return@withContext try {
@@ -618,100 +1804,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-
-
-    /**
-     * Генерирует естественную фразу продолжения на основе времени
-     */
-    private fun generateTimeBasedContinuation(): String {
-        val calendar = Calendar.getInstance()
-        val hour = calendar.get(Calendar.HOUR_OF_DAY)
-        val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
-        val isWeekend = dayOfWeek == Calendar.SATURDAY || dayOfWeek == Calendar.SUNDAY
-
-        return when {
-            hour in 5..11 -> when {
-                isWeekend -> "Прекрасное утро выходного дня! Какие планы на сегодня?"
-                dayOfWeek == Calendar.MONDAY -> "Начало новой недели! Какие цели ставите перед собой?"
-                else -> "Доброе утро! Что интересного планируете на сегодня?"
-            }
-            hour in 12..17 -> when {
-                isWeekend -> "Как проходит ваш выходной день? Удалось отдохнуть?"
-                else -> "Как продвигается день? Есть что-то, что особенно радует?"
-            }
-            hour in 18..23 -> when {
-                isWeekend -> "Вечер выходных... Подводите итоги выходного? Какие моменты запомнились?"
-                else -> "Как прошел рабочий день? Хотите поделиться впечатлениями?"
-            }
-            else -> "Не спится? Хотите поболтать о чем-то интересном?"
-        }
-    }
-
-
-    /**
-     * Генерирует продолжение на основе контекста (исправленная версия)
-     */
-    private fun generateContextBasedContinuation(deepContext: DeepConversationContext): String {
-        return try {
-            // ПРИОРИТЕТ 1: Активные темы с высоким весом
-            deepContext.activeTopics
-                .filter { it.weight > 1.8 && it.name.length > 4 && !isGenericTopic(it.name) }
-                .maxByOrNull { it.weight }?.let { topic ->
-                    return when {
-                        topic.name.contains("работ", true) || topic.name.contains("проект", true) ->
-                            "Как продвигаются рабочие задачи? Есть новости по проектам?"
-
-                        topic.name.contains("семь", true) || topic.name.contains("дет", true) ->
-                            "Как дела у семьи? Все ли хорошо?"
-
-                        topic.name.contains("хобби", true) || topic.name.contains("увлечен", true) ->
-                            "Удалось позаниматься хобби? Что нового в увлечениях?"
-
-                        topic.name.contains("спорт", true) || topic.name.contains("трениров", true) ->
-                            "Как ваши тренировки? Удается придерживаться графика?"
-
-                        topic.name.contains("здоровь", true) || topic.name.contains("самочувств", true) ->
-                            "Как самочувствие? Есть улучшения?"
-
-                        topic.name.contains("план", true) || topic.name.contains("цел", true) ->
-                            "Как продвигается достижение ваших целей?"
-
-                        else -> "Давайте продолжим наш разговор о ${topic.name}... Есть что рассказать?"
-                    }
-                }
-
-            // ПРИОРИТЕТ 2: Незавершенные обсуждения
-            deepContext.pendingDiscussions.firstOrNull()?.let { discussion ->
-                return when (discussion.type) {
-                    "natural_continuation" ->
-                        "Возвращаясь к теме ${discussion.topic}... Как развивается ситуация?"
-                    "unanswered_question" ->
-                        "Хотите вернуться к вашему вопросу про ${discussion.topic}?"
-                    else -> "Давайте продолжим наши обсуждения..."
-                }
-            }
-
-            // ПРИОРИТЕТ 3: Эмоциональный контекст
-            when {
-                deepContext.emotionalState.emotionalScore > 0.7 ->
-                    return "Рад видеть ваше отличное настроение! О чем хотите поговорить сегодня?"
-                deepContext.emotionalState.emotionalScore < -0.7 ->
-                    return "Надеюсь, наша беседа поможет улучшить настроение! Что вас беспокоит?"
-                else -> {
-                    // Переходим к следующему приоритету
-                }
-            }
-
-            // ПРИОРИТЕТ 4: Временной контекст (fallback)
-            generateTimeBasedContinuation()
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error generating context based continuation", e)
-            "Рад нашей беседе! Чем могу помочь?"
-        }
-    }
-
-
     /**
      * Загружает историю чата из SharedPreferences или БД
      */
@@ -739,82 +1831,10 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private suspend fun analyzePreviousDialogsForContinuation(): String? = withContext(initDispatcher) {
-        return@withContext try {
-            val analyzer = contextAnalyzer ?: return@withContext null
 
-            // Получаем реальные сообщения из истории чата
-            val chatHistory = loadRecentChatHistory()
-            if (chatHistory.isNotEmpty()) {
-                // Берем последнюю значимую тему из реального чата
-                val lastMeaningfulMessage = findLastMeaningfulMessage(chatHistory)
-                lastMeaningfulMessage?.let { message ->
-                    // СНАЧАЛА пробуем конкретные темы
-                    val specificContinuation = generateSpecificContinuation(message)
-
-                    // Если получили общую фразу ("Возвращаясь к нашему последнему разговору...")
-                    // то используем ВОВЛЕКАЮЩУЮ фразу с реальным текстом сообщения
-                    return@withContext if (specificContinuation.contains("последнему разговору")) {
-                        generateEngagingContinuation(message.take(50)) // Берем первые 50 символов
-                    } else {
-                        specificContinuation
-                    }
-                }
-            }
-
-            // Если истории нет, используем анализ контекста как fallback
-            val deepContext = analyzer.analyzeDeepContext()
-            generateContextBasedContinuation(deepContext)
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error analyzing dialog for continuation", e)
-            null
-        }
-    }
 
     /**
-     * Генерирует конкретное продолжение на основе реального сообщения
-     */
-    private fun generateSpecificContinuation(lastMessage: String): String {
-        return when {
-            lastMessage.contains("работ", ignoreCase = true) ->
-                "Возвращаясь к нашему разговору о работе... Удалось разобраться с теми задачами?"
-
-            lastMessage.contains("проект", ignoreCase = true) ->
-                "Помню, вы рассказывали о проекте... Как продвигается? Есть новости?"
-
-            lastMessage.contains("семь", ignoreCase = true) || lastMessage.contains("дет", ignoreCase = true) ->
-                "Как дела у семьи? Все ли хорошо с теми вопросами, что мы обсуждали?"
-
-            lastMessage.contains("план", ignoreCase = true) || lastMessage.contains("цел", ignoreCase = true) ->
-                "Насчет тех планов, что вы упоминали... Удалось сделать первые шаги?"
-
-            lastMessage.contains("проблем", ignoreCase = true) || lastMessage.contains("сложн", ignoreCase = true) ->
-                "Как насчет той ситуации, что мы обсуждали? Удалось найти решение?"
-
-            lastMessage.contains("иде", ignoreCase = true) ->
-                "Помню вашу интересную идею... Продолжаете над ней работать?"
-
-            lastMessage.contains("путешеств", ignoreCase = true) ->
-                "Насчет ваших планов на поездку... Удалось что-то организовать?"
-
-            else -> "Возвращаясь к нашему последнему разговору... Хотите продолжить эту тему?"
-        }
-    }
-
-    /**
-     * Проверяет, является ли тема общей/неконкретной
-     */
-    private fun isGenericTopic(topicName: String): Boolean {
-        val genericTopics = listOf(
-            "привет", "пока", "спасибо", "да", "нет", "ок", "хорошо", "понятно",
-            "здравствуйте", "добрый", "как дела", "что нового", "чем занят"
-        )
-        return genericTopics.any { topicName.contains(it, true) }
-    }
-
-    /**
-     * Генерирует вовлекающую фразу продолжения для любых тем (РАСШИРЕННАЯ версия)
+     * Генерирует вовлекающую фразу продолжения для любых тем
      */
     private fun generateEngagingContinuation(topic: String): String {
         // Очищаем и форматируем тему
@@ -902,6 +1922,122 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Генерирует продолжение на основе контекста
+     */
+    private fun generateContextBasedContinuation(deepContext: DeepConversationContext): String {
+        return try {
+            // ПРИОРИТЕТ 1: Активные темы с высоким весом
+            deepContext.activeTopics
+                .filter { it.weight > 1.8 && it.name.length > 4 && !isGenericTopic(it.name) }
+                .maxByOrNull { it.weight }?.let { topic ->
+                    return when {
+                        topic.name.contains("работ", true) || topic.name.contains("проект", true) ->
+                            "Как продвигаются рабочие задачи? Есть новости по проектам?"
+
+                        topic.name.contains("семь", true) || topic.name.contains("дет", true) ->
+                            "Как дела у семьи? Все ли хорошо?"
+
+                        topic.name.contains("хобби", true) || topic.name.contains("увлечен", true) ->
+                            "Удалось позаниматься хобби? Что нового в увлечениях?"
+
+                        topic.name.contains("спорт", true) || topic.name.contains("трениров", true) ->
+                            "Как ваши тренировки? Удается придерживаться графика?"
+
+                        topic.name.contains("здоровь", true) || topic.name.contains("самочувств", true) ->
+                            "Как самочувствие? Есть улучшения?"
+
+                        topic.name.contains("план", true) || topic.name.contains("цел", true) ->
+                            "Как продвигается достижение ваших целей?"
+
+                        else -> "Давайте продолжим наш разговор о ${topic.name}... Есть что рассказать?"
+                    }
+                }
+
+            // ПРИОРИТЕТ 2: Незавершенные обсуждения
+            deepContext.pendingDiscussions.firstOrNull()?.let { discussion ->
+                return when (discussion.type) {
+                    "natural_continuation" ->
+                        "Возвращаясь к теме ${discussion.topic}... Как развивается ситуация?"
+                    "unanswered_question" ->
+                        "Хотите вернуться к вашему вопросу про ${discussion.topic}?"
+                    else -> "Давайте продолжим наши обсуждения..."
+                }
+            }
+
+            // ПРИОРИТЕТ 3: Эмоциональный контекст
+            when {
+                deepContext.emotionalState.emotionalScore > 0.7 ->
+                    return "Рад видеть ваше отличное настроение! О чем хотите поговорить сегодня?"
+                deepContext.emotionalState.emotionalScore < -0.7 ->
+                    return "Надеюсь, наша беседа поможет улучшить настроение! Что вас беспокоит?"
+                else -> {
+                    // Переходим к следующему приоритету
+                }
+            }
+
+            // ПРИОРИТЕТ 4: Временной контекст (fallback)
+            generateTimeBasedContinuation()
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error generating context based continuation", e)
+            "Рад нашей беседе! Чем могу помочь?"
+        }
+    }
+
+    /**
+     * Проверяет, является ли тема общей/неконкретной
+     */
+    private fun isGenericTopic(topicName: String): Boolean {
+        val genericTopics = listOf(
+            "привет", "пока", "спасибо", "да", "нет", "ок", "хорошо", "понятно",
+            "здравствуйте", "добрый", "как дела", "что нового", "чем занят"
+        )
+        return genericTopics.any { topicName.contains(it, true) }
+    }
+
+    /**
+     * Генерирует естественную фразу продолжения на основе времени
+     */
+    private fun generateTimeBasedContinuation(): String {
+        val calendar = Calendar.getInstance()
+        val hour = calendar.get(Calendar.HOUR_OF_DAY)
+        val dayOfWeek = calendar.get(Calendar.DAY_OF_WEEK)
+        val isWeekend = dayOfWeek == Calendar.SATURDAY || dayOfWeek == Calendar.SUNDAY
+
+        return when {
+            hour in 5..11 -> when {
+                isWeekend -> "Прекрасное утро выходного дня! Какие планы на сегодня?"
+                dayOfWeek == Calendar.MONDAY -> "Начало новой недели! Какие цели ставите перед собой?"
+                else -> "Доброе утро! Что интересного планируете на сегодня?"
+            }
+            hour in 12..17 -> when {
+                isWeekend -> "Как проходит ваш выходной день? Удалось отдохнуть?"
+                else -> "Как продвигается день? Есть что-то, что особенно радует?"
+            }
+            hour in 18..23 -> when {
+                isWeekend -> "Вечер выходных... Подводите итоги выходного? Какие моменты запомнились?"
+                else -> "Как прошел рабочий день? Хотите поделиться впечатлениями?"
+            }
+            else -> "Не спится? Хотите поболтать о чем-то интересном?"
+        }
+    }
+
+    /**
+     * Генерирует естественную фразу продолжения если анализ не дал результатов
+     */
+    private fun generateNaturalContinuationPhrase(): String {
+        val phrases = listOf(
+            "Что бы вы хотели обсудить сегодня?",
+            "Есть что-то, что вас особенно интересует в последнее время?",
+            "Чем увлекаетесь в эти дни?",
+            "Что нового и интересного произошло?",
+            "О чем думаете в последнее время?",
+            "Какие темы вас сейчас волнуют?",
+            "Чем могу помочь или что обсудить?"
+        )
+        return phrases.random()
+    }
 
     /**
      * Асинхронное сохранение ТОЛЬКО третьей фразы для чата
@@ -929,76 +2065,6 @@ class MainActivity : AppCompatActivity() {
 
 
 
-    /**
-     * Определяет тип темы для более релевантного продолжения
-     */
-    private fun detectTopicType(topic: String): TopicType {
-        val lowerTopic = topic.lowercase()
-
-        return when {
-            lowerTopic.contains("проблем") || lowerTopic.contains("сложност") ||
-                    lowerTopic.contains("трудност") || lowerTopic.contains("затруднен") -> TopicType.PROBLEM
-
-            lowerTopic.contains("иде") || lowerTopic.contains("замысел") ||
-                    lowerTopic.contains("предложен") || lowerTopic.contains("проект") -> TopicType.IDEA
-
-            lowerTopic.contains("план") || lowerTopic.contains("намерен") ||
-                    lowerTopic.contains("собираюсь") || lowerTopic.contains("собираетесь") -> TopicType.PLAN
-
-            lowerTopic.contains("опыт") || lowerTopic.contains("впечатлен") ||
-                    lowerTopic.contains("чувств") || lowerTopic.contains("ощущен") -> TopicType.EXPERIENCE
-
-            else -> TopicType.GENERAL
-        }
-    }
-
-    /**
-     * Типы тем для умного подбора фраз
-     */
-    private enum class TopicType {
-        PROBLEM, IDEA, PLAN, EXPERIENCE, GENERAL
-    }
-
-
-
-    /**
-     * Асинхронный переход к чату (использует ТОЛЬКО третью фразу)
-     */
-    private suspend fun switchToChatAsync() = withContext(uiDispatcher) {
-        Log.d(TAG, "Start chat clicked")
-        hideWelcomeMessage()
-        saveLastChatTime()
-
-        // Берем ТОЛЬКО сохраненную фразу продолжения
-        val continuationPhrase = withContext(ioDispatcher) {
-            val sharedPref = getSharedPreferences("chat_prefs", MODE_PRIVATE)
-            sharedPref.getString("continuation_phrase", "Рад нашей беседе! Чем могу помочь?")
-        }
-
-        // Сохраняем ТОЛЬКО фразу продолжения для чата
-        saveWelcomePhraseForChat(continuationPhrase ?: "Рад нашей беседе! Чем могу помочь?")
-        safeSwitchToFragment(CHAT_FRAGMENT_TAG) { ChatWithGigaFragment() }
-        binding.bottomNavigation.selectedItemId = R.id.nav_gigachat
-    }
-
-    /**
-     * Генерирует естественную фразу продолжения если анализ не дал результатов
-     */
-    private fun generateNaturalContinuationPhrase(): String {
-        val phrases = listOf(
-            "Что бы вы хотели обсудить сегодня?",
-            "Есть что-то, что вас особенно интересует в последнее время?",
-            "Чем увлекаетесь в эти дни?",
-            "Что нового и интересного произошло?",
-            "О чем думаете в последнее время?",
-            "Какие темы вас сейчас волнуют?",
-            "Чем могу помочь или что обсудить?"
-        )
-        return phrases.random()
-    }
-
-
-
     private fun showLoadingProgress() {
         try {
             binding.welcomeCard.visibility = View.GONE
@@ -1016,6 +2082,35 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             Log.e(TAG, "Error hiding loading progress", e)
         }
+    }
+
+    /**
+     * Показывает базовое приветствие (fallback)
+     */
+    private fun showBasicWelcomeMessage() {
+        val userName = getUserName()
+        val greeting = getTimeBasedGreeting()
+        tvWelcomeTitle.text = "$greeting, $userName!"
+        tvWelcomeQuestion.text = "Чем увлекаетесь в последнее время?"
+
+        // Генерируем осмысленную фразу вместо заглушки
+        val meaningfulContinuation = generateNaturalContinuationPhrase()
+        tvWelcomeContext.text = meaningfulContinuation
+
+        // Сразу сохраняем эту фразу для чата
+        saveCompleteWelcomePhraseForChatAsync(meaningfulContinuation)
+
+        // Сбрасываем состояния и показываем без анимации
+        resetWelcomeCardState()
+        welcomeCard.visibility = View.VISIBLE
+        welcomeCard.alpha = 1f
+        welcomeCard.scaleX = 1f
+        welcomeCard.scaleY = 1f
+        welcomeCard.translationY = 0f
+
+        welcomeContent.visibility = View.VISIBLE
+        welcomeContent.alpha = 1f
+        progressWelcome.visibility = View.GONE
     }
 
     /**
@@ -1218,17 +2313,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Показывает базовое приветствие (fallback)
-     */
-    private fun showBasicWelcomeMessage() {
-        val userName = getUserName()
-        val greeting = getTimeBasedGreeting()
-        tvWelcomeTitle.text = "$greeting, $userName!"
-        tvWelcomeQuestion.text = "Чем увлекаетесь в последнее время?"
-        tvWelcomeContext.text = "Давайте продолжим наш разговор!"
-        welcomeCard.visibility = View.VISIBLE
-    }
 
     /**
      * Получение приветствия по времени суток
@@ -1288,7 +2372,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Скрытие приветственного сообщения
+     * Скрытие приветственного сообщения с анимацией
      */
     private fun hideWelcomeMessage() {
         try {
@@ -1296,10 +2380,32 @@ class MainActivity : AppCompatActivity() {
             welcomeSequenceJob?.cancel()
             isWelcomeSequenceRunning = false
 
-            welcomeCard.visibility = View.GONE
-            Log.d(TAG, "Welcome message hidden")
+            val exitAnimator = ValueAnimator.ofFloat(1f, 0f).apply {
+                duration = 300
+                interpolator = AccelerateInterpolator()
+
+                addUpdateListener { animation ->
+                    val progress = animation.animatedValue as Float
+                    welcomeCard.alpha = progress
+                    welcomeCard.scaleX = 1f - 0.1f * (1 - progress)
+                    welcomeCard.scaleY = 1f - 0.1f * (1 - progress)
+                    welcomeCard.translationY = -30f * (1 - progress)
+                }
+
+                addListener(object : AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: Animator) {
+                        welcomeCard.visibility = View.GONE
+                        resetWelcomeCardState() // Сбрасываем для следующего показа
+                    }
+                })
+            }
+
+            exitAnimator.start()
+
+            Log.d(TAG, "Welcome message hidden with animation")
         } catch (e: Exception) {
             Log.e(TAG, "Error hiding welcome message", e)
+            welcomeCard.visibility = View.GONE
         }
     }
 
@@ -1598,53 +2704,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showPopupMenu(view: View) {
-        try {
-            val popup = PopupMenu(this, view)
-            popup.menuInflater.inflate(R.menu.main_menu, popup.menu)
 
-            popup.setOnMenuItemClickListener { item ->
-                when (item.itemId) {
-                    R.id.menu_profile -> {
-                        try {
-                            startActivity(Intent(this, ProfileActivity::class.java))
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error starting ProfileActivity", e)
-                        }
-                        true
-                    }
-                    R.id.menu_questionnaire -> {
-                        startUserQuestionnaireActivity()
-                        true
-                    }
-                    R.id.menu_mozgi -> {
-                        try {
-                            startActivity(Intent(this, CategoriesActivity::class.java))
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error starting CategoriesActivity", e)
-                        }
-                        true
-                    }
-                    R.id.menu_alarm -> {
-                        try {
-                            startActivity(Intent(this, AlarmActivity::class.java))
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error starting AlarmActivity", e)
-                        }
-                        true
-                    }
-                    R.id.menu_logout -> {
-                        logoutUser()
-                        true
-                    }
-                    else -> false
-                }
-            }
-            popup.show()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error showing popup menu", e)
-        }
-    }
 
     private fun makeSystemBarsTransparent() {
         try {
@@ -2068,7 +3128,7 @@ class MainActivity : AppCompatActivity() {
 
         Log.d(TAG, "onResume: Activity становится активной")
 
-        // ОТЛОЖИТЬ тяжелые операциис
+        // ОТЛОЖИТЬ тяжелые операции
         lifecycleScope.launch(uiDispatcher) {
             resumeAppAsync()
         }
@@ -2101,7 +3161,7 @@ class MainActivity : AppCompatActivity() {
                 checkTrackingStatusAsync()
                 checkServicesState()
             } else {
-
+                // Пользователь не авторизован
             }
 
         } catch (e: Exception) {
@@ -2229,6 +3289,7 @@ class MainActivity : AppCompatActivity() {
         Log.d(TAG, "MainActivity destroyed")
         // Отменяем все корутины и задачи
         welcomeSequenceJob?.cancel()
+        aiAnalysisJob?.cancel()
         handler.removeCallbacksAndMessages(null)
         fragmentCache.clear()
         isLocationServiceStarting.set(false)
@@ -2477,7 +3538,6 @@ class MainActivity : AppCompatActivity() {
             }
         }, 50) // Небольшая задержка для стабильности
     }
-
 
     /**
      * Логирование производительности операций

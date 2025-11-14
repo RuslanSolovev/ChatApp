@@ -19,6 +19,11 @@
         android:title="Будильник"
         android:icon="@drawable/ic_alarm"/>
 
+    <!-- ДОБАВЬТЕ ЭТОТ ПУНКТ ДЛЯ ЛОТЕРЕИ -->
+    <item
+        android:id="@+id/menu_lottery"
+        android:title="🎰 Лотерея" />
+
     <item
         android:id="@+id/menu_logout"
         android:title="Выйти"/>

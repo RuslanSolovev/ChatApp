@@ -11,7 +11,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="Сообщение пользователя"
-        android:textColor="@color/white"
-        android:background="@drawable/user_message_background"
+        android:textColor="@color/alarm_text_emergency"
+        android:background="@drawable/edit_text_background"
         android:padding="12dp"/>
 </LinearLayout>

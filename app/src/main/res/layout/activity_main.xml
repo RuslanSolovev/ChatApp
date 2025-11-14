@@ -93,23 +93,30 @@
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintTop_toBottomOf="@id/toolbar">
 
-        <!-- Приветственный виджет поверх контента -->
+        <!-- Стильный приветственный виджет с современным дизайном -->
         <androidx.cardview.widget.CardView
             android:id="@+id/welcomeCard"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_margin="16dp"
+            android:layout_marginHorizontal="20dp"
+            android:layout_marginTop="12dp"
             android:layout_gravity="top"
             android:visibility="gone"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="8dp"
-            app:cardBackgroundColor="@color/white">
+            android:alpha="0"
+            android:scaleX="0.9"
+            android:scaleY="0.9"
+            android:translationY="-50dp"
+            app:cardCornerRadius="28dp"
+            app:cardElevation="16dp"
+            app:cardBackgroundColor="@color/white"
+            app:cardUseCompatPadding="true">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:padding="20dp">
+                android:padding="24dp"
+                android:background="@drawable/welcome_card_gradient">
 
                 <!-- Заголовок и кнопка закрытия -->
                 <LinearLayout
@@ -118,84 +125,129 @@
                     android:orientation="horizontal"
                     android:gravity="center_vertical">
 
+                    <!-- Аватарка в заголовке -->
+                    <ImageView
+                        android:id="@+id/ivWelcomeAvatar"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:src="@drawable/ic_default_profile"
+                        android:contentDescription="Аватар"
+                        android:layout_marginEnd="12dp"/>
+
                     <TextView
                         android:id="@+id/tvWelcomeTitle"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:text="Доброе утро!"
-                        android:textSize="18sp"
+                        android:textSize="20sp"
                         android:textStyle="bold"
-                        android:textColor="@color/black"/>
+                        android:textColor="@color/black"
+                        android:fontFamily="sans-serif-medium"/>
 
                     <ImageButton
                         android:id="@+id/btnCloseWelcome"
-                        android:layout_width="24dp"
-                        android:layout_height="24dp"
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
                         android:background="?attr/selectableItemBackgroundBorderless"
                         android:src="@drawable/ic_close"
                         android:contentDescription="Закрыть"
-                        app:tint="#666666"/>
+                        app:tint="#666666"
+                        android:layout_marginStart="8dp"/>
                 </LinearLayout>
 
-                <!-- Часть 2: Контекстный вопрос из анкеты -->
-                <TextView
-                    android:id="@+id/tvWelcomeQuestion"
+                <!-- Progress bar для индикации загрузки контента -->
+                <com.google.android.material.progressindicator.LinearProgressIndicator
+                    android:id="@+id/progressWelcome"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Формирую вопрос на основе ваших интересов..."
-                    android:textSize="14sp"
-                    android:textColor="#666666"
-                    android:layout_marginTop="8dp"
-                    android:lineSpacingExtra="2dp"/>
+                    android:layout_height="4dp"
+                    android:layout_marginTop="16dp"
+                    android:visibility="visible"
+                    app:trackColor="#E3E3E3"
+                    app:trackCornerRadius="2dp"
+                    app:indicatorColor="#4285F4"/>
 
-                <!-- Часть 3: Анализ диалога (продолжение темы) -->
-                <TextView
-                    android:id="@+id/tvWelcomeContext"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="Анализирую наши предыдущие обсуждения..."
-                    android:textSize="14sp"
-                    android:textColor="@color/black"
-                    android:textStyle="italic"
-                    android:lineSpacingExtra="2dp"
-                    android:layout_marginTop="4dp"/>
-
-                <!-- Кнопки действий -->
+                <!-- Контентная часть -->
                 <LinearLayout
+                    android:id="@+id/welcomeContent"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginTop="16px">
+                    android:orientation="vertical"
+                    android:alpha="0"
+                    android:visibility="gone">
 
-                    <Button
-                        android:id="@+id/btnStartChat"
-                        android:layout_width="0dp"
-                        android:layout_height="36dp"
-                        android:layout_weight="1"
-                        android:text="Начать диалог"
-                        android:textSize="13sp"
-                        android:background="@drawable/btn_primary_small"
-                        android:textColor="@color/white"
-                        android:layout_marginEnd="8dp"/>
-
-                    <Button
-                        android:id="@+id/btnMaybeLater"
-                        android:layout_width="0dp"
-                        android:layout_height="36dp"
-                        android:layout_weight="1"
-                        android:text="Может позже"
-                        android:textSize="13sp"
-                        android:background="@drawable/btn_outline_small"
+                    <!-- Контекстный вопрос из анкеты -->
+                    <TextView
+                        android:id="@+id/tvWelcomeQuestion"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Формирую вопрос на основе ваших интересов..."
+                        android:textSize="16sp"
                         android:textColor="#666666"
-                        android:layout_marginStart="8dp"/>
+                        android:layout_marginTop="16dp"
+                        android:lineSpacingExtra="4dp"
+                        android:fontFamily="sans-serif"/>
+
+                    <!-- Разделитель -->
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="1dp"
+                        android:background="#F0F0F0"
+                        android:layout_marginVertical="16dp"/>
+
+                    <!-- Анализ диалога (продолжение темы) -->
+                    <TextView
+                        android:id="@+id/tvWelcomeContext"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:text="Анализирую наши предыдущие обсуждения..."
+                        android:textSize="15sp"
+                        android:textColor="@color/black"
+                        android:textStyle="italic"
+                        android:lineSpacingExtra="4dp"
+                        android:fontFamily="sans-serif"/>
+
+                    <!-- Кнопки действий -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal"
+                        android:layout_marginTop="20dp"
+                        android:gravity="center_vertical">
+
+                        <Button
+                            android:id="@+id/btnStartChat"
+                            android:layout_width="0dp"
+                            android:layout_height="44dp"
+                            android:layout_weight="1"
+                            android:text="Начать диалог"
+                            android:textSize="14sp"
+                            android:background="@drawable/btn_primary_small"
+                            android:textColor="@color/white"
+                            android:layout_marginEnd="8dp"
+                            android:stateListAnimator="@null"
+                            android:elevation="0dp"/>
+
+                        <Button
+                            android:id="@+id/btnMaybeLater"
+                            android:layout_width="0dp"
+                            android:layout_height="44dp"
+                            android:layout_weight="1"
+                            android:text="Позже"
+                            android:textSize="14sp"
+                            android:background="@drawable/btn_outline_small"
+                            android:textColor="#666666"
+                            android:layout_marginStart="8dp"
+                            android:stateListAnimator="@null"
+                            android:elevation="0dp"/>
+
+                    </LinearLayout>
 
                 </LinearLayout>
 
             </LinearLayout>
 
         </androidx.cardview.widget.CardView>
-
     </FrameLayout>
 
     <!-- Полупрозрачная навигация -->

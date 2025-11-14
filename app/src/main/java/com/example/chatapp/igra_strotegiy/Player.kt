@@ -1,11 +1,9 @@
-// Player.kt
 package com.example.chatapp.igra_strotegiy
-
 
 data class Player(
     var era: Era = Era.STONE_AGE,
     var completedResearch: MutableList<String> = mutableListOf(),
-    var resources: Resource = Resource(food = 1000, water = 1000, wood = 1000),
+    var resources: Resource = Resource(food = 1000000, water = 1000000, wood = 1000000,stone = 1000000, gold = 1000000, iron = 1000000, coal = 1000000, oil = 1000000, energy = 1000000),
     var buildings: MutableList<Building> = mutableListOf(),
     var units: MutableList<GameUnit> = mutableListOf(),
     var townHallPosition: Position = Position(0, 0)

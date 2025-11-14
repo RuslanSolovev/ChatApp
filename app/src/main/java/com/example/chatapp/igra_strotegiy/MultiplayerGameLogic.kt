@@ -1,7 +1,6 @@
 package com.example.chatapp.igra_strotegiy
 
 import android.util.Log
-import com.example.chatapp.igra_strotegiy.Research.ArtificialIntelligence.multiply
 import com.example.chatapp.models.User
 import com.google.firebase.database.DatabaseReference
 import kotlinx.coroutines.tasks.await
@@ -73,10 +72,10 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
         val sharedMap = GameMap()
         val playersList = game.getSafePlayers().entries.toList()
         val positions = listOf(
-            Position(sharedMap.width / 2, sharedMap.height / 2),
             Position(1, 1),
             Position(sharedMap.width - 2, 1),
-            Position(1, sharedMap.height - 2)
+            Position(1, sharedMap.height - 2),
+            Position(sharedMap.width - 2, sharedMap.height - 2)
         )
 
         playersList.forEachIndexed { index, (uid, _) ->
@@ -114,75 +113,91 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
     }
 
     suspend fun makeTurn(gameId: String, playerUid: String, actions: List<GameAction>): Boolean {
+        Log.d("MULTIPLAYER_LOGIC", "=== MAKE TURN STARTED ===")
+        Log.d("MULTIPLAYER_LOGIC", "Game: $gameId, Player: $playerUid, Actions: ${actions.size}")
+
         val gameSnapshot = gamesRef.child(gameId).get().await()
         val game = FirebaseGameMapper.safeGetMultiplayerGame(gameSnapshot) ?: return false
-        if (game.gameState != GameState.IN_PROGRESS) return false
-        if (game.currentTurnUid != playerUid) return false
+        if (game.gameState != GameState.IN_PROGRESS) {
+            Log.d("MULTIPLAYER_LOGIC", "Game not in progress")
+            return false
+        }
+        if (game.currentTurnUid != playerUid) {
+            Log.d("MULTIPLAYER_LOGIC", "Not player's turn")
+            return false
+        }
         val player = game.getPlayer(playerUid) ?: return false
 
-        // 🔥 ОБРАБОТКА ПОДТВЕРЖДЁННОГО БОЯ
+        Log.d("MULTIPLAYER_LOGIC", "Processing ${actions.size} actions")
+
+        // 🔥 Обработка выгрузки армии из транспорта - ПЕРВОЙ!
+        for (action in actions) {
+            if (action is GameAction.UnloadArmyFromTransport) {
+                Log.d("TRANSPORT", "=== PROCESSING UNLOAD ACTION ===")
+                Log.d("TRANSPORT", "Transport: ${action.transportArmyId}, Target: (${action.targetX}, ${action.targetY})")
+
+                val transport = player.gameLogic.armies.find { it.id == action.transportArmyId }
+                if (transport != null && transport.carriedArmy != null) {
+                    Log.d("TRANSPORT", "Found transport with cargo, applying unload...")
+                    val updatedLogic = applyActions(game, player.gameLogic.deepCopy(), listOf(action))
+                    gamesRef.child(gameId).child("players").child(playerUid).child("gameLogic").setValue(updatedLogic).await()
+                    Log.d("TRANSPORT", "Unload action applied and saved to database")
+
+                    return true
+                } else {
+                    Log.d("TRANSPORT", "Transport not found or no cargo")
+                }
+            }
+        }
+
+        // 🔥 Обработка боевых действий
         for (action in actions) {
             if (action is GameAction.ConfirmArmyCombat) {
                 val army = player.gameLogic.armies.find { it.id == action.attackerArmyId } ?: continue
-
-                // Проверяем, что армия находится на соседней клетке
                 val dx = abs(army.position.x - action.targetX)
                 val dy = abs(army.position.y - action.targetY)
-                if (dx + dy != 1) {
-                    continue // Атака только с соседней клетки
-                }
+                if (dx + dy != 1) continue
 
                 if (action.isTownHallAttack) {
-                    // Атака на ратушу
                     action.defenderUid?.let { defenderUid ->
                         resolveArmyAttackOnTownHall(gameId, playerUid, army, defenderUid)
                     }
                 } else {
-                    // Атака на армию
                     action.defenderArmyId?.let { defenderArmyId ->
                         action.defenderUid?.let { defenderUid ->
                             resolveArmyCombat(gameId, playerUid, army, defenderUid, defenderArmyId)
                         }
                     }
                 }
-
-                // Помечаем армию как атаковавшую
                 army.hasMovedThisTurn = true
             }
         }
 
-        // 🔥 ПЕРЕДАЁМ game в applyActions
         val updatedLogic = applyActions(game, player.gameLogic.deepCopy(), actions)
         gamesRef.child(gameId).child("players").child(playerUid).child("gameLogic").setValue(updatedLogic).await()
 
-        // 🔥 ОБРАБОТКА MoveArmy ТОЛЬКО ДЛЯ ПЕРЕМЕЩЕНИЯ (без боя)
+        // 🔥 Обработка перемещений — откат, если клетка занята
         for (action in actions) {
             if (action is GameAction.MoveArmy) {
                 val army = updatedLogic.armies.find { it.id == action.armyId } ?: continue
                 val targetX = action.targetX
                 val targetY = action.targetY
-
-                // Проверяем, что клетка пуста
                 var isCellEmpty = true
                 for ((otherUid, otherPlayer) in game.players) {
                     if (otherUid == playerUid) continue
-                    // Проверяем вражеские армии
                     if (otherPlayer.gameLogic.armies.any {
                             it.position.x == targetX && it.position.y == targetY && it.isAlive()
                         }) {
                         isCellEmpty = false
                         break
                     }
-                    // Проверяем вражеские ратуши
                     val pos = otherPlayer.gameLogic.player.townHallPosition
                     if (pos.x == targetX && pos.y == targetY) {
                         isCellEmpty = false
                         break
                     }
                 }
-
                 if (!isCellEmpty) {
-                    // Отменяем перемещение - возвращаем армию на исходную позицию
                     val originalArmy = player.gameLogic.armies.find { it.id == action.armyId }
                     if (originalArmy != null) {
                         army.position = originalArmy.position
@@ -194,7 +209,7 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
             }
         }
 
-        // Устаревшая логика — оставляем для совместимости
+        // Старый код — совместимость с одиночным режимом (можно удалить при полном переходе на новый бой)
         val attackTownHallAction = actions.find { it is GameAction.AttackEnemyTownHall }
         if (attackTownHallAction is GameAction.AttackEnemyTownHall) {
             val targetUid = attackTownHallAction.targetPlayerUid
@@ -218,7 +233,6 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
             }
         }
 
-        // Завершение ходa → сбор ресурсов + сброс флагов армий
         if (actions.any { it is GameAction.NextTurn }) {
             val logicAfterTurn = updatedLogic.deepCopy()
             logicAfterTurn.nextTurn()
@@ -230,16 +244,213 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
         }
 
         checkWinConditions(gameId, updatedLogic, playerUid)
+
+        Log.d("MULTIPLAYER_LOGIC", "=== MAKE TURN COMPLETED ===")
         return true
     }
 
-    // 🔥 ПОЛНОСТЬЮ ОБНОВЛЁННЫЙ applyActions С ПОДДЕРЖКОЙ КОЛИЧЕСТВА ЮНИТОВ И НОВЫХ ДЕЙСТВИЙ
+    // 🔥 НОВЫЕ МЕТОДЫ ЗАГРУЗКИ И ВЫГРУЗКИ
+    fun loadArmyIntoTransport(transportArmyId: String, cargoArmyId: String, gameLogic: GameLogic): Boolean {
+        Log.d("TRANSPORT", "Loading army $cargoArmyId into transport $transportArmyId")
+
+        val transport = gameLogic.armies.find { it.id == transportArmyId } ?: return false
+        val cargo = gameLogic.armies.find { it.id == cargoArmyId } ?: return false
+
+        Log.d("TRANSPORT", "Transport: ${transport.id} at (${transport.position.x}, ${transport.position.y})")
+        Log.d("TRANSPORT", "Cargo: ${cargo.id} at (${cargo.position.x}, ${cargo.position.y})")
+
+        if (transport.units.size != 1 || transport.units.firstOrNull() !is GameUnit.TransportBarge) {
+            Log.d("TRANSPORT", "Transport is not a valid transport barge")
+            return false
+        }
+        if (cargo.isNaval()) {
+            Log.d("TRANSPORT", "Cannot load naval units into transport")
+            return false
+        }
+
+        // Проверяем, что армии на соседних клетках
+        val dx = abs(transport.position.x - cargo.position.x)
+        val dy = abs(transport.position.y - cargo.position.y)
+        if (dx + dy != 1) {
+            Log.d("TRANSPORT", "Armies are not adjacent: dx=$dx, dy=$dy")
+            return false
+        }
+
+        if (transport.carriedArmy != null) {
+            Log.d("TRANSPORT", "Transport already has cargo")
+            return false
+        }
+
+        transport.carriedArmy = cargo
+        gameLogic.armies.remove(cargo)
+
+        Log.d("TRANSPORT", "Army loaded successfully")
+        return true
+    }
+
+    fun unloadArmyFromTransport(transportArmyId: String, targetX: Int, targetY: Int, gameLogic: GameLogic): Boolean {
+        Log.d("TRANSPORT", "=== UNLOAD ARMY FROM TRANSPORT ===")
+        Log.d("TRANSPORT", "Transport: $transportArmyId, Target: ($targetX, $targetY)")
+
+        val transport = gameLogic.armies.find { it.id == transportArmyId } ?: return false
+        val cargo = transport.carriedArmy ?: return false
+
+        Log.d("TRANSPORT", "Transport at (${transport.position.x}, ${transport.position.y})")
+        Log.d("TRANSPORT", "Cargo army: ${cargo.units.size} units")
+        Log.d("TRANSPORT", "Cargo units: ${cargo.units.joinToString { it.name }}")
+
+        // 🔥 РАСШИРЕННЫЙ РАДИУС - до 3 клеток
+        val dx = abs(transport.position.x - targetX)
+        val dy = abs(transport.position.y - targetY)
+        val distance = dx + dy
+
+        Log.d("TRANSPORT", "Distance to target: $distance")
+
+        if (distance > 3) {
+            Log.d("TRANSPORT", "Target cell is too far: distance=$distance")
+            return false
+        }
+
+        // Проверяем, что целевая клетка - суша
+        val targetCellType = gameLogic.gameMap.getCellType(targetX, targetY)
+        Log.d("TRANSPORT", "Target cell type: $targetCellType")
+
+        if (targetCellType != "empty" && targetCellType != "town_hall") {
+            Log.d("TRANSPORT", "Target cell is not land: $targetCellType")
+            return false
+        }
+
+        // Проверяем, что клетка не занята другими армиями
+        var isOccupied = false
+        var occupationDetails = ""
+
+        for (army in gameLogic.armies) {
+            if (army.id != cargo.id &&
+                army.position.x == targetX &&
+                army.position.y == targetY &&
+                army.isAlive()) {
+                isOccupied = true
+                occupationDetails = "army ${army.id} with ${army.units.size} units"
+                Log.d("TRANSPORT", "Target cell occupied by $occupationDetails")
+                break
+            }
+        }
+
+        if (isOccupied) {
+            Log.d("TRANSPORT", "Target cell is occupied: $occupationDetails")
+            return false
+        }
+
+        // 🔥 ВЫГРУЖАЕМ АРМИЮ
+        Log.d("TRANSPORT", "Before unload - Total armies: ${gameLogic.armies.size}")
+        Log.d("TRANSPORT", "Cargo position before: (${cargo.position.x}, ${cargo.position.y})")
+
+        // Обновляем позицию выгружаемой армии
+        cargo.position = Position(targetX, targetY)
+
+        // Добавляем армию обратно в список армий
+        gameLogic.armies.add(cargo)
+
+        // Очищаем перевозимую армию у транспорта
+        transport.carriedArmy = null
+
+        Log.d("TRANSPORT", "After unload - Total armies: ${gameLogic.armies.size}")
+        Log.d("TRANSPORT", "Cargo position after: (${cargo.position.x}, ${cargo.position.y})")
+        Log.d("TRANSPORT", "Transport carried army after: ${transport.carriedArmy}")
+        Log.d("TRANSPORT", "Unload completed successfully!")
+
+        return true
+    }
+
     private fun applyActions(game: MultiplayerGame, gameLogic: GameLogic, actions: List<GameAction>): GameLogic {
         val updated = gameLogic.deepCopy()
 
-        // === Валидация ===
+        Log.d("APPLY_ACTIONS", "Applying ${actions.size} actions")
+
+        // === Валидация действий ===
         for (action in actions) {
             when (action) {
+                is GameAction.LoadArmyIntoTransport -> {
+                    Log.d("TRANSPORT", "Validating LoadArmyIntoTransport action")
+                    val transport = updated.armies.find { it.id == action.transportArmyId }
+                        ?: throw Exception("Транспорт не найден")
+                    val cargo = updated.armies.find { it.id == action.cargoArmyId }
+                        ?: throw Exception("Армия для загрузки не найдена")
+
+                    // 🔥 Проверка: армии на соседних клетках
+                    val dx = abs(transport.position.x - cargo.position.x)
+                    val dy = abs(transport.position.y - cargo.position.y)
+                    if (dx + dy != 1) throw Exception("Армия должна быть на соседней клетке от транспорта")
+
+                    if (cargo.isNaval()) throw Exception("Нельзя грузить корабли в корабли")
+                    if (transport.carriedArmy != null) throw Exception("Транспорт уже занят")
+                    if (transport.units.size != 1 || transport.units[0] !is GameUnit.TransportBarge) {
+                        throw Exception("Только транспортный барж может перевозить армии")
+                    }
+                    val transportCellType = updated.gameMap.getCellType(transport.position.x, transport.position.y)
+                    if (transportCellType != "sea") {
+                        throw Exception("Транспорт должен быть в море")
+                    }
+                }
+                is GameAction.UnloadArmyFromTransport -> {
+                    Log.d("TRANSPORT", "=== VALIDATING UNLOAD ACTION ===")
+                    Log.d("TRANSPORT", "Transport: ${action.transportArmyId}, Target: (${action.targetX}, ${action.targetY})")
+
+                    val transport = updated.armies.find { it.id == action.transportArmyId }
+                        ?: throw Exception("Транспорт не найден: ${action.transportArmyId}")
+                    val cargo = transport.carriedArmy
+                        ?: throw Exception("Нет армии для выгрузки в транспорте ${action.transportArmyId}")
+
+                    Log.d("TRANSPORT", "Found transport at (${transport.position.x}, ${transport.position.y}) with cargo: ${cargo.units.size} units")
+
+                    // 🔥 РАСШИРЕННЫЙ РАДИУС - до 3 клеток
+                    val dx = abs(transport.position.x - action.targetX)
+                    val dy = abs(transport.position.y - action.targetY)
+                    val distance = dx + dy
+                    if (distance > 3) {
+                        Log.d("TRANSPORT", "Target cell is too far: distance=$distance")
+                        throw Exception("Можно выгружать только в радиусе 3 клеток")
+                    }
+
+                    // Целевая клетка должна быть сушей
+                    val targetCellType = updated.gameMap.getCellType(action.targetX, action.targetY)
+                    if (targetCellType != "empty" && targetCellType != "town_hall") {
+                        Log.d("TRANSPORT", "Target cell is not land: $targetCellType")
+                        throw Exception("Можно выгружать только на сушу, а не на $targetCellType")
+                    }
+
+                    // Проверяем, что клетка не занята другими армиями
+                    var isOccupied = false
+                    for ((otherUid, otherPlayer) in game.players) {
+                        // Проверяем все армии всех игроков (кроме той, что в транспорте)
+                        if (otherPlayer.gameLogic.armies.any {
+                                it.id != cargo.id && // кроме выгружаемой армии
+                                        it.position.x == action.targetX &&
+                                        it.position.y == action.targetY &&
+                                        it.isAlive()
+                            }) {
+                            isOccupied = true
+                            Log.d("TRANSPORT", "Cell occupied by other army from player $otherUid")
+                            break
+                        }
+
+                        // Проверяем ратуши (можно выгружать только на свою ратушу)
+                        val pos = otherPlayer.gameLogic.player.townHallPosition
+                        if (pos.x == action.targetX && pos.y == action.targetY) {
+                            if (otherUid != game.currentTurnUid) {
+                                isOccupied = true
+                                Log.d("TRANSPORT", "Cell is enemy town hall from player $otherUid")
+                                break
+                            }
+                            // Своя ратуша - можно выгружать
+                            Log.d("TRANSPORT", "Cell is own town hall - valid for unloading")
+                        }
+                    }
+
+                    if (isOccupied) {
+                        throw Exception("Целевая клетка занята")
+                    }
+                }
                 is GameAction.BuildBuilding -> {
                     if (!updated.player.resources.hasEnough(action.building.buildCost, updated.player.era)) {
                         throw Exception("Недостаточно ресурсов")
@@ -248,10 +459,7 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
                 is GameAction.HireUnit -> {
                     val cost = getUnitCost(action.unit)
                     val totalCost = Resource().apply {
-                        // Умножаем стоимость на количество
-                        add(cost.copy().apply {
-                            multiply(action.quantity)
-                        })
+                        add(cost.copy().apply { multiply(action.quantity) })
                     }
                     if (!updated.player.resources.hasEnough(totalCost, updated.player.era)) {
                         throw Exception("Недостаточно ресурсов для найма ${action.quantity} ${action.unit.name}")
@@ -296,30 +504,31 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
                     val dx = abs(army.position.x - action.targetX)
                     val dy = abs(army.position.y - action.targetY)
                     if (dx + dy > 2) throw Exception("Армия может двигаться не более чем на 2 клетки")
-
-                    // 🔥 ПРОВЕРКА НА ЗАНЯТОСТЬ КЛЕТКИ - ИСПРАВЛЕННАЯ
+                    val targetCellType = updated.gameMap.getCellType(action.targetX, action.targetY)
+                    val isNaval = army.isNaval()
+                    val canMove = if (isNaval) {
+                        targetCellType == "sea"
+                    } else {
+                        targetCellType == "empty"
+                    }
+                    if (!canMove) {
+                        throw Exception("Нельзя переместиться в эту клетку: ${if (isNaval) "требуется море" else "требуется суша"}")
+                    }
                     var isCellEmpty = true
                     for ((otherUid, otherPlayer) in game.players) {
-                        // Пропускаем текущего игрока - ищем по UID из game, а не из gameLogic
-                        val currentPlayerUid = game.currentTurnUid
-                        if (otherUid == currentPlayerUid) continue
-
-                        // Проверяем вражеские армии
+                        if (otherUid == game.currentTurnUid) continue
                         if (otherPlayer.gameLogic.armies.any {
                                 it.position.x == action.targetX && it.position.y == action.targetY && it.isAlive()
                             }) {
                             isCellEmpty = false
                             break
                         }
-
-                        // Проверяем вражеские ратуши
                         val pos = otherPlayer.gameLogic.player.townHallPosition
                         if (pos.x == action.targetX && pos.y == action.targetY) {
                             isCellEmpty = false
                             break
                         }
                     }
-
                     if (!isCellEmpty) {
                         throw Exception("Клетка занята вражеской армией или ратушей! Используйте атаку.")
                     }
@@ -329,64 +538,51 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
                     val dx = abs(army.position.x - action.targetX)
                     val dy = abs(army.position.y - action.targetY)
                     if (dx + dy != 1) throw Exception("Для атаки армия должна быть на соседней клетке")
-
-                    // Проверяем, что есть цель для атаки - ИСПРАВЛЕННАЯ
                     var hasTarget = false
                     for ((otherUid, otherPlayer) in game.players) {
-                        // Пропускаем текущего игрока
-                        val currentPlayerUid = game.currentTurnUid
-                        if (otherUid == currentPlayerUid) continue
-
-                        // Вражеская армия
+                        if (otherUid == game.currentTurnUid) continue
                         if (otherPlayer.gameLogic.armies.any {
                                 it.position.x == action.targetX && it.position.y == action.targetY && it.isAlive()
                             }) {
                             hasTarget = true
                             break
                         }
-
-                        // Вражеская ратуша
                         val pos = otherPlayer.gameLogic.player.townHallPosition
                         if (pos.x == action.targetX && pos.y == action.targetY) {
                             hasTarget = true
                             break
                         }
                     }
-
                     if (!hasTarget) {
                         throw Exception("Нет цели для атаки на этой клетке")
                     }
                 }
                 is GameAction.ConfirmArmyCombat -> {
-                    // Валидация для подтвержденного боя
                     val army = updated.armies.find { it.id == action.attackerArmyId } ?: throw Exception("Армия не найдена")
                     val dx = abs(army.position.x - action.targetX)
                     val dy = abs(army.position.y - action.targetY)
                     if (dx + dy != 1) throw Exception("Для атаки армия должна быть на соседней клетке")
-
-                    // Проверяем, что есть цель для атаки
                     var hasTarget = false
                     for ((otherUid, otherPlayer) in game.players) {
                         if (otherUid == game.currentTurnUid) continue
-
                         if (action.isTownHallAttack) {
-                            // Проверяем ратушу
                             val pos = otherPlayer.gameLogic.player.townHallPosition
                             if (pos.x == action.targetX && pos.y == action.targetY) {
                                 hasTarget = true
                                 break
                             }
                         } else {
-                            // Проверяем армию
                             if (otherPlayer.gameLogic.armies.any {
-                                    it.id == action.defenderArmyId && it.position.x == action.targetX && it.position.y == action.targetY && it.isAlive()
+                                    it.id == action.defenderArmyId &&
+                                            it.position.x == action.targetX &&
+                                            it.position.y == action.targetY &&
+                                            it.isAlive()
                                 }) {
                                 hasTarget = true
                                 break
                             }
                         }
                     }
-
                     if (!hasTarget) {
                         throw Exception("Цель для атаки не найдена")
                     }
@@ -401,12 +597,38 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
             }
         }
 
-        // === Применение ===
+        // === Применение действий ===
         for (action in actions) {
             when (action) {
+                is GameAction.LoadArmyIntoTransport -> {
+                    Log.d("TRANSPORT", "Applying LoadArmyIntoTransport action")
+                    val transport = updated.armies.find { it.id == action.transportArmyId }!!
+                    val cargo = updated.armies.find { it.id == action.cargoArmyId }!!
+                    transport.carriedArmy = cargo
+                    updated.armies.remove(cargo)
+                    Log.d("TRANSPORT", "Army loaded into transport. Total armies: ${updated.armies.size}")
+                }
+                is GameAction.UnloadArmyFromTransport -> {
+                    Log.d("TRANSPORT", "=== APPLYING UNLOAD ACTION ===")
+                    Log.d("TRANSPORT", "Transport: ${action.transportArmyId}, Target: (${action.targetX}, ${action.targetY})")
+
+                    val transport = updated.armies.find { it.id == action.transportArmyId }!!
+                    val cargo = transport.carriedArmy!!
+
+                    Log.d("TRANSPORT", "Before unload - Total armies: ${updated.armies.size}")
+                    Log.d("TRANSPORT", "Cargo position before: (${cargo.position.x}, ${cargo.position.y})")
+
+                    // ВЫПОЛНЯЕМ ВЫГРУЗКУ
+                    cargo.position = Position(action.targetX, action.targetY)
+                    updated.armies.add(cargo)
+                    transport.carriedArmy = null
+
+                    Log.d("TRANSPORT", "After unload - Total armies: ${updated.armies.size}")
+                    Log.d("TRANSPORT", "Cargo position after: (${cargo.position.x}, ${cargo.position.y})")
+                    Log.d("TRANSPORT", "Unload completed successfully. Cargo army added to armies list")
+                }
                 is GameAction.BuildBuilding -> updated.buildBuildingOnMap(action.building, action.x, action.y)
                 is GameAction.HireUnit -> {
-                    // Нанимаем указанное количество юнитов
                     repeat(action.quantity) {
                         updated.hireUnit(action.unit)
                     }
@@ -430,14 +652,12 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
                     }
                 }
                 is GameAction.AttackWithArmy -> {
-                    // Атака обрабатывается в makeTurn, здесь только помечаем армию
                     val army = updated.armies.find { it.id == action.armyId }
                     if (army != null) {
                         army.hasMovedThisTurn = true
                     }
                 }
                 is GameAction.ConfirmArmyCombat -> {
-                    // Подтвержденный бой обрабатывается в makeTurn, здесь только помечаем армию
                     val army = updated.armies.find { it.id == action.attackerArmyId }
                     if (army != null) {
                         army.hasMovedThisTurn = true
@@ -449,10 +669,13 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
                 else -> {}
             }
         }
+
+        Log.d("APPLY_ACTIONS", "Actions applied successfully")
         return updated
     }
 
-    // 🔥 ИСПРАВЛЕННЫЙ БОЙ МЕЖДУ АРМИЯМИ С ПОЛНЫМ УНИЧТОЖЕНИЕМ
+
+    // 🔥 Боевая логика (без изменений из вашего кода)
     private suspend fun resolveArmyCombat(
         gameId: String,
         attackerUid: String,
@@ -464,34 +687,24 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
         val defenderLogic = FirebaseGameMapper.parseGameLogic(defenderSnapshot) ?: return
         val defenderArmy = defenderLogic.armies.find { it.id == defenderArmyId } ?: return
 
-        // 🔥 УЛУЧШЕННЫЙ РАСЧЕТ БОЯ
         val attackerPower = attackerArmy.totalAttackPower()
         val defenderPower = defenderArmy.totalAttackPower()
-
-        // Расчет эффективности атаки с учетом случайного фактора
-        val attackerEffectiveness = 0.8 + Math.random() * 0.4 // 0.8-1.2
-        val defenderEffectiveness = 0.8 + Math.random() * 0.4 // 0.8-1.2
-
+        val attackerEffectiveness = 0.8 + Math.random() * 0.4
+        val defenderEffectiveness = 0.8 + Math.random() * 0.4
         val effectiveAttackerPower = (attackerPower * attackerEffectiveness).toInt()
         val effectiveDefenderPower = (defenderPower * defenderEffectiveness).toInt()
-
-        // Расчет потерь на основе соотношения сил
         val totalPower = effectiveAttackerPower + effectiveDefenderPower
         val attackerLossRatio = if (totalPower > 0) effectiveDefenderPower.toDouble() / totalPower else 0.5
         val defenderLossRatio = if (totalPower > 0) effectiveAttackerPower.toDouble() / totalPower else 0.5
 
-        // 🔥 ПРИМЕНЯЕМ ПОТЕРИ К АРМИЯМ (МОЖЕТ ПОЛНОСТЬЮ УНИЧТОЖИТЬ)
         applyDamageToArmy(attackerArmy, attackerLossRatio)
         applyDamageToArmy(defenderArmy, defenderLossRatio)
 
-        // 🔥 УДАЛЯЕМ ПОЛНОСТЬЮ УНИЧТОЖЕННЫЕ АРМИИ ИЗ БАЗЫ ДАННЫХ
         if (attackerArmy.units.isEmpty()) {
-            // Удаляем атакующую армию из базы данных
             gamesRef.child(gameId).child("players").child(attackerUid)
                 .child("gameLogic").child("armies").child(attackerArmy.id).removeValue().await()
             Log.d("BATTLE", "Армия атакующего полностью уничтожена и удалена")
         } else {
-            // Сохраняем обновленную атакующую армию
             val attackerSnapshot = gamesRef.child(gameId).child("players").child(attackerUid).child("gameLogic").get().await()
             val attackerLogic = FirebaseGameMapper.parseGameLogic(attackerSnapshot) ?: return
             val updatedAttackerArmy = attackerLogic.armies.find { it.id == attackerArmy.id }
@@ -503,12 +716,10 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
         }
 
         if (defenderArmy.units.isEmpty()) {
-            // Удаляем защищающуюся армию из базы данных
             gamesRef.child(gameId).child("players").child(defenderUid)
                 .child("gameLogic").child("armies").child(defenderArmyId).removeValue().await()
             Log.d("BATTLE", "Армия защитника полностью уничтожена и удалена")
         } else {
-            // Сохраняем обновленную защищающуюся армию
             val updatedDefenderArmy = defenderLogic.armies.find { it.id == defenderArmyId }
             if (updatedDefenderArmy != null) {
                 updatedDefenderArmy.units.clear()
@@ -516,44 +727,23 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
             }
             gamesRef.child(gameId).child("players").child(defenderUid).child("gameLogic").setValue(defenderLogic).await()
         }
-
-        // 🔥 ПРОВЕРЯЕМ УСЛОВИЯ ПОБЕДЫ
-        if (defenderArmy.units.isEmpty() && attackerArmy.units.isNotEmpty()) {
-            Log.d("BATTLE", "Армия $attackerUid победила армию $defenderUid")
-        } else if (attackerArmy.units.isEmpty() && defenderArmy.units.isNotEmpty()) {
-            Log.d("BATTLE", "Армия $defenderUid победила армию $attackerUid")
-        } else if (attackerArmy.units.isEmpty() && defenderArmy.units.isEmpty()) {
-            Log.d("BATTLE", "Ничья - обе армии уничтожены")
-        }
     }
 
-    // 🔥 ПОЛНОСТЬЮ ПЕРЕПИСАННЫЙ МЕТОД ДЛЯ ПРИМЕНЕНИЯ УРОНА - ТЕПЕРЬ УНИЧТОЖАЕТ АРМИЮ ПОЛНОСТЬЮ
     private fun applyDamageToArmy(army: Army, lossRatio: Double) {
         if (army.units.isEmpty()) return
-
-        // 🔥 РАСЧЕТ ОБЩЕГО УРОНА БЕЗ ОГРАНИЧЕНИЙ
         val totalDamage = (army.totalHealth() * lossRatio).toInt()
         var remainingDamage = totalDamage
-
-        // Сортируем юниты по здоровью (сначала слабые)
         val sortedUnits = army.units.sortedBy { it.health }
-
         for (unit in sortedUnits) {
             if (remainingDamage <= 0) break
-
             val damageToUnit = minOf(remainingDamage, unit.health)
             unit.health -= damageToUnit
             remainingDamage -= damageToUnit
         }
-
-        // 🔥 УДАЛЯЕМ ВСЕХ МЕРТВЫХ ЮНИТОВ БЕЗ ИСКЛЮЧЕНИЙ
         army.units.removeIf { it.health <= 0 }
-
-        // 🔥 ЛОГИРУЕМ РЕЗУЛЬТАТ
         Log.d("BATTLE", "Армия после боя: ${army.units.size} выживших юнитов")
     }
 
-    // 🔥 ИСПРАВЛЕННАЯ АТАКА АРМИИ НА РАТУШУ
     private suspend fun resolveArmyAttackOnTownHall(
         gameId: String,
         attackerUid: String,
@@ -564,19 +754,12 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
         val defenderLogic = FirebaseGameMapper.parseGameLogic(defenderSnapshot) ?: return
         val townHall = defenderLogic.player.buildings.find { it is Building.TownHall && !it.isDestroyed() } as? Building.TownHall ?: return
 
-        // 🔥 УЛУЧШЕННЫЙ РАСЧЕТ АТАКИ НА РАТУШУ
         val armyPower = attackerArmy.totalAttackPower()
-
-        // Сначала атакуем защитных юнитов (если есть)
         val defendingUnits = defenderLogic.player.units.filter { it.health > 0 }
         if (defendingUnits.isNotEmpty()) {
             val unitsCombatResult = resolveUnitsCombat(attackerArmy, defendingUnits)
-
-            // Обновляем состояние защитных юнитов
             defenderLogic.player.units.clear()
             defenderLogic.player.units.addAll(unitsCombatResult.defenderSurvivedUnits)
-
-            // Если армия выжила после боя с защитниками, атакуем ратушу
             if (unitsCombatResult.attackerSurvivedUnits.isNotEmpty()) {
                 val remainingArmyPower = unitsCombatResult.attackerSurvivedUnits.sumOf { it.totalAttackPower() }
                 if (remainingArmyPower > 0) {
@@ -584,27 +767,20 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
                 }
             }
         } else {
-            // Если защитников нет — бьём по ратуше
             townHall.takeDamage(armyPower)
         }
 
-        // Обновляем состояние ратуши
         val townHallIndex = defenderLogic.player.buildings.indexOfFirst { it is Building.TownHall }
         if (townHallIndex != -1) {
             defenderLogic.player.buildings[townHallIndex] = townHall
         }
-
-        // Сохраняем изменения защитника
         gamesRef.child(gameId).child("players").child(defenderUid).child("gameLogic").setValue(defenderLogic).await()
 
-        // 🔥 ОБНОВЛЯЕМ ИЛИ УДАЛЯЕМ АТАКУЮЩУЮ АРМИЮ
         if (attackerArmy.isCompletelyDestroyed() || attackerArmy.units.isEmpty()) {
-            // Удаляем полностью уничтоженную армию
             gamesRef.child(gameId).child("players").child(attackerUid)
                 .child("gameLogic").child("armies").child(attackerArmy.id).removeValue().await()
             Log.d("BATTLE", "Атакующая армия полностью уничтожена при штурме ратуши")
         } else {
-            // Обновляем атакующую армию
             val attackerSnapshot = gamesRef.child(gameId).child("players").child(attackerUid).child("gameLogic").get().await()
             val attackerLogic = FirebaseGameMapper.parseGameLogic(attackerSnapshot) ?: return
             val updatedAttackerArmy = attackerLogic.armies.find { it.id == attackerArmy.id }
@@ -615,7 +791,6 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
             }
         }
 
-        // Проверяем уничтожение ратуши
         if (townHall.isDestroyed()) {
             gamesRef.child(gameId).child("winnerUid").setValue(attackerUid).await()
             gamesRef.child(gameId).child("gameState").setValue(GameState.FINISHED).await()
@@ -623,57 +798,40 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
         }
     }
 
-    // 🔥 ВСПОМОГАТЕЛЬНЫЙ МЕТОД ДЛЯ БОЯ АРМИИ С ЗАЩИТНЫМИ ЮНИТАМИ
-    private fun resolveUnitsCombat(attackerArmy: Army, defendingUnits: List<GameUnit>): CombatResult {
-        val result = CombatResult()
-
-        val attackerPower = attackerArmy.totalAttackPower()
-        val defenderPower = defendingUnits.sumOf { it.attackPower }
-
-        // Расчет эффективности
-        val attackerEffectiveness = 0.7 + Math.random() * 0.6 // 0.7-1.3
-        val defenderEffectiveness = 0.7 + Math.random() * 0.6 // 0.7-1.3
-
-        val effectiveAttackerPower = (attackerPower * attackerEffectiveness).toInt()
-        val effectiveDefenderPower = (defenderPower * defenderEffectiveness).toInt()
-
-        // Применяем урон
-        applyDamageToUnits(attackerArmy.units, effectiveDefenderPower)
-        applyDamageToUnits(defendingUnits.toMutableList(), effectiveAttackerPower)
-
-        // Собираем выживших
-        result.attackerSurvivedUnits.addAll(attackerArmy.units.filter { it.health > 0 }.map {
-            Army(units = mutableListOf(it), position = attackerArmy.position)
-        })
-        result.defenderSurvivedUnits.addAll(defendingUnits.filter { it.health > 0 })
-
-        return result
-    }
-
-    // 🔥 ПРИМЕНЕНИЕ УРОНА К СПИСКУ ЮНИТОВ
-    private fun applyDamageToUnits(units: MutableList<GameUnit>, totalDamage: Int) {
-        if (units.isEmpty() || totalDamage <= 0) return
-
-        var remainingDamage = totalDamage
-        val sortedUnits = units.sortedBy { it.health }
-
-        for (unit in sortedUnits) {
-            if (remainingDamage <= 0) break
-
-            val damageToUnit = minOf(remainingDamage, unit.health)
-            unit.health -= damageToUnit
-            remainingDamage -= damageToUnit
-        }
-
-        // Удаляем мертвых юнитов
-        units.removeIf { it.health <= 0 }
-    }
-
-    // 🔥 ВСПОМОГАТЕЛЬНЫЙ КЛАСС ДЛЯ РЕЗУЛЬТАТОВ БОЯ
     private data class CombatResult(
         val attackerSurvivedUnits: MutableList<Army> = mutableListOf(),
         val defenderSurvivedUnits: MutableList<GameUnit> = mutableListOf()
     )
+
+    private fun resolveUnitsCombat(attackerArmy: Army, defendingUnits: List<GameUnit>): CombatResult {
+        val result = CombatResult()
+        val attackerPower = attackerArmy.totalAttackPower()
+        val defenderPower = defendingUnits.sumOf { it.attackPower }
+        val attackerEffectiveness = 0.7 + Math.random() * 0.6
+        val defenderEffectiveness = 0.7 + Math.random() * 0.6
+        val effectiveAttackerPower = (attackerPower * attackerEffectiveness).toInt()
+        val effectiveDefenderPower = (defenderPower * defenderEffectiveness).toInt()
+        applyDamageToUnits(attackerArmy.units, effectiveDefenderPower)
+        applyDamageToUnits(defendingUnits.toMutableList(), effectiveAttackerPower)
+        result.attackerSurvivedUnits.addAll(attackerArmy.units.filter { it.health > 0 }.map {
+            Army(units = mutableListOf(it), position = attackerArmy.position)
+        })
+        result.defenderSurvivedUnits.addAll(defendingUnits.filter { it.health > 0 })
+        return result
+    }
+
+    private fun applyDamageToUnits(units: MutableList<GameUnit>, totalDamage: Int) {
+        if (units.isEmpty() || totalDamage <= 0) return
+        var remainingDamage = totalDamage
+        val sortedUnits = units.sortedBy { it.health }
+        for (unit in sortedUnits) {
+            if (remainingDamage <= 0) break
+            val damageToUnit = minOf(remainingDamage, unit.health)
+            unit.health -= damageToUnit
+            remainingDamage -= damageToUnit
+        }
+        units.removeIf { it.health <= 0 }
+    }
 
     private fun getUnitCost(unit: GameUnit): Resource {
         return when (unit) {
@@ -692,6 +850,9 @@ class MultiplayerGameLogic(private val database: DatabaseReference) {
             is GameUnit.Drone -> Resource(energy = 40, iron = 20, gold = 15)
             is GameUnit.Mech -> Resource(energy = 80, iron = 50, gold = 25)
             is GameUnit.LaserCannon -> Resource(energy = 120, iron = 30, gold = 40)
+            is GameUnit.FishingBoat -> Resource(food = 30, wood = 20, stone = 10)
+            is GameUnit.WarGalley -> Resource(food = 50, wood = 40, stone = 25, gold = 15)
+            is GameUnit.TransportBarge -> Resource(food = 40, wood = 30, stone = 15, gold = 10)
             else -> Resource()
         }
     }

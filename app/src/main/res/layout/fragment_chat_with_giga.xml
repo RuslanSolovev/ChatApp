@@ -12,7 +12,7 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:orientation="vertical"
-        android:background="@color/white"
+        android:background="@color/alarm_text"
         android:fitsSystemWindows="false">
 
         <!-- Заголовок чата - КОМПАКТНЫЙ -->
@@ -20,7 +20,7 @@
             android:layout_width="match_parent"
             android:layout_height="48dp"
             android:orientation="horizontal"
-            android:background="@color/primary_color"
+            android:background="@color/alarm_text"
             android:paddingVertical="8dp"
             android:paddingHorizontal="12dp"
             android:elevation="2dp">
@@ -32,7 +32,7 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:src="@drawable/ic_history"
                 android:contentDescription="История диалогов"
-                app:tint="@color/white"
+                app:tint="@color/alarm_text_emergency"
                 android:padding="6dp" />
 
             <TextView
@@ -40,7 +40,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:text="Чат с ассистентом"
-                android:textColor="@color/white"
+                android:textColor="@color/alarm_text_emergency"
                 android:textSize="16sp"
                 android:textStyle="bold"
                 android:gravity="center"
@@ -54,7 +54,7 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:src="@drawable/ic_close"
                 android:contentDescription="Очистить диалог"
-                app:tint="@color/white"
+                app:tint="@color/alarm_text_emergency"
                 android:padding="6dp"
                 android:layout_marginEnd="8dp" />
 
@@ -65,7 +65,7 @@
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:src="@drawable/ic_save"
                 android:contentDescription="Сохранить диалог"
-                app:tint="@color/white"
+                app:tint="@color/alarm_text_emergency"
                 android:padding="6dp" />
 
         </LinearLayout>
@@ -101,8 +101,9 @@
             android:layout_weight="1"
             android:layout_marginHorizontal="8dp"
             android:hint="Введите сообщение..."
-            android:textColorHint="@color/bg_message_right"
-            android:background="@drawable/transparent_nav_background"
+            android:textColorHint="@color/alarm_text"
+            android:background="@drawable/bg_message_bubble"
+
             android:paddingVertical="12dp"
         android:paddingHorizontal="16dp"
         android:textSize="16sp"
@@ -118,7 +119,7 @@
         android:background="?attr/selectableItemBackgroundBorderless"
         android:src="@drawable/ic_send"
         android:contentDescription="Отправить сообщение"
-        app:tint="@color/primary_color"
+        app:tint="@color/alarm_text_emergency"
         android:padding="10dp" />
 
     </LinearLayout>

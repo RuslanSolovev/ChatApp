@@ -16,6 +16,9 @@ object GameUnitTypeAdapter : JsonDeserializer<GameUnit>, JsonSerializer<GameUnit
             "MammothRider" -> context.deserialize(json, GameUnit.MammothRider::class.java)
 
             // Бронзовый век
+            "FishingBoat" -> context.deserialize(json, GameUnit.FishingBoat::class.java)
+            "WarGalley" -> context.deserialize(json, GameUnit.WarGalley::class.java)
+            "TransportBarge" -> context.deserialize(json, GameUnit.TransportBarge::class.java)
             "Swordsman" -> context.deserialize(json, GameUnit.Swordsman::class.java)
             "BronzeArcher" -> context.deserialize(json, GameUnit.BronzeArcher::class.java)
             "Chariot" -> context.deserialize(json, GameUnit.Chariot::class.java)
@@ -53,6 +56,9 @@ object GameUnitTypeAdapter : JsonDeserializer<GameUnit>, JsonSerializer<GameUnit
                     "Боевой дрон" -> context.deserialize(json, GameUnit.Drone::class.java)
                     "Боевой мех" -> context.deserialize(json, GameUnit.Mech::class.java)
                     "Лазерная пушка" -> context.deserialize(json, GameUnit.LaserCannon::class.java)
+                    "Рыболовный корабль" -> context.deserialize(json, GameUnit.FishingBoat::class.java)
+                    "Военный галеон" -> context.deserialize(json, GameUnit.WarGalley::class.java)
+                    "Транспортный барж" -> context.deserialize(json, GameUnit.TransportBarge::class.java)
                     else -> throw JsonParseException("Unknown unit name: $name")
                 }
             }

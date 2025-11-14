@@ -132,6 +132,8 @@ dependencies {
     implementation ("androidx.coordinatorlayout:coordinatorlayout:1.2.0")
     implementation ("androidx.cardview:cardview:1.0.0")
 
+    implementation ("com.journeyapps:zxing-android-embedded:4.3.0")
+
     implementation ("androidx.cardview:cardview:1.0.0")
 
     implementation ("com.squareup.picasso:picasso:2.8")

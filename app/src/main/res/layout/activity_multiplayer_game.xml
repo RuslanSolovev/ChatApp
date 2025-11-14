@@ -5,13 +5,13 @@
     android:orientation="vertical"
     android:background="#FAFAFA">
 
-    <!-- Верхняя панель: Статус слева, игроки справа -->
+    <!-- Верхняя панель: Статус и игроки -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:padding="8dp"
-        android:background="@android:color/white"
+        android:padding="12dp"
+        android:background="@drawable/bg_gradient_game"
         android:elevation="2dp">
 
         <!-- Статус игры -->
@@ -25,9 +25,10 @@
                 android:id="@+id/tvGameStatus"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Статус игры"
+                android:text="Ожидание игроков"
                 android:textSize="14sp"
                 android:textStyle="bold"
+                android:textColor="#14571A"
                 android:gravity="start" />
 
             <TextView
@@ -36,69 +37,224 @@
                 android:layout_height="wrap_content"
                 android:text="Вы: Игрок"
                 android:textSize="12sp"
+                android:textColor="#666666"
                 android:gravity="start" />
 
         </LinearLayout>
 
-        <!-- Список игроков -->
+        <!-- Игроки и эра -->
         <LinearLayout
-            android:layout_width="0dp"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
             android:orientation="vertical"
             android:gravity="end">
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Игроки:"
-                android:textSize="12sp"
-                android:textStyle="bold" />
 
             <TextView
                 android:id="@+id/tvPlayersSummary"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="2/2"
+                android:text="2/4"
                 android:textSize="12sp"
+                android:textStyle="bold"
+                android:textColor="#1976D2"
+                android:drawablePadding="4dp"
+                android:drawableStart="@drawable/bg_gradient_game" />
+
+            <TextView
+                android:id="@+id/tvPlayerEra"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Каменный век"
+                android:textSize="10sp"
+                android:textColor="#666666"
                 android:gravity="end" />
 
         </LinearLayout>
 
     </LinearLayout>
 
-    <!-- Информация: Ресурсы и юниты -->
-    <LinearLayout
+    <!-- Ресурсы и юниты - горизонтальный скролл -->
+    <HorizontalScrollView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
+        android:layout_marginTop="4dp"
         android:padding="8dp"
-        android:background="@android:color/white"
-        android:elevation="2dp"
-        android:layout_marginTop="4dp">
+        android:background="@drawable/bg_gradient_game"
+        android:elevation="1dp"
+        android:fadingEdgeLength="32dp">
 
-        <TextView
-            android:id="@+id/tvResources"
-            android:layout_width="0dp"
+        <LinearLayout
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Ресурсы: ..."
-            android:textSize="12sp"
-            android:maxLines="2"
-            android:ellipsize="end" />
+            android:orientation="horizontal">
 
-        <TextView
-            android:id="@+id/tvUnits"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Юниты: 0"
-            android:textSize="12sp"
-            android:gravity="end"
-            android:maxLines="2"
-            android:ellipsize="end" />
+            <!-- Ресурсы -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingEnd="16dp">
 
-    </LinearLayout>
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Ресурсы"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:textColor="#666666" />
+
+                <LinearLayout
+                    android:id="@+id/resourcesContainer"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="4dp">
+
+                    <!-- Все ресурсы -->
+                    <TextView
+                        android:id="@+id/tvFood"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🍎 0"
+                        android:textSize="11sp"
+                        android:paddingEnd="8dp" />
+
+                    <TextView
+                        android:id="@+id/tvWood"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🪵 0"
+                        android:textSize="11sp"
+                        android:paddingEnd="8dp" />
+
+                    <TextView
+                        android:id="@+id/tvWater"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="💧 0"
+                        android:textSize="11sp"
+                        android:paddingEnd="8dp" />
+
+                    <TextView
+                        android:id="@+id/tvStone"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="⛰️ 0"
+                        android:textSize="11sp"
+                        android:paddingEnd="8dp" />
+
+                    <TextView
+                        android:id="@+id/tvGold"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="💰 0"
+                        android:textSize="11sp"
+                        android:paddingEnd="8dp" />
+
+                    <TextView
+                        android:id="@+id/tvIron"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="⚙️ 0"
+                        android:textSize="11sp"
+                        android:paddingEnd="8dp" />
+
+                    <TextView
+                        android:id="@+id/tvCoal"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🪨 0"
+                        android:textSize="11sp"
+                        android:paddingEnd="8dp" />
+
+                    <TextView
+                        android:id="@+id/tvOil"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🛢️ 0"
+                        android:textSize="11sp"
+                        android:paddingEnd="8dp" />
+
+                    <TextView
+                        android:id="@+id/tvEnergy"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="⚡ 0"
+                        android:textSize="11sp"
+                        android:paddingEnd="8dp" />
+
+                </LinearLayout>
+            </LinearLayout>
+
+            <!-- Юниты -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:paddingStart="16dp"
+                android:paddingEnd="8dp">
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Армия"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:textColor="#666666" />
+
+                <LinearLayout
+                    android:id="@+id/unitsContainer"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginTop="4dp">
+
+                    <!-- Основные юниты -->
+                    <TextView
+                        android:id="@+id/tvCaveman"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🪓 0"
+                        android:textSize="11sp"
+                        android:paddingEnd="8dp" />
+
+                    <TextView
+                        android:id="@+id/tvHunter"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🏹 0"
+                        android:textSize="11sp"
+                        android:paddingEnd="8dp" />
+
+                    <TextView
+                        android:id="@+id/tvMammothRider"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🐘 0"
+                        android:textSize="11sp"
+                        android:paddingEnd="8dp" />
+
+                    <TextView
+                        android:id="@+id/tvSwordsman"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="⚔️ 0"
+                        android:textSize="11sp"
+                        android:paddingEnd="8dp" />
+
+                    <TextView
+                        android:id="@+id/tvArcher"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="🎯 0"
+                        android:textSize="11sp"
+                        android:paddingEnd="8dp" />
+
+                </LinearLayout>
+            </LinearLayout>
+
+        </LinearLayout>
+    </HorizontalScrollView>
 
     <!-- Карта -->
     <LinearLayout
@@ -106,15 +262,15 @@
         android:layout_height="0dp"
         android:layout_weight="1"
         android:orientation="vertical"
-        android:padding="8dp">
+        android:layout_marginTop="4dp">
 
         <HorizontalScrollView
             android:layout_width="match_parent"
             android:layout_height="0dp"
             android:layout_weight="1"
-            android:background="@android:color/white"
+            android:background="@drawable/gazon"
             android:elevation="2dp"
-            android:padding="4dp">
+            android:padding="2dp">
 
             <ScrollView
                 android:layout_width="wrap_content"
@@ -128,43 +284,46 @@
             </ScrollView>
         </HorizontalScrollView>
 
-        <!-- Управление -->
+        <!-- Компактное управление - иконки -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:layout_marginTop="8dp">
+            android:layout_marginTop="8dp"
+            android:gravity="center"
+            android:padding="4dp">
 
-            <Button
+            <!-- Кнопка построить -->
+            <ImageButton
                 android:id="@+id/btnBuild"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Построить"
-                android:backgroundTint="#2196F3"
-                android:textColor="#FFFFFF"
-                android:layout_marginEnd="4dp" />
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:src="@drawable/ic_build"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Построить"
+                android:layout_marginEnd="8dp"
+                android:padding="8dp" />
 
-            <Button
+            <!-- Кнопка завершить ход -->
+            <ImageButton
                 android:id="@+id/btnEndTurn"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Завершить ход"
-                android:backgroundTint="#4CAF50"
-                android:textColor="#FFFFFF"
-                android:layout_marginStart="4dp"
-                android:layout_marginEnd="4dp" />
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:src="@drawable/ic_end_turn"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Завершить ход"
+                android:layout_marginEnd="8dp"
+                android:padding="8dp" />
 
-            <Button
+            <!-- Кнопка покинуть игру -->
+            <ImageButton
                 android:id="@+id/btnLeaveGame"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="Покинуть"
-                android:backgroundTint="#F44336"
-                android:textColor="#FFFFFF"
-                android:layout_marginStart="4dp" />
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:src="@drawable/ic_leave"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="Покинуть игру"
+                android:padding="8dp" />
 
         </LinearLayout>
 

@@ -4,6 +4,7 @@ import com.google.firebase.database.Exclude
 import com.google.firebase.database.IgnoreExtraProperties
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
+import kotlin.math.abs
 
 @IgnoreExtraProperties
 data class GameLogic(
@@ -128,14 +129,62 @@ data class GameLogic(
         gameMap.setCellType(x, y, "town_hall")
     }
 
+    fun loadArmyIntoTransport(transportArmyId: String, cargoArmyId: String): Boolean {
+        val transport = armies.find { it.id == transportArmyId } ?: return false
+        val cargo = armies.find { it.id == cargoArmyId } ?: return false
+
+        // Проверка: транспорт — это TransportBarge
+        if (transport.units.size != 1 || transport.units[0] !is GameUnit.TransportBarge) return false
+
+        // Проверка: груз — сухопутная армия
+        if (cargo.isNaval()) return false
+
+        // 🔥 ИСПРАВЛЕНО: армия должна быть на СОСЕДНЕЙ клетке
+        val dx = abs(transport.position.x - cargo.position.x)
+        val dy = abs(transport.position.y - cargo.position.y)
+        if (dx + dy != 1) return false
+
+        // Транспорт не должен уже перевозить армию
+        if (transport.carriedArmy != null) return false
+
+        // Загружаем
+        transport.carriedArmy = cargo
+        armies.remove(cargo)
+        return true
+    }
+
+    fun unloadArmyFromTransport(transportArmyId: String): Boolean {
+        val transport = armies.find { it.id == transportArmyId } ?: return false
+        val cargo = transport.carriedArmy ?: return false
+
+        // Корабль должен быть на "море"
+        if (gameMap.getCellType(transport.position.x, transport.position.y) != "sea") {
+            return false // или разрешить на побережье?
+        }
+
+        // Ставим армию на ту же клетку
+        cargo.position = transport.position
+        armies.add(cargo)
+        transport.carriedArmy = null
+        return true
+    }
+
     fun buildBuildingOnMap(building: Building, x: Int, y: Int): Boolean {
         if (building is Building.TownHall) return false
         val cell = gameMap.getCell(x, y) ?: return false
         if (!cell.isBuildable()) return false
+
         // ИСПРАВЛЕНО: Используем values() для Map со строковыми ключами
         if (enemyPositions.values.any { it.first == x && it.second == y }) return false
         if (enemyBase?.x == x && enemyBase?.y == y) return false
         if (!player.resources.hasEnough(building.buildCost, player.era)) return false
+
+        // 🔥 ПРОВЕРКА: ВЕРФЬ ТОЛЬКО НА БЕРЕГУ
+        if (building is Building.Shipyard) {
+            if (!isCoastal(x, y)) {
+                return false // Нельзя строить верфь не на берегу
+            }
+        }
 
         // 🔥 РАЗРЕШАЕМ СТРОИТЬ НЕСКОЛЬКО РЕСУРСНЫХ ЗДАНИЙ
         val isResourceBuilding = building is Building.Hut ||
@@ -153,6 +202,7 @@ data class GameLogic(
 
         if (building !is Building.Barracks &&
             building !is Building.ResearchCenter &&
+            building !is Building.Shipyard && // ←_shipyard можно строить несколько
             !isResourceBuilding) {
             val existingBuilding = player.buildings.find { it::class == building::class }
             if (existingBuilding != null) {
@@ -167,6 +217,28 @@ data class GameLogic(
         return true
     }
 
+    @Exclude
+    fun isCoastal(x: Int, y: Int): Boolean {
+        if (gameMap.getCellType(x, y) != "empty") return false
+        for (dx in -1..1) {
+            for (dy in -1..1) {
+                if (dx == 0 && dy == 0) continue
+                val nx = x + dx
+                val ny = y + dy
+                if (nx in 0 until gameMap.width && ny in 0 until gameMap.height) {
+                    if (gameMap.getCellType(nx, ny) == "sea") return true
+                }
+            }
+        }
+        return false
+    }
+
+    fun GameUnit.isNaval(): Boolean = this is GameUnit.FishingBoat ||
+            this is GameUnit.WarGalley ||
+            this is GameUnit.TransportBarge
+
+
+
     private fun clearEnemyFromMap(x: Int, y: Int) {
         val hasOtherEnemy = enemyPositions.values.any { it.first == x && it.second == y }
         if (!hasOtherEnemy) {
@@ -179,22 +251,57 @@ data class GameLogic(
         val selectedUnits = mutableListOf<GameUnit>()
 
         for ((unitType, count) in unitCounts) {
-            val found = availableUnits
-                .filter { it.type == unitType }
-                .take(count)
+            val found = availableUnits.filter { it.type == unitType }.take(count)
             if (found.size < count) return null
             selectedUnits.addAll(found)
             availableUnits.removeAll(found)
         }
 
-        player.units = availableUnits // оставшиеся — для защиты
+        // Определяем, морская ли армия
+        val isNaval = selectedUnits.all { it.isNaval() }
 
+        // Находим стартовую позицию
+        val startPosition = if (isNaval) {
+            // Ищем ближайшую клетку "sea" рядом с ратушей или верфью
+            findNearestSeaCell(player.townHallPosition) ?: player.townHallPosition
+        } else {
+            player.townHallPosition
+        }
+
+        player.units = availableUnits
         return Army(
             id = System.currentTimeMillis().toString(),
             units = selectedUnits,
-            position = player.townHallPosition,
+            position = startPosition,
             hasMovedThisTurn = false
         )
+    }
+
+    private fun findNearestSeaCell(from: Position): Position? {
+        // Сначала ищем в радиусе 2
+        for (radius in 1..2) {
+            for (dx in -radius..radius) {
+                for (dy in -radius..radius) {
+                    if (dx * dx + dy * dy > radius * radius) continue
+                    val x = from.x + dx
+                    val y = from.y + dy
+                    if (x in 0 until gameMap.width && y in 0 until gameMap.height) {
+                        if (gameMap.getCellType(x, y) == "sea") {
+                            return Position(x, y)
+                        }
+                    }
+                }
+            }
+        }
+        // Если не нашли — ищем ЛЮБУЮ клетку моря (fallback)
+        for (y in 0 until gameMap.height) {
+            for (x in 0 until gameMap.width) {
+                if (gameMap.getCellType(x, y) == "sea") {
+                    return Position(x, y)
+                }
+            }
+        }
+        return null
     }
 
     fun returnArmyToTownHall(armyId: String): Boolean {
@@ -222,19 +329,13 @@ data class GameLogic(
             is GameUnit.Drone -> Resource(energy = 40, iron = 20, gold = 15)
             is GameUnit.Mech -> Resource(energy = 80, iron = 50, gold = 25)
             is GameUnit.LaserCannon -> Resource(energy = 120, iron = 30, gold = 40)
+            is GameUnit.FishingBoat -> Resource(food = 30, wood = 20, stone = 10)
+            is GameUnit.WarGalley -> Resource(food = 50, wood = 40, stone = 25, gold = 15)
+            is GameUnit.TransportBarge -> Resource(food = 40, wood = 30, stone = 15, gold = 10)
             else -> Resource()
         }
     }
 
-    fun hireUnit(unit: GameUnit): Boolean {
-        if (player.buildings.none { it is Building.Barracks && !it.isDestroyed() }) return false
-        val cost = getUnitCost(unit)
-        if (!player.resources.hasEnough(cost, player.era)) return false
-        player.resources.subtract(cost)
-        player.units.add(unit)
-        updatePlayerInfo()
-        return true
-    }
 
     fun upgradeBuilding(building: Building): Boolean {
         if (building.level >= 10) return false
@@ -268,6 +369,18 @@ data class GameLogic(
     fun nextTurn() {
         turnCount++
         player.collectResources()
+
+        // 🔥 СБОР ЕДЫ С РЫБОЛОВНЫХ КОРАБЛЕЙ — из армий!
+        armies.filter { army ->
+            army.units.size == 1 &&
+                    army.units[0] is GameUnit.FishingBoat &&
+                    army.isAlive()
+        }.forEach { army ->
+            if (gameMap.getCellType(army.position.x, army.position.y) == "sea") {
+                player.resources.food += 3
+            }
+        }
+
         lastAttackMessage = ""
         currentEvent = null
         updatePlayerInfo()
@@ -296,6 +409,30 @@ data class GameLogic(
                 lastAttackMessage = "$title\n${messages.joinToString("\n")}"
             }
         }
+    }
+
+    fun hireUnit(unit: GameUnit): Boolean {
+        val isShip = unit is GameUnit.FishingBoat ||
+                unit is GameUnit.WarGalley ||
+                unit is GameUnit.TransportBarge
+
+        if (isShip) {
+            if (player.buildings.none { it is Building.Shipyard && !it.isDestroyed() }) {
+                return false
+            }
+        } else {
+            if (player.buildings.none { it is Building.Barracks && !it.isDestroyed() }) {
+                return false
+            }
+        }
+
+        val cost = getUnitCost(unit)
+        if (!player.resources.hasEnough(cost, player.era)) return false
+
+        player.resources.subtract(cost)
+        player.units.add(unit)
+        updatePlayerInfo()
+        return true
     }
 
     fun updatePlayerInfo() {

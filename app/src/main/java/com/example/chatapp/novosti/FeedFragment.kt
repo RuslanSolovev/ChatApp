@@ -61,6 +61,12 @@ class FeedFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
+        // Дополнительная проверка безопасности
+        if (_binding == null) {
+            Log.e(TAG, "onViewCreated: Binding is null, cannot setup UI")
+            return
+        }
+
         newsFetcher = NewsFetcher(newsRepository, requireContext())
 
         setupRecyclerView()
@@ -70,11 +76,12 @@ class FeedFragment : Fragment() {
         // Проверяем, нужно ли загружать заново или использовать кэш
         if (shouldReloadFromScratch()) {
             Log.d(TAG, "Loading news from scratch")
-            binding.progressBar.visibility = View.VISIBLE
+            safeUpdateUI { binding ->
+                binding.progressBar.visibility = View.VISIBLE
+            }
             loadNewsOptimized()
         } else {
             Log.d(TAG, "Using cached data, only background refresh")
-            // Данные уже есть в адаптере, просто тихое обновление
             loadCachedNewsWithBackgroundRefresh()
         }
     }
@@ -92,7 +99,9 @@ class FeedFragment : Fragment() {
             }
             hasFetchedExternalNewsOnThisResume = true
         } else {
-            binding.progressBar.visibility = View.GONE
+            safeUpdateUI { binding ->
+                binding.progressBar.visibility = View.GONE
+            }
         }
 
         // Если был запрос на перезагрузку при возвращении
@@ -117,7 +126,10 @@ class FeedFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        Log.d(TAG, "onDestroyView: Cleaning up resources")
         fetchJob?.cancel()
+        isLoading = false
+        // ОЧЕНЬ ВАЖНО: очищаем binding при уничтожении view
         _binding = null
     }
 
@@ -136,18 +148,24 @@ class FeedFragment : Fragment() {
      * Загрузка с использованием кэшированных данных + фоновая синхронизация
      */
     private fun loadCachedNewsWithBackgroundRefresh() {
-        binding.progressBar.visibility = View.GONE
+        safeUpdateUI { binding ->
+            binding.progressBar.visibility = View.GONE
+        }
 
         // Если в адаптере уже есть данные, просто запускаем фоновое обновление
         if (::newsAdapter.isInitialized && newsAdapter.itemCount > 0) {
             Log.d(TAG, "loadCachedNewsWithBackgroundRefresh: Using existing ${newsAdapter.itemCount} items")
-            updateUIState(false)
+            safeUpdateUI { binding ->
+                updateUIState(false)
+            }
             lifecycleScope.launch {
                 refreshNewsQuietly()
             }
         } else {
             // Если данных нет, загружаем как обычно
-            binding.progressBar.visibility = View.VISIBLE
+            safeUpdateUI { binding ->
+                binding.progressBar.visibility = View.VISIBLE
+            }
             loadNewsOptimized()
         }
     }
@@ -179,22 +197,24 @@ class FeedFragment : Fragment() {
             }
         )
 
-        binding.rvNews.apply {
-            layoutManager = LinearLayoutManager(requireContext())
-            adapter = newsAdapter
-            setHasFixedSize(true)
+        safeUpdateUI { binding ->
+            binding.rvNews.apply {
+                layoutManager = LinearLayoutManager(requireContext())
+                adapter = newsAdapter
+                setHasFixedSize(true)
 
-            addOnScrollListener(object : RecyclerView.OnScrollListener() {
-                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                    super.onScrolled(recyclerView, dx, dy)
+                addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                    override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                        super.onScrolled(recyclerView, dx, dy)
 
-                    if (dy > 10) {
-                        binding.fabAddNews.hide()
-                    } else if (dy < -10) {
-                        binding.fabAddNews.show()
+                        if (dy > 10) {
+                            binding.fabAddNews.hide()
+                        } else if (dy < -10) {
+                            binding.fabAddNews.show()
+                        }
                     }
-                }
-            })
+                })
+            }
         }
     }
 
@@ -217,7 +237,9 @@ class FeedFragment : Fragment() {
             } catch (e: Exception) {
                 Log.e(TAG, "loadNewsOptimized: Error", e)
                 withContext(Dispatchers.Main) {
-                    updateUIState(true)
+                    safeUpdateUI { binding ->
+                        updateUIState(true)
+                    }
                     showMessage("Ошибка загрузки новостей")
                 }
             }
@@ -227,7 +249,8 @@ class FeedFragment : Fragment() {
     private suspend fun loadLocalNewsFast() {
         try {
             newsRepository.getNewsFlow().collectLatest { news ->
-                withContext(Dispatchers.Main) {
+                // Используем безопасный подход для обновления UI
+                safeUpdateUI { binding ->
                     // Обновляем адаптер только если данных нет или они устарели
                     if (newsAdapter.itemCount == 0 || shouldUpdateAdapter(news)) {
                         newsAdapter.submitList(news.toMutableList()) {
@@ -244,7 +267,7 @@ class FeedFragment : Fragment() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "loadLocalNewsFast: Error", e)
-            withContext(Dispatchers.Main) {
+            safeUpdateUI { binding ->
                 binding.progressBar.visibility = View.GONE
                 updateUIState(true)
             }
@@ -275,7 +298,7 @@ class FeedFragment : Fragment() {
                 newsFetcher.fetchExternalNews()
             }
 
-            withContext(Dispatchers.Main) {
+            safeUpdateUI { binding ->
                 if (newNews.isNotEmpty()) {
                     newsAdapter.addNewsToTop(newNews)
                     lastLoadTime = System.currentTimeMillis()
@@ -284,8 +307,6 @@ class FeedFragment : Fragment() {
 
                     if (isFirstLoad) {
                         showMessage("Добавлено ${newNews.size} новых новостей")
-                    } else {
-
                     }
                 } else {
                     Log.d(TAG, "loadExternalNewsInBackground: No new news")
@@ -308,7 +329,7 @@ class FeedFragment : Fragment() {
                 newsFetcher.fetchExternalNews()
             }
 
-            withContext(Dispatchers.Main) {
+            safeUpdateUI { binding ->
                 if (newNews.isNotEmpty()) {
                     newsAdapter.addNewsToTop(newNews)
                     lastLoadTime = System.currentTimeMillis()
@@ -327,60 +348,97 @@ class FeedFragment : Fragment() {
      * Скроллит к началу списка
      */
     private fun scrollToTop() {
-        if (::newsAdapter.isInitialized && newsAdapter.itemCount > 0) {
-            binding.rvNews.smoothScrollToPosition(0)
-            Log.d(TAG, "scrollToTop: Scrolled to top")
+        safeUpdateUI { binding ->
+            if (::newsAdapter.isInitialized && newsAdapter.itemCount > 0) {
+                binding.rvNews.smoothScrollToPosition(0)
+                Log.d(TAG, "scrollToTop: Scrolled to top")
+            }
         }
     }
 
     fun scrollToTopIfNeeded() {
-        try {
-            if (isVisible && ::newsAdapter.isInitialized && newsAdapter.itemCount > 0) {
-                val layoutManager = binding.rvNews.layoutManager as? LinearLayoutManager
-                val firstVisiblePosition = layoutManager?.findFirstVisibleItemPosition() ?: 0
+        safeUpdateUI { binding ->
+            try {
+                if (::newsAdapter.isInitialized && newsAdapter.itemCount > 0) {
+                    val layoutManager = binding.rvNews.layoutManager as? LinearLayoutManager
+                    val firstVisiblePosition = layoutManager?.findFirstVisibleItemPosition() ?: 0
 
-                if (firstVisiblePosition > 5) {
-                    binding.rvNews.smoothScrollToPosition(0)
-                    Log.d(TAG, "scrollToTopIfNeeded: Плавный скролл к началу с позиции $firstVisiblePosition")
-                } else if (firstVisiblePosition > 0) {
-                    binding.rvNews.smoothScrollToPosition(0)
-                    Log.d(TAG, "scrollToTopIfNeeded: Быстрый скролл к началу с позиции $firstVisiblePosition")
-                } else {
-                    Log.d(TAG, "scrollToTopIfNeeded: Уже в начале списка")
+                    if (firstVisiblePosition > 5) {
+                        binding.rvNews.smoothScrollToPosition(0)
+                        Log.d(TAG, "scrollToTopIfNeeded: Плавный скролл к началу с позиции $firstVisiblePosition")
+                    } else if (firstVisiblePosition > 0) {
+                        binding.rvNews.smoothScrollToPosition(0)
+                        Log.d(TAG, "scrollToTopIfNeeded: Быстрый скролл к началу с позиции $firstVisiblePosition")
+                    } else {
+                        Log.d(TAG, "scrollToTopIfNeeded: Уже в начале списка")
+                    }
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in scrollToTopIfNeeded", e)
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in scrollToTopIfNeeded", e)
         }
     }
 
+    /**
+     * БЕЗОПАСНЫЙ МЕТОД ОБНОВЛЕНИЯ UI
+     */
     private fun updateUIState(isEmpty: Boolean) {
-        with(binding) {
-            if (isEmpty) {
-                rvNews.visibility = View.GONE
-                tvEmpty.visibility = View.VISIBLE
-                tvHint.visibility = View.VISIBLE
-            } else {
-                rvNews.visibility = View.VISIBLE
-                tvEmpty.visibility = View.GONE
-                tvHint.visibility = View.GONE
+        // Безопасная проверка binding и жизненного цикла
+        if (_binding == null || !isAdded || isDetached || activity == null || view == null) {
+            Log.w(TAG, "updateUIState: Fragment not ready, skipping UI update")
+            return
+        }
+
+        try {
+            with(binding) {
+                if (isEmpty) {
+                    rvNews.visibility = View.GONE
+                    tvEmpty.visibility = View.VISIBLE
+                    tvHint.visibility = View.VISIBLE
+                } else {
+                    rvNews.visibility = View.VISIBLE
+                    tvEmpty.visibility = View.GONE
+                    tvHint.visibility = View.GONE
+                }
+                progressBar.visibility = View.GONE
+                progressBarBottom.visibility = View.GONE
+                swipeRefreshLayout.isRefreshing = false
             }
-            progressBar.visibility = View.GONE
-            progressBarBottom.visibility = View.GONE
-            swipeRefreshLayout.isRefreshing = false
+            Log.d(TAG, "updateUIState: UI updated successfully, isEmpty: $isEmpty")
+        } catch (e: Exception) {
+            Log.e(TAG, "updateUIState: Error updating UI", e)
+        }
+    }
+
+    /**
+     * БЕЗОПАСНЫЙ МЕТОД ДЛЯ АСИНХРОННЫХ ОБНОВЛЕНИЙ UI
+     */
+    private fun safeUpdateUI(updateAction: (FragmentFeedBinding) -> Unit) {
+        view?.post {
+            if (_binding != null && isAdded && !isDetached && activity != null && view != null) {
+                try {
+                    updateAction(binding)
+                } catch (e: Exception) {
+                    Log.e(TAG, "safeUpdateUI: Error in update action", e)
+                }
+            } else {
+                Log.w(TAG, "safeUpdateUI: Fragment not ready for UI update")
+            }
         }
     }
 
     private fun setupSwipeRefresh() {
-        binding.swipeRefreshLayout.setColorSchemeColors(
-            ContextCompat.getColor(requireContext(), R.color.red),
-            ContextCompat.getColor(requireContext(), R.color.colorSurface),
-            ContextCompat.getColor(requireContext(), R.color.yellow_background)
-        )
+        safeUpdateUI { binding ->
+            binding.swipeRefreshLayout.setColorSchemeColors(
+                ContextCompat.getColor(requireContext(), R.color.red),
+                ContextCompat.getColor(requireContext(), R.color.colorSurface),
+                ContextCompat.getColor(requireContext(), R.color.yellow_background)
+            )
 
-        binding.swipeRefreshLayout.setOnRefreshListener {
-            Log.d(TAG, "SwipeRefresh: Pull to refresh triggered")
-            refreshNews()
+            binding.swipeRefreshLayout.setOnRefreshListener {
+                Log.d(TAG, "SwipeRefresh: Pull to refresh triggered")
+                refreshNews()
+            }
         }
     }
 
@@ -460,17 +518,19 @@ class FeedFragment : Fragment() {
     }
 
     private fun setupFab() {
-        binding.fabAddNews.setOnClickListener {
-            (activity as? MainActivity)?.openCreateNewsFragment()
-        }
+        safeUpdateUI { binding ->
+            binding.fabAddNews.setOnClickListener {
+                (activity as? MainActivity)?.openCreateNewsFragment()
+            }
 
-        binding.fabAddNews.setOnLongClickListener {
-            scrollToTop()
-            showMessage("Прокрутка к началу")
-            true
-        }
+            binding.fabAddNews.setOnLongClickListener {
+                scrollToTop()
+                showMessage("Прокрутка к началу")
+                true
+            }
 
-        binding.fabAddNews.show()
+            binding.fabAddNews.show()
+        }
     }
 
     private fun fetchExternalNews() {
@@ -483,7 +543,7 @@ class FeedFragment : Fragment() {
             try {
                 Log.d(TAG, "fetchExternalNews: Starting...")
 
-                withContext(Dispatchers.Main) {
+                safeUpdateUI { binding ->
                     binding.progressBar.visibility = View.VISIBLE
                     binding.tvHint.visibility = View.GONE
                 }
@@ -492,7 +552,7 @@ class FeedFragment : Fragment() {
                     newsFetcher.fetchExternalNews()
                 }
 
-                withContext(Dispatchers.Main) {
+                safeUpdateUI { binding ->
                     if (newNews.isNotEmpty()) {
                         Log.d(TAG, "fetchExternalNews: Received ${newNews.size} new news items")
 
@@ -509,11 +569,11 @@ class FeedFragment : Fragment() {
 
             } catch (e: Exception) {
                 Log.e(TAG, "fetchExternalNews: Error", e)
-                withContext(Dispatchers.Main) {
+                safeUpdateUI { binding ->
                     showMessage("Ошибка загрузки новостей: ${e.message}")
                 }
             } finally {
-                withContext(Dispatchers.Main) {
+                safeUpdateUI { binding ->
                     binding.progressBar.visibility = View.GONE
                     binding.swipeRefreshLayout.isRefreshing = false
                     binding.progressBarBottom.visibility = View.GONE
@@ -527,9 +587,18 @@ class FeedFragment : Fragment() {
         }
     }
 
+    /**
+     * БЕЗОПАСНЫЙ МЕТОД ПОКАЗА СООБЩЕНИЙ
+     */
     private fun showMessage(message: String) {
-        if (isAdded && !isRemoving) {
-            Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+        if (isAdded && !isRemoving && !isDetached && activity != null) {
+            try {
+                Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Log.e(TAG, "showMessage: Error showing toast", e)
+            }
+        } else {
+            Log.w(TAG, "showMessage: Fragment not ready, message: $message")
         }
     }
 
@@ -539,16 +608,18 @@ class FeedFragment : Fragment() {
             refreshNewsWithProgress()
         }
 
-        binding.swipeRefreshLayout.postDelayed({
-            if (binding.swipeRefreshLayout.isRefreshing) {
-                binding.swipeRefreshLayout.isRefreshing = false
-            }
-        }, 2000)
+        safeUpdateUI { binding ->
+            binding.swipeRefreshLayout.postDelayed({
+                if (binding.swipeRefreshLayout.isRefreshing) {
+                    binding.swipeRefreshLayout.isRefreshing = false
+                }
+            }, 2000)
+        }
     }
 
     private suspend fun refreshNewsWithProgress() {
         try {
-            withContext(Dispatchers.Main) {
+            safeUpdateUI { binding ->
                 binding.progressBar.visibility = View.VISIBLE
             }
 
@@ -556,7 +627,7 @@ class FeedFragment : Fragment() {
                 newsFetcher.fetchExternalNews()
             }
 
-            withContext(Dispatchers.Main) {
+            safeUpdateUI { binding ->
                 if (newNews.isNotEmpty()) {
                     newsAdapter.addNewsToTop(newNews)
                     lastLoadTime = System.currentTimeMillis()
@@ -569,7 +640,7 @@ class FeedFragment : Fragment() {
             }
         } catch (e: Exception) {
             Log.e(TAG, "refreshNewsWithProgress: Error", e)
-            withContext(Dispatchers.Main) {
+            safeUpdateUI { binding ->
                 binding.progressBar.visibility = View.GONE
                 showMessage("Ошибка обновления")
             }

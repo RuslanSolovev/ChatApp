@@ -11,6 +11,7 @@ sealed class GameUnit {
     @Transient // ← ГЛАВНОЕ ИЗМЕНЕНИЕ
     open val type: String = this::class.simpleName.toString()
 
+
     // Конструктор без аргументов для Firebase
     constructor()
 
@@ -43,6 +44,37 @@ sealed class GameUnit {
     ) : GameUnit() {
         override val type: String = "MammothRider"
         constructor() : this("Всадник на мамонте", 50, 12)
+    }
+
+    // Бронзовый век — корабли
+    @IgnoreExtraProperties
+    data class FishingBoat(
+        override val name: String = "Рыболовный корабль",
+        override var health: Int = 40,
+        override val attackPower: Int = 0
+    ) : GameUnit() {
+        override val type: String = "FishingBoat"
+        constructor() : this("Рыболовный корабль", 40, 0)
+    }
+
+    @IgnoreExtraProperties
+    data class WarGalley(
+        override val name: String = "Военный галеон",
+        override var health: Int = 80,
+        override val attackPower: Int = 25
+    ) : GameUnit() {
+        override val type: String = "WarGalley"
+        constructor() : this("Военный галеон", 80, 25)
+    }
+
+    @IgnoreExtraProperties
+    data class TransportBarge(
+        override val name: String = "Транспортный барж",
+        override var health: Int = 100,
+        override val attackPower: Int = 5
+    ) : GameUnit() {
+        override val type: String = "TransportBarge"
+        constructor() : this("Транспортный барж", 100, 5)
     }
 
     // Бронзовый век

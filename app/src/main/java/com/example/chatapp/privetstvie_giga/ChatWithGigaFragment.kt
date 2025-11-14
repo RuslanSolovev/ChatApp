@@ -666,7 +666,10 @@ class ChatWithGigaFragment : Fragment() {
                 // Добавляем новое сообщение и ограничиваем размер
                 messages.add(message)
                 if (messages.size > 20) {
-                    messages.removeFirst()
+                    // ВСЕГДА используем совместимый метод для minSdk 30
+                    if (messages.isNotEmpty()) {
+                        messages.removeAt(0)
+                    }
                 }
 
                 // Сохраняем обратно

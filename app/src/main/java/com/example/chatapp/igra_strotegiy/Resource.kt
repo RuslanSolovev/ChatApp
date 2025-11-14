@@ -66,6 +66,40 @@ data class Resource(
         energy += other.energy
     }
 
+    // Resource.kt - добавьте этот метод в класс Resource
+    fun getAvailableResourcesMap(era: Era): Map<String, Int> {
+        val result = mutableMapOf<String, Int>()
+
+        // Базовые ресурсы (доступны с Каменного века)
+        if (wood > 0) result["wood"] = wood
+        if (food > 0) result["food"] = food
+        if (water > 0) result["water"] = water
+
+        // Ресурсы Бронзового века
+        if (era.ordinal >= Era.BRONZE_AGE.ordinal) {
+            if (stone > 0) result["stone"] = stone
+            if (gold > 0) result["gold"] = gold
+        }
+
+        // Ресурсы Средневековья
+        if (era.ordinal >= Era.MIDDLE_AGES.ordinal) {
+            if (iron > 0) result["iron"] = iron
+        }
+
+        // Ресурсы Индустриальной эры
+        if (era.ordinal >= Era.INDUSTRIAL.ordinal) {
+            if (coal > 0) result["coal"] = coal
+            if (oil > 0) result["oil"] = oil
+        }
+
+        // Ресурсы Футуристической эры
+        if (era.ordinal >= Era.FUTURE.ordinal) {
+            if (energy > 0) result["energy"] = energy
+        }
+
+        return result
+    }
+
     fun getAvailableResources(era: Era): String {
         val parts = mutableListOf<String>()
         if (wood > 0) parts.add("Дерево: $wood")

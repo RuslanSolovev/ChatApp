@@ -29,6 +29,7 @@ object BuildingTypeAdapter : JsonDeserializer<Building>, JsonSerializer<Building
             "barracks" -> context.deserialize(json, Building.Barracks::class.java)
             "research_center" -> context.deserialize(json, Building.ResearchCenter::class.java)
             "town_hall" -> context.deserialize(json, Building.TownHall::class.java)
+            "shipyard" -> context.deserialize(json, Building.Shipyard::class.java)
             else -> throw JsonParseException("Unknown building type: $type")
         }
     }

@@ -6,12 +6,12 @@ import kotlin.random.Random
 
 @IgnoreExtraProperties
 data class GameMap(
-    var width: Int = 9,
-    var height: Int = 9,
+    var width: Int = 13,
+    var height: Int = 13,
     var cells: MutableList<MapCell> = mutableListOf()
 ) {
     // Конструктор без аргументов для Firebase
-    constructor() : this(9, 9, mutableListOf())
+    constructor() : this(13, 13, mutableListOf())
 
     init {
         if (cells.isEmpty()) {
@@ -23,19 +23,43 @@ data class GameMap(
         cells.clear()
         for (y in 0 until height) {
             for (x in 0 until width) {
-                cells.add(MapCell("empty", x, y))
+                val type = when {
+                    x <= 2 -> "empty"                // Левый остров
+                    x >= width - 3 -> "empty"        // Правый остров
+                    else -> "sea"                    // Всё остальное — море
+                }
+                cells.add(MapCell(type, x, y))
             }
         }
-        val obstacles = listOf("mountain", "river")
-        repeat((width * height) / 5) {
+
+        // 🔥 Теперь ТОЛЬКО горы, и их в 2 раза меньше
+        val obstacles = listOf("mountain") // ← реки убраны
+        val obstacleCount = (width * height) / 12 // ← вместо /6
+        repeat(obstacleCount) {
             var x: Int
             var y: Int
             do {
                 x = Random.nextInt(width)
                 y = Random.nextInt(height)
-            } while (getCell(x, y)?.type != "empty")
+            } while (getCell(x, y)?.type != "empty") // только суша
             setCellType(x, y, obstacles.random())
         }
+    }
+
+    @Exclude
+    fun isCoastal(x: Int, y: Int): Boolean {
+        if (getCellType(x, y) != "empty") return false
+        for (dx in -1..1) {
+            for (dy in -1..1) {
+                if (dx == 0 && dy == 0) continue
+                val nx = x + dx
+                val ny = y + dy
+                if (nx in 0 until width && ny in 0 until height) {
+                    if (getCellType(nx, ny) == "sea") return true
+                }
+            }
+        }
+        return false
     }
 
     fun getCell(x: Int, y: Int): MapCell? {
@@ -72,7 +96,6 @@ data class GameMap(
     fun isValidPosition(x: Int, y: Int): Boolean {
         return x in 0 until width && y in 0 until height
     }
-
 
     // Добавляем deepCopy для общей карты
     fun deepCopy(): GameMap {

@@ -6,6 +6,7 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.VIBRATE" />
 
+
     <!-- Только для Android 11 (API 30) и ниже -->
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <!-- Для Android 12+ (API 31+) -->
@@ -101,6 +102,8 @@
             android:label="Обучение"
             android:screenOrientation="portrait"
             android:exported="false" />
+
+        <activity android:name=".igra_strotegiy.IntroVideoActivity" />
 
         <activity
             android:name=".igra_strotegiy.StrategyGameMenuActivity"

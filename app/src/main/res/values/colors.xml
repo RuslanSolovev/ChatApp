@@ -117,6 +117,9 @@
         <color name="primaryColor">#1CE215</color>
         <color name="primaryDarkColor">#15B210</color>
 
+        <color name="text_accent">#636363</color>
+
+
 
 
 </resources>

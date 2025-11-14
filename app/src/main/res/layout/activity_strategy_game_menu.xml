@@ -1,72 +1,149 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:padding="24dp"
-    android:background="@drawable/bg_gradient"
-    android:gravity="center">
+    android:layout_height="match_parent">
 
-    <!-- Заголовок -->
-    <TextView
+    <!-- Полноэкранный контейнер для видео -->
+    <FrameLayout
+        android:id="@+id/videoContainer"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Цивилизация: Выбор режима"
-        android:textSize="28sp"
-        android:textColor="@color/white"
-        android:gravity="center"
-        android:textStyle="bold"
-        android:layout_marginBottom="60dp"
-        android:shadowColor="@color/black"
-        android:shadowDx="2"
-        android:shadowDy="2"
-        android:shadowRadius="4" />
+        android:layout_height="match_parent"
+        android:background="@android:color/black">
 
-    <!-- Кнопка одиночной игры -->
-    <Button
-        android:id="@+id/btnSinglePlayer"
+        <VideoView
+            android:id="@+id/videoView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:layout_gravity="center" />
+
+    </FrameLayout>
+
+    <!-- Меню по центру -->
+    <LinearLayout
+        android:id="@+id/menuContainer"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="🎮 Одиночная игра"
-        android:textSize="18sp"
+        android:layout_height="match_parent"
+        android:background="@drawable/zastavka_igra_strategiy2"
+        android:orientation="vertical"
         android:padding="16dp"
-        android:layout_marginBottom="16dp"
-        android:backgroundTint="#4CAF50"
-        android:textColor="@color/white" />
+        android:visibility="gone"
+        android:gravity="center">
 
-    <!-- Кнопка многопользовательской игры -->
-    <Button
-        android:id="@+id/btnMultiplayer"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="👥 Многопользовательская"
-        android:textSize="18sp"
-        android:padding="16dp"
-        android:layout_marginBottom="16dp"
-        android:backgroundTint="#2196F3"
-        android:textColor="@color/white" />
+        <!-- 2x2 карточки -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:gravity="center">
 
-    <!-- Кнопка обучения -->
-    <Button
-        android:id="@+id/btnTutorial"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="📚 Обучение"
-        android:textSize="18sp"
-        android:padding="16dp"
-        android:layout_marginBottom="40dp"
-        android:backgroundTint="#FF9800"
-        android:textColor="@color/white" />
+            <!-- Верхний ряд -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="16dp">
 
-    <!-- Кнопка назад -->
-    <Button
-        android:id="@+id/btnBack"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="Назад"
-        android:textSize="16sp"
-        android:padding="12dp"
-        android:backgroundTint="#757575"
-        android:textColor="@color/white" />
+                <androidx.cardview.widget.CardView
+                    android:id="@+id/btnSinglePlayer"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="8dp"
+                    app:cardCornerRadius="30dp"
+                    app:cardElevation="8dp"
+                    app:cardBackgroundColor="#AAFFFFFF">
 
-</LinearLayout>
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="80dp"
+                        android:gravity="center"
+                        android:text="Одиночная\nигра"
+                        android:textSize="22sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/black"
+                        android:background="?android:attr/selectableItemBackground" />
+
+                </androidx.cardview.widget.CardView>
+
+                <androidx.cardview.widget.CardView
+                    android:id="@+id/btnMultiplayer"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    app:cardCornerRadius="30dp"
+                    app:cardElevation="8dp"
+                    app:cardBackgroundColor="#AAFFFFFF">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="80dp"
+                        android:gravity="center"
+                        android:text="Мультиплеер"
+                        android:textSize="22sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/black"
+                        android:background="?android:attr/selectableItemBackground" />
+
+                </androidx.cardview.widget.CardView>
+
+            </LinearLayout>
+
+            <!-- Нижний ряд -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <androidx.cardview.widget.CardView
+                    android:id="@+id/btnTutorial"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginEnd="8dp"
+                    app:cardCornerRadius="30dp"
+                    app:cardElevation="8dp"
+                    app:cardBackgroundColor="#AAFFFFFF">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="80dp"
+                        android:gravity="center"
+                        android:text="Обучение"
+                        android:textSize="22sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/black"
+                        android:background="?android:attr/selectableItemBackground" />
+
+                </androidx.cardview.widget.CardView>
+
+                <androidx.cardview.widget.CardView
+                    android:id="@+id/btnBack"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:layout_marginStart="8dp"
+                    app:cardCornerRadius="30dp"
+                    app:cardElevation="8dp"
+                    app:cardBackgroundColor="#AAFFFFFF">
+
+                    <TextView
+                        android:layout_width="match_parent"
+                        android:layout_height="80dp"
+                        android:gravity="center"
+                        android:text="Назад"
+                        android:textSize="22sp"
+                        android:textStyle="bold"
+                        android:textColor="@color/black"
+                        android:background="?android:attr/selectableItemBackground" />
+
+                </androidx.cardview.widget.CardView>
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</FrameLayout>
