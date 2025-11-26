@@ -160,7 +160,10 @@
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 
-
+    <style name="Widget.App.Button.Outlined" parent="Widget.AppCompat.Button">
+        <item name="android:background">@drawable/btn_outline</item>
+        <item name="android:textColor">#666666</item>
+    </style>
 
 
 </resources>

@@ -416,6 +416,206 @@ class MultiplayerGameActivity : AppCompatActivity() {
         }
     }
 
+    private fun showTransportBargeMenu(uid: String, transport: Army, cell: MapCell, sharedMap: GameMap) {
+        val game = currentGame ?: return
+        val myLogic = game.players[uid]?.gameLogic ?: return
+
+        // 🔥 ВАЖНО: Берем актуальные данные транспорта из текущего состояния игры
+        val actualTransport = myLogic.armies.find { it.id == transport.id }
+        if (actualTransport == null) {
+            Toast.makeText(this, "Транспорт не найден", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        Log.d(TAG, "=== TRANSPORT BARGEE DEBUG ===")
+        Log.d(TAG, "Transport ID: ${actualTransport.id}")
+        Log.d(TAG, "Position: (${actualTransport.position.x}, ${actualTransport.position.y})")
+        Log.d(TAG, "Has moved: ${actualTransport.hasMovedThisTurn}")
+        Log.d(TAG, "Carried army exists: ${actualTransport.carriedArmy != null}")
+        Log.d(TAG, "Carried army units count: ${actualTransport.carriedArmy?.units?.size ?: 0}")
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Транспортный барж")
+            .setNegativeButton("Закрыть") { d, _ ->
+                d.dismiss()
+            }
+            .create()
+
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(32, 32, 32, 32)
+        }
+
+        // ОСНОВНАЯ ИНФОРМАЦИЯ
+        val info = TextView(this).apply {
+            text = "📍 Координаты: (${actualTransport.position.x}, ${actualTransport.position.y})\n" +
+                    "⚡ Состояние: ${if (actualTransport.hasMovedThisTurn) "Уже ходил" else "Может ходить"}\n" +
+                    "📦 Груз: ${if (actualTransport.carriedArmy != null) "${actualTransport.carriedArmy!!.units.size} юнитов" else "нет"}"
+            setPadding(0, 0, 0, 20)
+        }
+        layout.addView(info)
+
+        // 🔥 КНОПКА ПЕРЕМЕЩЕНИЯ
+        if (!actualTransport.hasMovedThisTurn) {
+            val btnMove = Button(this).apply {
+                text = "🔄 Переместить корабль"
+                setOnClickListener {
+                    dialog.dismiss()
+                    selectedArmy = actualTransport
+                    Toast.makeText(this@MultiplayerGameActivity,
+                        "Транспорт выбран. Кликните на клетку моря для перемещения.",
+                        Toast.LENGTH_LONG).show()
+                }
+            }
+            layout.addView(btnMove)
+        } else {
+            val movedInfo = TextView(this).apply {
+                text = "⏹️ Корабль уже перемещался в этом ходу"
+                setTextColor(Color.GRAY)
+            }
+            layout.addView(movedInfo)
+        }
+
+        // 🔥 КНОПКА ВЫГРУЗКИ АРМИИ - ТОЛЬКО РЕЖИМ КЛИКА
+        if (actualTransport.carriedArmy != null) {
+            Log.d(TAG, "SHOWING UNLOAD BUTTON - Transport has cargo: ${actualTransport.carriedArmy!!.units.size} units")
+
+            val cargo = actualTransport.carriedArmy!!
+            val cargoInfo = TextView(this).apply {
+                text = "\n📦 ГРУЗ НА БОРТУ:\n" +
+                        "• ${cargo.units.size} юнитов\n" +
+                        "• Типы: ${cargo.units.groupBy { it.name }.map { "${it.key} (${it.value.size})" }.joinToString(", ")}"
+                setPadding(0, 16, 0, 16)
+                setTextColor(ContextCompat.getColor(this@MultiplayerGameActivity, R.color.primaryDarkColor))
+            }
+            layout.addView(cargoInfo)
+
+            if (!actualTransport.hasMovedThisTurn) {
+                val btnUnload = Button(this).apply {
+                    text = "🚪 ВЫСАДИТЬ АРМИЮ"
+                    setBackgroundColor(ContextCompat.getColor(this@MultiplayerGameActivity, R.color.accent))
+                    setTextColor(Color.WHITE)
+                    textSize = 16f
+                    setPadding(0, 20, 0, 20)
+                    setOnClickListener {
+                        Log.d(TAG, "Unload mode activated for transport ${actualTransport.id}")
+                        dialog.dismiss()
+                        selectedArmy = actualTransport
+                        isUnloadMode = true
+                        Toast.makeText(this@MultiplayerGameActivity,
+                            "Режим выгрузки: кликните на клетку суши в радиусе 3 клеток от транспорта\n\n" +
+                                    "📍 Транспорт: (${actualTransport.position.x}, ${actualTransport.position.y})",
+                            Toast.LENGTH_LONG).show()
+                    }
+                }
+                layout.addView(btnUnload)
+            } else {
+                val cannotUnload = TextView(this).apply {
+                    text = "❌ Нельзя высадить: корабль уже перемещался в этом ходу"
+                    setTextColor(ContextCompat.getColor(this@MultiplayerGameActivity, android.R.color.holo_red_dark))
+                    setPadding(0, 10, 0, 10)
+                }
+                layout.addView(cannotUnload)
+            }
+        } else {
+            Log.d(TAG, "NO UNLOAD BUTTON - Transport has NO cargo")
+
+            // ЗАГРУЗКА АРМИИ
+            val loadTitle = TextView(this).apply {
+                text = "\n⬆️ ЗАГРУЗКА АРМИИ"
+                setPadding(0, 16, 0, 8)
+                setTextColor(Color.DKGRAY)
+            }
+            layout.addView(loadTitle)
+
+            val adjacentArmies = mutableListOf<Army>()
+            for (dx in -1..1) {
+                for (dy in -1..1) {
+                    if (dx == 0 && dy == 0) continue
+                    val nx = actualTransport.position.x + dx
+                    val ny = actualTransport.position.y + dy
+                    val armyHere = myLogic.armies.find {
+                        it.position.x == nx && it.position.y == ny &&
+                                it.isAlive() &&
+                                !it.isNaval() && // только сухопутные армии
+                                it.id != actualTransport.id // не сам транспорт
+                    }
+                    if (armyHere != null) {
+                        adjacentArmies.add(armyHere)
+                        Log.d(TAG, "Found adjacent army for loading: ${armyHere.id} at ($nx, $ny) with ${armyHere.units.size} units")
+                    }
+                }
+            }
+
+            if (adjacentArmies.isEmpty()) {
+                val noArmy = TextView(this).apply {
+                    text = "❌ Нет сухопутных армий рядом для загрузки"
+                    setTextColor(ContextCompat.getColor(this@MultiplayerGameActivity, android.R.color.holo_red_dark))
+                    setPadding(0, 10, 0, 10)
+                }
+                layout.addView(noArmy)
+            } else {
+                for (army in adjacentArmies) {
+                    val btn = Button(this).apply {
+                        text = "⬆️ Загрузить армию (${army.units.size} юнитов)"
+                        setOnClickListener {
+                            Log.d(TAG, "Loading army: ${army.id} into transport: ${actualTransport.id}")
+                            dialog.dismiss()
+                            lifecycleScope.launch {
+                                try {
+                                    val success = multiplayerLogic.makeTurn(
+                                        gameId, uid,
+                                        listOf(GameAction.LoadArmyIntoTransport(actualTransport.id, army.id))
+                                    )
+                                    if (success) {
+                                        Toast.makeText(this@MultiplayerGameActivity, "Армия загружена!", Toast.LENGTH_SHORT).show()
+                                        updatePlayerState(uid)
+                                        lastSharedMapHash = 0
+                                        reloadGameData()
+                                    } else {
+                                        Toast.makeText(this@MultiplayerGameActivity, "Ошибка загрузки армии", Toast.LENGTH_SHORT).show()
+                                    }
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Ошибка загрузки армии", e)
+                                    Toast.makeText(this@MultiplayerGameActivity, "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
+                                }
+                            }
+                        }
+                    }
+                    layout.addView(btn)
+                }
+            }
+        }
+
+        // РАЗДЕЛИТЕЛЬ
+        val divider = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                2
+            ).apply {
+                setMargins(0, 20, 0, 20)
+            }
+            setBackgroundColor(Color.LTGRAY)
+        }
+        layout.addView(divider)
+
+        // ИНФОРМАЦИЯ О ТРАНСПОРТЕ
+        val transportInfo = TextView(this).apply {
+            text = "💡 Информация о транспорте:\n" +
+                    "• Может перевозить 1 сухопутную армию\n" +
+                    "• Может загружать/высаживать за 1 ход\n" +
+                    "• Высаживает на сушу в радиусе 3 клеток\n" +
+                    "• Не может атаковать"
+            setTextColor(Color.DKGRAY)
+            textSize = 12f
+            setPadding(0, 8, 0, 0)
+        }
+        layout.addView(transportInfo)
+
+        dialog.setView(layout)
+        dialog.show()
+    }
+
     private fun dpToPx(dp: Int): Int {
         return (dp * resources.displayMetrics.density).toInt()
     }
@@ -978,220 +1178,7 @@ class MultiplayerGameActivity : AppCompatActivity() {
         }
     }
 
-    private fun showTransportBargeMenu(uid: String, transport: Army, cell: MapCell, sharedMap: GameMap) {
-        val game = currentGame ?: return
-        val myLogic = game.players[uid]?.gameLogic ?: return
 
-        // 🔥 ВАЖНО: Берем актуальные данные транспорта из текущего состояния игры
-        val actualTransport = myLogic.armies.find { it.id == transport.id }
-        if (actualTransport == null) {
-            Toast.makeText(this, "Транспорт не найден", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        Log.d(TAG, "=== TRANSPORT BARGEE DEBUG ===")
-        Log.d(TAG, "Transport ID: ${actualTransport.id}")
-        Log.d(TAG, "Position: (${actualTransport.position.x}, ${actualTransport.position.y})")
-        Log.d(TAG, "Has moved: ${actualTransport.hasMovedThisTurn}")
-        Log.d(TAG, "Carried army exists: ${actualTransport.carriedArmy != null}")
-        Log.d(TAG, "Carried army units count: ${actualTransport.carriedArmy?.units?.size ?: 0}")
-
-        val dialog = AlertDialog.Builder(this)
-            .setTitle("Транспортный барж")
-            .setNegativeButton("Закрыть") { d, _ ->
-                d.dismiss()
-            }
-            .create()
-
-        val layout = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(32, 32, 32, 32)
-        }
-
-        // ОСНОВНАЯ ИНФОРМАЦИЯ
-        val info = TextView(this).apply {
-            text = "📍 Координаты: (${actualTransport.position.x}, ${actualTransport.position.y})\n" +
-                    "⚡ Состояние: ${if (actualTransport.hasMovedThisTurn) "Уже ходил" else "Может ходить"}\n" +
-                    "📦 Груз: ${if (actualTransport.carriedArmy != null) "${actualTransport.carriedArmy!!.units.size} юнитов" else "нет"}"
-            setPadding(0, 0, 0, 20)
-        }
-        layout.addView(info)
-
-        // 🔥 КНОПКА ПЕРЕМЕЩЕНИЯ
-        if (!actualTransport.hasMovedThisTurn) {
-            val btnMove = Button(this).apply {
-                text = "🔄 Переместить корабль"
-                setOnClickListener {
-                    dialog.dismiss()
-                    selectedArmy = actualTransport
-                    Toast.makeText(this@MultiplayerGameActivity,
-                        "Транспорт выбран. Кликните на клетку моря для перемещения.",
-                        Toast.LENGTH_LONG).show()
-                }
-            }
-            layout.addView(btnMove)
-        } else {
-            val movedInfo = TextView(this).apply {
-                text = "⏹️ Корабль уже перемещался в этом ходу"
-                setTextColor(Color.GRAY)
-            }
-            layout.addView(movedInfo)
-        }
-
-        // 🔥 КНОПКА ВЫГРУЗКИ АРМИИ
-        if (actualTransport.carriedArmy != null) {
-            Log.d(TAG, "SHOWING UNLOAD BUTTON - Transport has cargo: ${actualTransport.carriedArmy!!.units.size} units")
-
-            val cargo = actualTransport.carriedArmy!!
-            val cargoInfo = TextView(this).apply {
-                text = "\n📦 ГРУЗ НА БОРТУ:\n" +
-                        "• ${cargo.units.size} юнитов\n" +
-                        "• Типы: ${cargo.units.groupBy { it.name }.map { "${it.key} (${it.value.size})" }.joinToString(", ")}"
-                setPadding(0, 16, 0, 16)
-                setTextColor(ContextCompat.getColor(this@MultiplayerGameActivity, R.color.primaryDarkColor))
-            }
-            layout.addView(cargoInfo)
-
-            if (!actualTransport.hasMovedThisTurn) {
-                // 🔥 ВАРИАНТ 1: КНОПКА ДЛЯ ДИАЛОГА
-                val btnUnloadDialog = Button(this).apply {
-                    text = "🚪 ВЫСАДИТЬ АРМИЮ (ВЫБОР ИЗ СПИСКА)"
-                    setBackgroundColor(ContextCompat.getColor(this@MultiplayerGameActivity, R.color.accent))
-                    setTextColor(Color.WHITE)
-                    textSize = 14f
-                    setPadding(0, 15, 0, 15)
-                    setOnClickListener {
-                        Log.d(TAG, "Unload button clicked for transport ${actualTransport.id}")
-                        dialog.dismiss()
-                        showUnloadTargetSelection(uid, actualTransport, game)
-                    }
-                }
-                layout.addView(btnUnloadDialog)
-
-                // 🔥 ВАРИАНТ 2: КНОПКА ДЛЯ РЕЖИМА КЛИКА
-                val btnUnloadClick = Button(this).apply {
-                    text = "🚪 ВЫСАДИТЬ АРМИЮ (КЛИКНИТЕ НА КАРТУ)"
-                    setBackgroundColor(ContextCompat.getColor(this@MultiplayerGameActivity, R.color.primaryDarkColor))
-                    setTextColor(Color.WHITE)
-                    textSize = 14f
-                    setPadding(0, 15, 0, 15)
-                    setOnClickListener {
-                        Log.d(TAG, "Unload click mode activated for transport ${actualTransport.id}")
-                        dialog.dismiss()
-                        selectedArmy = actualTransport
-                        isUnloadMode = true
-                        Toast.makeText(this@MultiplayerGameActivity,
-                            "Режим выгрузки: кликните на клетку суши в радиусе 3 клеток от транспорта",
-                            Toast.LENGTH_LONG).show()
-                    }
-                }
-                layout.addView(btnUnloadClick)
-            } else {
-                val cannotUnload = TextView(this).apply {
-                    text = "❌ Нельзя высадить: корабль уже перемещался в этом ходу"
-                    setTextColor(ContextCompat.getColor(this@MultiplayerGameActivity, android.R.color.holo_red_dark))
-                    setPadding(0, 10, 0, 10)
-                }
-                layout.addView(cannotUnload)
-            }
-        } else {
-            Log.d(TAG, "NO UNLOAD BUTTON - Transport has NO cargo")
-
-            // ЗАГРУЗКА АРМИИ
-            val loadTitle = TextView(this).apply {
-                text = "\n⬆️ ЗАГРУЗКА АРМИИ"
-                setPadding(0, 16, 0, 8)
-                setTextColor(Color.DKGRAY)
-            }
-            layout.addView(loadTitle)
-
-            val adjacentArmies = mutableListOf<Army>()
-            for (dx in -1..1) {
-                for (dy in -1..1) {
-                    if (dx == 0 && dy == 0) continue
-                    val nx = actualTransport.position.x + dx
-                    val ny = actualTransport.position.y + dy
-                    val armyHere = myLogic.armies.find {
-                        it.position.x == nx && it.position.y == ny &&
-                                it.isAlive() &&
-                                !it.isNaval() && // только сухопутные армии
-                                it.id != actualTransport.id // не сам транспорт
-                    }
-                    if (armyHere != null) {
-                        adjacentArmies.add(armyHere)
-                        Log.d(TAG, "Found adjacent army for loading: ${armyHere.id} at ($nx, $ny) with ${armyHere.units.size} units")
-                    }
-                }
-            }
-
-            if (adjacentArmies.isEmpty()) {
-                val noArmy = TextView(this).apply {
-                    text = "❌ Нет сухопутных армий рядом для загрузки"
-                    setTextColor(ContextCompat.getColor(this@MultiplayerGameActivity, android.R.color.holo_red_dark))
-                    setPadding(0, 10, 0, 10)
-                }
-                layout.addView(noArmy)
-            } else {
-                for (army in adjacentArmies) {
-                    val btn = Button(this).apply {
-                        text = "⬆️ Загрузить армию (${army.units.size} юнитов)"
-                        setOnClickListener {
-                            Log.d(TAG, "Loading army: ${army.id} into transport: ${actualTransport.id}")
-                            dialog.dismiss()
-                            lifecycleScope.launch {
-                                try {
-                                    val success = multiplayerLogic.makeTurn(
-                                        gameId, uid,
-                                        listOf(GameAction.LoadArmyIntoTransport(actualTransport.id, army.id))
-                                    )
-                                    if (success) {
-                                        Toast.makeText(this@MultiplayerGameActivity, "Армия загружена!", Toast.LENGTH_SHORT).show()
-                                        updatePlayerState(uid)
-                                        lastSharedMapHash = 0
-                                        reloadGameData()
-                                    } else {
-                                        Toast.makeText(this@MultiplayerGameActivity, "Ошибка загрузки армии", Toast.LENGTH_SHORT).show()
-                                    }
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "Ошибка загрузки армии", e)
-                                    Toast.makeText(this@MultiplayerGameActivity, "Ошибка: ${e.message}", Toast.LENGTH_SHORT).show()
-                                }
-                            }
-                        }
-                    }
-                    layout.addView(btn)
-                }
-            }
-        }
-
-        // РАЗДЕЛИТЕЛЬ
-        val divider = View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                2
-            ).apply {
-                setMargins(0, 20, 0, 20)
-            }
-            setBackgroundColor(Color.LTGRAY)
-        }
-        layout.addView(divider)
-
-        // ИНФОРМАЦИЯ О ТРАНСПОРТЕ
-        val transportInfo = TextView(this).apply {
-            text = "💡 Информация о транспорте:\n" +
-                    "• Может перевозить 1 сухопутную армию\n" +
-                    "• Может загружать/высаживать за 1 ход\n" +
-                    "• Высаживает на сушу в радиусе 3 клеток\n" +
-                    "• Не может атаковать"
-            setTextColor(Color.DKGRAY)
-            textSize = 12f
-            setPadding(0, 8, 0, 0)
-        }
-        layout.addView(transportInfo)
-
-        dialog.setView(layout)
-        dialog.show()
-    }
 
     private fun showUnloadTargetSelection(uid: String, transport: Army, game: MultiplayerGame) {
         Log.d(TAG, "=== SHOW UNLOAD TARGET SELECTION ===")

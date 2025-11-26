@@ -51,6 +51,7 @@ import com.example.chatapp.api.RetrofitInstance
 import com.example.chatapp.budilnik.AlarmActivity
 import com.example.chatapp.databinding.ActivityMainBinding
 import com.example.chatapp.fragments.*
+import com.example.chatapp.gruha.TimerActivity
 import com.example.chatapp.location.LocationServiceManager
 import com.example.chatapp.location.LocationUpdateService
 import com.example.chatapp.location.LocationPagerFragment
@@ -654,63 +655,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun showPopupMenu(view: View) {
-        try {
-            val popup = PopupMenu(this, view)
-            popup.menuInflater.inflate(R.menu.main_menu, popup.menu)
 
-            popup.setOnMenuItemClickListener { item ->
-                when (item.itemId) {
-                    R.id.menu_profile -> {
-                        try {
-                            startActivity(Intent(this, ProfileActivity::class.java))
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error starting ProfileActivity", e)
-                        }
-                        true
-                    }
-                    R.id.menu_questionnaire -> {
-                        startUserQuestionnaireActivity()
-                        true
-                    }
-                    R.id.menu_mozgi -> {
-                        try {
-                            startActivity(Intent(this, CategoriesActivity::class.java))
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error starting CategoriesActivity", e)
-                        }
-                        true
-                    }
-                    R.id.menu_alarm -> {
-                        try {
-                            startActivity(Intent(this, AlarmActivity::class.java))
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error starting AlarmActivity", e)
-                        }
-                        true
-                    }
-                    // ДОБАВЬТЕ ЭТОТ КЕЙС ДЛЯ ЛОТЕРЕИ
-                    R.id.menu_lottery -> {
-                        try {
-                            switchToLotteryFragment()
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error switching to lottery fragment", e)
-                            Toast.makeText(this, "Ошибка открытия лотереи", Toast.LENGTH_SHORT).show()
-                        }
-                        true
-                    }
-                    R.id.menu_logout -> {
-                        logoutUser()
-                        true
-                    }
-                    else -> false
-                }
-            }
-            popup.show()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error showing popup menu", e)
-        }
-    }
 
     /**
      * Переключается на фрагмент лотереи
@@ -1818,6 +1763,95 @@ class MainActivity : AppCompatActivity() {
             emptyList()
         }
     }
+
+
+
+
+
+
+
+    private fun showPopupMenu(view: View) {
+        try {
+            val popup = PopupMenu(this, view)
+            popup.menuInflater.inflate(R.menu.main_menu, popup.menu)
+
+            popup.setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    R.id.menu_profile -> {
+                        try {
+                            startActivity(Intent(this, ProfileActivity::class.java))
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error starting ProfileActivity", e)
+                        }
+                        true
+                    }
+                    R.id.menu_questionnaire -> {
+                        startUserQuestionnaireActivity()
+                        true
+                    }
+                    R.id.menu_mozgi -> {
+                        try {
+                            startActivity(Intent(this, CategoriesActivity::class.java))
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error starting CategoriesActivity", e)
+                        }
+                        true
+                    }
+                    R.id.menu_alarm -> {
+                        try {
+                            startActivity(Intent(this, AlarmActivity::class.java))
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error starting AlarmActivity", e)
+                        }
+                        true
+                    }
+                    R.id.menu_lottery -> {
+                        try {
+                            switchToLotteryFragment()
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error switching to lottery fragment", e)
+                            Toast.makeText(this, "Ошибка открытия лотереи", Toast.LENGTH_SHORT).show()
+                        }
+                        true
+                    }
+                    // ДОБАВЬТЕ ЭТОТ КЕЙС ДЛЯ ТАЙМЕРА
+                    R.id.menu_timer -> {
+                        try {
+                            startActivity(Intent(this@MainActivity, TimerActivity::class.java))
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error starting TimerActivity", e)
+                            Toast.makeText(this@MainActivity, "Ошибка открытия таймера", Toast.LENGTH_SHORT).show()
+                        }
+                        true
+                    }
+                    R.id.menu_logout -> {
+                        logoutUser()
+                        true
+                    }
+                    else -> false
+                }
+            }
+            popup.show()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing popup menu", e)
+        }
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     /**
      * Находит последнее значимое сообщение пользователя

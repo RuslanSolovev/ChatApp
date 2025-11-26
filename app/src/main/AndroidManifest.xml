@@ -90,6 +90,10 @@
             android:screenOrientation="portrait"
             android:exported="false" />
 
+        <activity
+            android:name=".gruha.TimerActivity"
+            android:label="Таймер для тренировок" />
+
         <!-- ИЗМЕНЕНО: было landscape -->
         <activity
             android:name=".igra_strotegiy.MultiplayerGameActivity"

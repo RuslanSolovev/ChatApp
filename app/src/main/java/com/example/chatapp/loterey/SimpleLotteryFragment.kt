@@ -32,7 +32,7 @@ class SimpleLotteryFragment : Fragment() {
     private val auth = FirebaseAuth.getInstance()
 
     private val yourCardNumber = "5536914012345678"
-    private val yourName = "Иван Иванов"
+    private val yourName = "Руслан Соловьев"
 
     // Список всех популярных банковских приложений
     private val allBankApps = listOf(
@@ -74,11 +74,8 @@ class SimpleLotteryFragment : Fragment() {
         setupClickListeners()
         checkAdminStatus()
 
-        binding.adminPanel.visibility = View.GONE
-
         Log.d("LotteryFragment", "🎰 Фрагмент лотереи создан")
     }
-
 
     private fun setupObservers() {
         // Используем repeatOnLifecycle для безопасного сбора Flow
@@ -129,13 +126,10 @@ class SimpleLotteryFragment : Fragment() {
                             binding.btnBuyTickets.isEnabled = !isLoading
                             binding.btnConfirmPayment.isEnabled = !isLoading
                             binding.btnCheckTickets.isEnabled = !isLoading
-                            binding.btnDrawWinner.isEnabled = !isLoading
                             binding.btnAdminPanel.isEnabled = !isLoading
-                            binding.btnQuickAdminPanel.isEnabled = !isLoading
                         }
                     }
                 }
-
 
                 launch {
                     viewModel.currentLottery.collect { lottery ->
@@ -174,8 +168,7 @@ class SimpleLotteryFragment : Fragment() {
                 launch {
                     viewModel.isAdmin.collect { isAdmin ->
                         if (isAdded && view != null) {
-                            binding.adminPanel.visibility = if (isAdmin) View.VISIBLE else View.GONE
-                            binding.btnQuickAdminPanel.visibility = if (isAdmin) View.VISIBLE else View.GONE
+                            binding.btnAdminPanel.visibility = if (isAdmin) View.VISIBLE else View.GONE
 
                             if (isAdmin) {
                                 Log.d("LotteryFragment", "👑 Пользователь является администратором")
@@ -286,36 +279,12 @@ class SimpleLotteryFragment : Fragment() {
             showLotteryHistory()
         }
 
-        // АДМИН КНОПКИ
+        // ОДНА КНОПКА ДЛЯ АДМИНА - УПРАВЛЕНИЕ ЛОТЕРЕЕЙ
         binding.btnAdminPanel.setOnClickListener {
             showAdminPanel()
         }
-
-        binding.btnQuickAdminPanel.setOnClickListener {
-            showAdminPanel()
-        }
-
-        binding.btnDrawWinner.setOnClickListener {
-            showDrawConfirmationDialog()
-        }
     }
 
-    private fun checkAdminStatus() {
-        viewLifecycleOwner.lifecycleScope.launch {
-            viewModel.isAdmin.collect { isAdmin ->
-                if (isAdded && view != null) {
-                    binding.adminPanel.visibility = if (isAdmin) View.VISIBLE else View.GONE
-                    binding.btnQuickAdminPanel.visibility = if (isAdmin) View.VISIBLE else View.GONE
-
-                    if (isAdmin) {
-                        Log.d("Lottery", "👑 Пользователь является администратором")
-                    } else {
-                        Log.d("Lottery", "👤 Обычный пользователь")
-                    }
-                }
-            }
-        }
-    }
 
     // АДМИН ПАНЕЛЬ
     private fun showAdminPanel() {
@@ -325,29 +294,6 @@ class SimpleLotteryFragment : Fragment() {
             .addToBackStack("admin_panel")
             .commit()
         Log.d("LotteryFragment", "🔧 Открыта админ-панель")
-    }
-
-    private fun showDrawConfirmationDialog() {
-        viewModel.currentLottery.value?.let { lottery ->
-            AlertDialog.Builder(requireContext())
-                .setTitle("🎰 Запуск розыгрыша")
-                .setMessage("""
-                    Вы уверены, что хотите запустить розыгрыш?
-                    
-                    💰 Призовой фонд: ${lottery.currentPrize.toInt()} ₽
-                    🏆 Победитель получит: ${(lottery.currentPrize * 0.9).toInt()} ₽
-                    
-                    После розыгрыша будет создана новая лотерея.
-                """.trimIndent())
-                .setPositiveButton("🎰 ЗАПУСТИТЬ РОЗЫГРЫШ") { dialog, _ ->
-                    viewModel.drawWinner()
-                    dialog.dismiss()
-                }
-                .setNegativeButton("ОТМЕНА") { dialog, _ ->
-                    dialog.dismiss()
-                }
-                .show()
-        } ?: showSuccessMessage("❌ Нет активной лотереи для розыгрыша")
     }
 
     private fun showLotteryHistory() {
@@ -394,6 +340,26 @@ class SimpleLotteryFragment : Fragment() {
 
         dialog.show()
     }
+
+
+
+    private fun checkAdminStatus() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewModel.isAdmin.collect { isAdmin ->
+                if (isAdded && view != null) {
+                    // Скрываем ВСЮ карточку администратора, а не только кнопку
+                    binding.cardAdmin.visibility = if (isAdmin) View.VISIBLE else View.GONE
+
+                    if (isAdmin) {
+                        Log.d("Lottery", "👑 Пользователь является администратором - показываем панель")
+                    } else {
+                        Log.d("Lottery", "👤 Обычный пользователь - скрываем панель")
+                    }
+                }
+            }
+        }
+    }
+
 
     // КАСТОМНЫЙ ДИАЛОГ: Подтверждение перевода
     private fun showCustomConfirmationDialog() {

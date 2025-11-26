@@ -19,6 +19,11 @@
         android:title="Будильник"
         android:icon="@drawable/ic_alarm"/>
 
+    <!-- ДОБАВЬТЕ ЭТОТ ПУНКТ ДЛЯ ГРУШИ (ТАЙМЕРА) -->
+    <item
+        android:id="@+id/menu_timer"
+        android:title="🥊 Груша" />
+
     <!-- ДОБАВЬТЕ ЭТОТ ПУНКТ ДЛЯ ЛОТЕРЕИ -->
     <item
         android:id="@+id/menu_lottery"

@@ -3,78 +3,124 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="16dp"
+    android:background="@color/bg_message_right">
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Настройки таймера"
-        android:textSize="20sp"
+        android:text="🥊 Таймер для тренировок"
+        android:textSize="24sp"
         android:textStyle="bold"
-        android:layout_marginTop="16dp" />
+        android:layout_gravity="center_horizontal"
+        android:layout_marginTop="16dp"
+        android:layout_marginBottom="32dp"
+        android:textColor="@color/primary_color" />
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Время раунда (сек):" />
+        android:text="Время раунда (секунды):"
+        android:textSize="16sp"
+        android:layout_marginBottom="8dp" />
 
     <EditText
         android:id="@+id/round_time"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:inputType="number"
-        android:hint="60" />
+        android:hint="180"
+        android:textSize="18sp"
+        android:padding="12dp"
+        android:background="@drawable/bg_online_indicator" />
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Время отдыха (сек):" />
+        android:text="Время отдыха (секунды):"
+        android:textSize="16sp"
+        android:layout_marginTop="16dp"
+        android:layout_marginBottom="8dp" />
 
     <EditText
         android:id="@+id/rest_time"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:inputType="number"
-        android:hint="30" />
+        android:hint="60"
+        android:textSize="18sp"
+        android:padding="12dp"
+        android:background="@drawable/bg_online_indicator" />
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="Количество раундов:" />
+        android:text="Количество раундов:"
+        android:textSize="16sp"
+        android:layout_marginTop="16dp"
+        android:layout_marginBottom="8dp" />
 
     <EditText
         android:id="@+id/rounds_count"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:inputType="number"
-        android:hint="3" />
+        android:hint="3"
+        android:textSize="18sp"
+        android:padding="12dp"
+        android:background="@drawable/bg_online_indicator" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:layout_marginTop="16dp"
+        android:layout_marginTop="32dp"
         android:gravity="center">
 
         <Button
             android:id="@+id/start_button"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:text="Начать"
-            android:layout_marginEnd="16dp" />
+            android:textSize="16sp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/bg_online_indicator"
+            android:textColor="@color/colorPrimary" />
 
         <Button
             android:id="@+id/stop_button"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:text="Остановить" />
+            android:layout_weight="1"
+            android:text="Остановить"
+            android:textSize="16sp"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/bg_online_indicator"
+            android:textColor="@color/alarm_emergency" />
     </LinearLayout>
+
+    <!-- Добавляем текстовый статус -->
+    <TextView
+        android:id="@+id/status_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:layout_gravity="center"
+        android:layout_marginTop="48dp"
+        android:text="Готов к старту"
+        android:textColor="@color/primary_color" />
 
     <TextView
         android:id="@+id/timer_text"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:textSize="24sp"
+        android:textSize="48sp"
+        android:textStyle="bold"
         android:layout_gravity="center"
-        android:layout_marginTop="24dp" />
+        android:layout_marginTop="16dp"
+        android:text="00:00"
+        android:textColor="@color/ready_color" />
+
 </LinearLayout>

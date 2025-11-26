@@ -119,6 +119,9 @@
 
         <color name="text_accent">#636363</color>
 
+    <color name="round_active_color">#FF5722</color>    <!-- Оранжевый для раунда -->
+    <color name="rest_active_color">#4CAF50</color>     <!-- Зеленый для отдыха -->
+    <color name="ready_color">#2196F3</color>           <!-- Синий для готовности -->
 
 
 

@@ -23,7 +23,7 @@ object NotificationUtils {
     private const val ONESIGNAL_APP_ID = "0083de8f-7ca0-4824-ac88-9c037278237e"
 
     // ⚠️ ОБНОВЛЕННЫЙ ПРАВИЛЬНЫЙ REST API KEY
-    private const val REST_API_KEY = "os_v2_app_acb55d34ubecjleitqbxe6bdpzgl3ejyyjfu2em64r2vsnypzjosk4x4zz4ymvanhwxm6bwqiglyzyaslkrcurm2f5oxe5huvssdsdq"
+    private const val REST_API_KEY = "os_v2_app_acb55d34ubecjleitqbxe6bdp3mc7ojm7hjujbeirfw6zvgcpcsny32lud4pugtiez4u6rvlg5pysoosfiq4ex2ve2cvqjvbaejx2jy"
 
     /**
      * Проверка конфигурации OneSignal
@@ -31,7 +31,9 @@ object NotificationUtils {
     fun isOneSignalConfigured(): Boolean {
         val isConfigured = REST_API_KEY.isNotBlank() &&
                 ONESIGNAL_APP_ID.isNotBlank() &&
-                ONESIGNAL_APP_ID.matches(Regex("[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}"))
+                ONESIGNAL_APP_ID.matches(Regex("[a-f" +
+                        "" +
+                        "0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}"))
 
         if (!isConfigured) {
             Log.e(TAG, "❌ OneSignal не настроен. Проверьте ключи!")

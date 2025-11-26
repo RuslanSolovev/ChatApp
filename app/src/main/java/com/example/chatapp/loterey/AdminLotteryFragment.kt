@@ -147,9 +147,13 @@ class AdminLotteryFragment : Fragment() {
             showForceNewLotteryDialog()
         }
 
+        // В setupClickListeners() добавьте:
         binding.btnSendTestNotification.setOnClickListener {
-            sendTestNotification()
+            viewLifecycleOwner.lifecycleScope.launch {
+                viewModel.sendTestNotification()
+            }
         }
+
     }
 
     private fun showConfirmPaymentDialog(paymentId: String) {
