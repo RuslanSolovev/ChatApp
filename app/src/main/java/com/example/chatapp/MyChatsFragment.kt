@@ -31,7 +31,6 @@ class MyChatsFragment : Fragment() {
     private lateinit var database: DatabaseReference
     private lateinit var auth: FirebaseAuth
     private val chatList = mutableListOf<Chat>()
-    // private val allChats = mutableListOf<Chat>() // Не используется в адаптере, возможно, не нужна
     private val usersCache = hashMapOf<String, User>()
     private lateinit var progressBar: ProgressBar
     private lateinit var emptyState: View

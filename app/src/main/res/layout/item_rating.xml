@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal"
+    android:padding="12dp"
+    android:background="@drawable/bg_gradient_game"
+    android:layout_margin="4dp">
+
+    <!-- Позиция -->
+    <TextView
+        android:id="@+id/tvPosition"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:gravity="center"
+        android:text="1"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:background="@drawable/circle_background"
+        android:textColor="@color/white" />
+
+    <!-- Аватар -->
+    <ImageView
+        android:id="@+id/ivUserAvatar"
+        android:layout_width="36dp"
+        android:layout_height="36dp"
+        android:layout_marginStart="12dp"
+        android:layout_marginEnd="12dp"
+        android:src="@drawable/ic_default_profile" />
+
+    <!-- Информация -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/tvUserName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Имя пользователя"
+            android:textColor="@color/text_primary"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <TextView
+            android:id="@+id/tvLevel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Новичок"
+            android:textColor="@color/primary_color"
+            android:textSize="12sp"
+            android:layout_marginTop="2dp"
+            android:maxLines="1" />
+
+        <TextView
+            android:id="@+id/tvUserStats"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Игр: 0 | Побед: 0"
+            android:textColor="@color/text_secondary"
+            android:textSize="10sp"
+            android:layout_marginTop="2dp"
+            android:maxLines="3" />
+
+    </LinearLayout>
+
+    <!-- Рейтинг -->
+    <TextView
+        android:id="@+id/tvUserRating"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="1000"
+        android:textColor="#FBCC03"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        android:gravity="center" />
+
+</LinearLayout>

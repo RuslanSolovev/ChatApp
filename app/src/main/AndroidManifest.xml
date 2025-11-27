@@ -25,6 +25,7 @@
         android:name="android.permission.WRITE_EXTERNAL_STORAGE"
         android:maxSdkVersion="28" />
 
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Разрешения для будильника -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
@@ -100,6 +101,21 @@
             android:label="Стратегия"
             android:screenOrientation="portrait"
             android:exported="false" />
+
+
+
+
+        <activity
+            android:name=".igra_bloki.BlockGameActivity"
+            android:label="Игра Блоки"
+            android:screenOrientation="portrait" />
+        <activity
+            android:name=".activities.RatingActivity"
+            android:label="Рейтинг игроков" />
+
+
+
+
 
         <activity
             android:name=".igra_strotegiy.TutorialActivity"

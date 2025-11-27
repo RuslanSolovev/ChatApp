@@ -30,6 +30,10 @@
         android:title="🎰 Лотерея" />
 
     <item
+        android:id="@+id/menu_blocks"
+        android:title="🧱 Блоки"/>
+
+    <item
         android:id="@+id/menu_logout"
         android:title="Выйти"/>
 </menu>

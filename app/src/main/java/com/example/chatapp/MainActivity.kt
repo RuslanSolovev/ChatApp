@@ -52,6 +52,7 @@ import com.example.chatapp.budilnik.AlarmActivity
 import com.example.chatapp.databinding.ActivityMainBinding
 import com.example.chatapp.fragments.*
 import com.example.chatapp.gruha.TimerActivity
+import com.example.chatapp.igra_bloki.BlockGameActivity
 import com.example.chatapp.location.LocationServiceManager
 import com.example.chatapp.location.LocationUpdateService
 import com.example.chatapp.location.LocationPagerFragment
@@ -1805,6 +1806,17 @@ class MainActivity : AppCompatActivity() {
                         }
                         true
                     }
+
+                    R.id.menu_blocks -> {
+                        try {
+                            startActivity(Intent(this@MainActivity, BlockGameActivity::class.java))
+                        } catch (e: Exception) {
+                            Log.e(TAG, "Error starting BlockGameActivity", e)
+                            Toast.makeText(this@MainActivity, "Ошибка открытия игры Блоки", Toast.LENGTH_SHORT).show()
+                        }
+                        true
+                    }
+
                     R.id.menu_lottery -> {
                         try {
                             switchToLotteryFragment()

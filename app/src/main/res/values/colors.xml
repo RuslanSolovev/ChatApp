@@ -105,7 +105,7 @@
     <color name="alarm_text">#020202</color>
     <color name="alarm_stop">#FFEB3B</color>
 
-
+    <color name="divider_color">#E0E0E0</color>
     <color name="alarm_emergency">#F44336</color>
 
     <color name="alarm_text_emergency">#FFFFFF</color>
@@ -123,6 +123,8 @@
     <color name="rest_active_color">#4CAF50</color>     <!-- Зеленый для отдыха -->
     <color name="ready_color">#2196F3</color>           <!-- Синий для готовности -->
 
-
+    <color name="gold">#FFD700</color>
+    <color name="silver">#C0C0C0</color>
+    <color name="bronze">#CD7F32</color>
 
 </resources>

@@ -23,7 +23,7 @@ object NotificationUtils {
     private const val ONESIGNAL_APP_ID = "0083de8f-7ca0-4824-ac88-9c037278237e"
 
     // ⚠️ ОБНОВЛЕННЫЙ ПРАВИЛЬНЫЙ REST API KEY
-    private const val REST_API_KEY = "os_v2_app_acb55d34ubecjleitqbxe6bdp3mc7ojm7hjujbeirfw6zvgcpcsny32lud4pugtiez4u6rvlg5pysoosfiq4ex2ve2cvqjvbaejx2jy"
+    private const val REST_API_KEY = "os_v2_app_acb55d34ubecjleitqbxe6bdp3yzdx4dfcfef5e5cjow4gsuqdjmwbswh277jcfg25mjtuzbpmvkofc2lj7moq6ughjzgmtex2mupaq"
 
     /**
      * Проверка конфигурации OneSignal

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:id="@+id/menu_rating"
+        android:title="🏆 Рейтинг игроков" />
+
+    <item
+        android:id="@+id/menu_difficulty"
+        android:title="🎯 Уровень сложности" />
+
+    <item
+        android:id="@+id/menu_restart"
+        android:title="🔄 Начать заново" />
+
+    <item
+        android:id="@+id/menu_exit"
+        android:title="🚪 Выйти" />
+</menu>
