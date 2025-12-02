@@ -131,6 +131,20 @@
             android:screenOrientation="portrait"
             android:exported="false" />
 
+        <activity
+            android:name=".pvo.PvoGameActivity"
+            android:screenOrientation="portrait"
+             />
+
+
+        <activity
+            android:name=".pvo.VideoPVOActivity"
+            android:theme="@style/Theme.AppCompat.NoActionBar"
+            android:screenOrientation="sensor"
+        android:configChanges="orientation|screenSize|keyboardHidden"
+        android:exported="false" />
+
+
         <!-- ИЗМЕНЕНО: было landscape -->
         <activity
             android:name=".igra_strotegiy.StrategyGameActivity"

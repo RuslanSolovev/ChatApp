@@ -23,12 +23,13 @@ object NotificationUtils {
     private const val ONESIGNAL_APP_ID = "0083de8f-7ca0-4824-ac88-9c037278237e"
 
     // ⚠️ ОБНОВЛЕННЫЙ ПРАВИЛЬНЫЙ REST API KEY
-    private const val REST_API_KEY = "os_v2_app_acb55d34ubecjleitqbxe6bdp3yzdx4dfcfef5e5cjow4gsuqdjmwbswh277jcfg25mjtuzbpmvkofc2lj7moq6ughjzgmtex2mupaq"
+    private const val REST_API_KEY = "os_v2_app_acb55d34ubecjleitqbxe6bdpy7e6mm6qlzuztfrdctvmtxcrcedjskquvgtkceckkvr4h63b2z6leeb3v6dyqu5bxzrciyd53uwz3y"
 
     /**
      * Проверка конфигурации OneSignal
      */
     fun isOneSignalConfigured(): Boolean {
+
         val isConfigured = REST_API_KEY.isNotBlank() &&
                 ONESIGNAL_APP_ID.isNotBlank() &&
                 ONESIGNAL_APP_ID.matches(Regex("[a-f" +
@@ -50,6 +51,7 @@ object NotificationUtils {
     }
 
     /**
+     *
      * Сохраняет Player ID в Firebase с защитой от дублирования
      */
     fun saveCurrentUserOneSignalIdToDatabase(context: Context) {
