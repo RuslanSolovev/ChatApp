@@ -4,15 +4,16 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:padding="16dp"
-    android:background="@drawable/bg_gradient">
+    android:background="@drawable/bg_gradient_game"
+    android:clipToPadding="false">
 
     <LinearLayout
+        android:id="@+id/container_stats"
         android:orientation="vertical"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginBottom="50dp">
+        android:layout_height="wrap_content">
 
-        <!-- Заголовок и кнопки -->
+        <!-- Заголовок -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -26,7 +27,7 @@
                 android:layout_weight="1"
                 android:text="Статистика шагов"
                 android:textSize="24sp"
-                android:textColor="@color/white"
+                android:textColor="@color/alarm_text"
                 android:textStyle="bold" />
         </LinearLayout>
 
@@ -41,7 +42,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Ваша цель"
-                android:textColor="@color/white"
+                android:textColor="@color/alarm_text"
                 android:textSize="16sp" />
 
             <ProgressBar
@@ -52,14 +53,14 @@
                 android:progress="0"
                 android:max="10000"
                 android:progressTint="@color/colorPrimary"
-                android:progressBackgroundTint="@color/gray_light" />
+                android:progressBackgroundTint="@color/alarm_text" />
 
             <TextView
                 android:id="@+id/tv_goal"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="0 / 10000 шагов"
-                android:textColor="@color/white"
+                android:textColor="@color/alarm_emergency"
                 android:gravity="end"
                 android:textSize="14sp" />
         </LinearLayout>
@@ -268,6 +269,14 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
+        <!-- 🔹 ГРАФИК АКТИВНОСТИ (последние 7 дней) -->
+        <com.github.mikephil.charting.charts.BarChart
+            android:id="@+id/chart_activity"
+            android:layout_width="match_parent"
+            android:layout_height="200dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="24dp" />
+
         <!-- Кнопка показать топ -->
         <Button
             android:id="@+id/btn_show_top"
@@ -278,7 +287,9 @@
             android:textColor="@color/white"
             android:drawableStart="@drawable/ic_leaderboard"
             android:drawableTint="@color/white"
-            android:backgroundTint="@color/colorPrimary"
-            android:paddingVertical="12dp" />
+            android:backgroundTint="@color/gradientStart"
+            android:paddingVertical="18dp"
+            android:layout_marginBottom="30dp" />
+
     </LinearLayout>
 </ScrollView>

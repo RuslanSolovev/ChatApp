@@ -4,7 +4,7 @@
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:padding="12dp"
-    android:background="@drawable/ic_check"
+    android:background="@drawable/bg_gradient_game"
     android:layout_margin="4dp">
 
     <LinearLayout

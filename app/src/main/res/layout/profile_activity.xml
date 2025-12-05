@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:padding="16dp"
-    android:background="@drawable/bg_gradient">
+    android:background="@drawable/bg_gradient_game">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -18,7 +18,7 @@
             android:layout_height="wrap_content"
             android:text="Профиль"
             android:textSize="24sp"
-            android:textColor="@color/white"
+            android:textColor="@color/alarm_emergency"
             android:textStyle="bold"
             android:gravity="center"
             android:paddingBottom="16dp"/>
@@ -29,7 +29,7 @@
             android:layout_width="150dp"
             android:layout_height="150dp"
             android:scaleType="centerCrop"
-            android:src="@drawable/ic_profile_placeholder"
+            android:src="@drawable/fill"
             android:contentDescription="Фото профиля"
             android:layout_marginBottom="16dp"/>
 
@@ -41,7 +41,7 @@
             android:text="Загрузить фото"
             android:drawableStart="@drawable/ic_upload_photo"
             android:drawableTint="@color/white"
-            android:backgroundTint="@color/colorPrimary"
+            android:backgroundTint="@color/colorAccent"
             android:textColor="@color/white"
             android:paddingVertical="8dp"
             android:paddingHorizontal="16dp"
@@ -222,7 +222,7 @@
             android:text="Сохранить профиль"
             android:drawableStart="@drawable/ic_save"
             android:drawableTint="@color/white"
-            android:backgroundTint="@color/colorPrimary"
+            android:backgroundTint="@color/colorAccent"
             android:textColor="@color/white"
             android:paddingVertical="12dp"
             android:layout_marginBottom="8dp"/>

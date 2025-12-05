@@ -4,8 +4,6 @@ import android.Manifest
 import android.animation.ObjectAnimator
 import android.animation.ValueAnimator
 import android.app.ActivityManager
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -25,12 +23,20 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.cardview.widget.CardView
-import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.ViewModelProvider
 import com.example.chatapp.R
 import com.example.chatapp.TopUsersActivity
+import com.github.mikephil.charting.charts.BarChart
+import com.github.mikephil.charting.components.Description
+import com.github.mikephil.charting.components.XAxis
+import com.github.mikephil.charting.data.BarData
+import com.github.mikephil.charting.data.BarDataSet
+import com.github.mikephil.charting.data.BarEntry
+import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
 import java.util.concurrent.Executors
 import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
@@ -41,6 +47,7 @@ import java.util.concurrent.TimeUnit
 class StepCounterFragment : Fragment() {
     private lateinit var viewModel: StepCounterViewModel
     private val executor = Executors.newFixedThreadPool(4)
+
     // Views
     private lateinit var textViewToday: TextView
     private lateinit var textViewWeek: TextView
@@ -56,10 +63,11 @@ class StepCounterFragment : Fragment() {
     private lateinit var cardViewYear: CardView
     private lateinit var cardViewAverage: CardView
     private lateinit var cardViewMax: CardView
+    private lateinit var barChart: BarChart // 🔹
 
     companion object {
         private const val STEP_SERVICE_WORK_NAME = "StepCounterServicePeriodicWork"
-        private const val STEP_SERVICE_INTERVAL_MINUTES = 30L // Каждые 30 минут
+        private const val STEP_SERVICE_INTERVAL_MINUTES = 30L
         private const val NOTIFICATION_CHANNEL_ID = "steps_milestone_channel"
         private const val NOTIFICATION_ID_MILESTONE = 12346
     }
@@ -96,14 +104,27 @@ class StepCounterFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+
         viewModel = ViewModelProvider(requireActivity()).get(StepCounterViewModel::class.java)
         initializeViews(view)
+        setupBarChart() // 🔹
         setupCardAnimations()
         setupTopUsersButton(view)
-        checkRequiredPermissions() // Проверяем разрешения
+
+        // Обработка системных отступов
+        val container = view.findViewById<View>(R.id.container_stats)
+        ViewCompat.setOnApplyWindowInsetsListener(container) { v, insets ->
+            val bottomInsets = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
+            val extraDp = 16
+            val extraPx = (extraDp * resources.displayMetrics.density).toInt()
+            val totalBottom = bottomInsets + extraPx
+            v.setPadding(v.paddingLeft, v.paddingTop, v.paddingRight, totalBottom)
+            insets
+        }
+
+        checkRequiredPermissions()
         setupObservers()
 
-        // Планируем периодическую работу WorkManager для шагомера
         if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED) {
             schedulePeriodicStepServiceWork()
             Log.d("StepCounterFragment", "onViewCreated: Планирование периодической работы шагомера")
@@ -127,6 +148,33 @@ class StepCounterFragment : Fragment() {
         cardViewYear = view.findViewById(R.id.card_year)
         cardViewAverage = view.findViewById(R.id.card_average)
         cardViewMax = view.findViewById(R.id.card_max)
+        barChart = view.findViewById(R.id.chart_activity)
+    }
+
+    // 🔹 Настройка графика
+    private fun setupBarChart() {
+        with(barChart) {
+            description = Description().apply { text = "Шаги за последние 7 дней" }
+            setTouchEnabled(false)
+            isDragEnabled = false
+            setScaleEnabled(false)
+            setPinchZoom(false)
+            setDrawBarShadow(false)
+            setDrawValueAboveBar(true)
+            isHighlightFullBarEnabled = false
+            legend.isEnabled = false
+
+            xAxis.apply {
+                position = XAxis.XAxisPosition.BOTTOM
+                setDrawGridLines(false)
+                granularity = 1f
+                val days = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
+                valueFormatter = IndexAxisValueFormatter(days)
+            }
+
+            axisRight.isEnabled = false
+            axisLeft.setDrawGridLines(false)
+        }
     }
 
     private fun setupCardAnimations() {
@@ -173,6 +221,34 @@ class StepCounterFragment : Fragment() {
         viewModel.goalProgress.observe(viewLifecycleOwner) { (current, goal) ->
             updateGoalText(current, goal)
         }
+
+        // 🔹 Observer для графика
+        viewModel.weeklyChartData.observe(viewLifecycleOwner) { stepsList ->
+            if (stepsList.size == 7) {
+                updateBarChart(stepsList)
+            }
+        }
+    }
+
+    // 🔹 Обновление данных графика
+    private fun updateBarChart(stepsByDay: List<Int>) {
+        val entries = stepsByDay.mapIndexed { index, value ->
+            BarEntry(index.toFloat(), value.toFloat())
+        }
+
+        val dataSet = BarDataSet(entries, "Шаги").apply {
+            color = ContextCompat.getColor(requireContext(), R.color.colorPrimary)
+            valueTextColor = Color.WHITE
+            setDrawValues(true)
+        }
+
+        val barData = BarData(dataSet).apply {
+            barWidth = 0.6f
+            setValueTextSize(10f)
+        }
+
+        barChart.data = barData
+        barChart.invalidate()
     }
 
     private fun checkRequiredPermissions() {
@@ -200,7 +276,6 @@ class StepCounterFragment : Fragment() {
         } else {
             Log.d("StepCounterFragment", "startStepService: Сервис уже запущен")
         }
-        // Планируем периодическую работу WorkManager
         schedulePeriodicStepServiceWork()
         Log.d("StepCounterFragment", "startStepService: Планирование периодической работы шагомера")
     }

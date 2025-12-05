@@ -5,12 +5,13 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/background_gray_light">
+    android:background="@color/background_gray_light"
+    android:fitsSystemWindows="true">
 
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:background="@color/colorPrimary"
+        android:background="@drawable/bg_gradient_game"
         android:elevation="4dp">
 
         <com.google.android.material.appbar.MaterialToolbar
@@ -28,11 +29,11 @@
             android:id="@+id/periodTabs"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:background="@color/colorPrimary"
-            app:tabIndicatorColor="@color/white"
+            android:background="@color/alarm_background"
+            app:tabIndicatorColor="@color/ready_color"
             app:tabIndicatorHeight="3dp"
-            app:tabSelectedTextColor="@color/white"
-            app:tabTextColor="@color/white_70"
+            app:tabSelectedTextColor="@color/on_surface_variant"
+            app:tabTextColor="@color/grey"
             app:tabMode="fixed"
             app:tabGravity="fill">
 
@@ -85,7 +86,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:text="Ваша позиция"
-                        android:textColor="@color/colorPrimary"
+                        android:textColor="@color/gray_600"
                         android:textSize="16sp"
                         android:textStyle="bold"/>
 
@@ -101,7 +102,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="1"
-                            android:textColor="@color/colorPrimary"
+                            android:textColor="@color/gray_600"
                             android:textSize="24sp"
                             android:textStyle="bold"
                             android:paddingEnd="16dp"/>
@@ -128,7 +129,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="12 345 шагов"
-                            android:textColor="@color/colorPrimary"
+                            android:textColor="@color/gray_600"
                             android:textSize="16sp"
                             android:textStyle="bold"/>
                     </LinearLayout>
@@ -144,7 +145,7 @@
                 android:visibility="gone"
                 app:trackThickness="4dp"
                 app:trackColor="@color/gray_light"
-                app:indicatorColor="@color/colorPrimary"
+                app:indicatorColor="#8BC34A"
                 android:layout_marginBottom="16dp"/>
 
             <!-- RecyclerView для списка топ пользователей -->
@@ -166,7 +167,7 @@
         android:layout_height="wrap_content"
         android:layout_margin="16dp"
         android:src="@drawable/ic_refresh"
-        app:backgroundTint="@color/colorPrimary"
+        app:backgroundTint="#84F800"
         app:tint="@color/white"
         app:layout_anchor="@id/recyclerView"
         app:layout_anchorGravity="bottom|right|end"

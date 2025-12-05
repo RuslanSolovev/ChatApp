@@ -46,6 +46,10 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
     private val _cardColorRes = MutableLiveData<Int>()
     val cardColorRes: LiveData<Int> = _cardColorRes
 
+    // 🔹 НОВОЕ: LiveData для графика (последние 7 дней)
+    private val _weeklyChartData = MutableLiveData<List<Int>>()
+    val weeklyChartData: LiveData<List<Int>> = _weeklyChartData
+
     // Данные
     private val sharedPreferences = application.getSharedPreferences("step_prefs", Context.MODE_PRIVATE)
     private val firebaseDatabase = FirebaseDatabase.getInstance()
@@ -99,6 +103,7 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
             val year = withContext(Dispatchers.IO) { calculateYearlySteps() }
             val max = withContext(Dispatchers.IO) { calculateMaxSteps() }
             val avg = withContext(Dispatchers.IO) { calculateAverageSteps() }
+            val chartData = withContext(Dispatchers.IO) { getWeeklyChartData() }
 
             _todaySteps.postValue(today)
             _weeklySteps.postValue(week)
@@ -106,6 +111,7 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
             _yearlySteps.postValue(year)
             _averageSteps.postValue(avg)
             _maxSteps.postValue(max)
+            _weeklyChartData.postValue(chartData) // 🔹
 
             updateGoalProgress()
             updateCardColor(today)
@@ -137,8 +143,6 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
         val calendar = Calendar.getInstance().apply {
             firstDayOfWeek = Calendar.MONDAY
         }
-
-        // Устанавливаем на начало текущей недели (понедельник)
         calendar.set(Calendar.DAY_OF_WEEK, Calendar.MONDAY)
         calendar.set(Calendar.HOUR_OF_DAY, 0)
         calendar.set(Calendar.MINUTE, 0)
@@ -148,7 +152,6 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
         var totalSteps = 0
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
 
-        // Считаем шаги за 7 дней текущей недели
         repeat(7) {
             val dayKey = dateFormat.format(calendar.time)
             totalSteps += sharedPreferences.getInt(dayKey, 0)
@@ -158,9 +161,32 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
         return totalSteps
     }
 
+    // 🔹 НОВОЕ: возвращает список шагов за последние 7 дней (от старых к новым)
+    private fun getWeeklyChartData(): List<Int> {
+        val calendar = Calendar.getInstance()
+        calendar.time = Date()
+        calendar.set(Calendar.HOUR_OF_DAY, 0)
+        calendar.set(Calendar.MINUTE, 0)
+        calendar.set(Calendar.SECOND, 0)
+        calendar.set(Calendar.MILLISECOND, 0)
+
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val stepsList = mutableListOf<Int>()
+
+        // Добавляем от 6 дней назад до сегодня (всего 7 дней)
+        for (i in 6 downTo 0) {
+            val date = calendar.clone() as Calendar
+            date.add(Calendar.DATE, -i)
+            val key = dateFormat.format(date.time)
+            stepsList.add(sharedPreferences.getInt(key, 0))
+        }
+
+        return stepsList
+    }
+
     private fun calculateMonthlySteps(): Int {
         val calendar = Calendar.getInstance().apply {
-            set(Calendar.DAY_OF_MONTH, 1) // Первое число месяца
+            set(Calendar.DAY_OF_MONTH, 1)
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0)
@@ -172,9 +198,7 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
         var totalSteps = 0
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
 
-        // Проходим по всем дням текущего месяца
-        while (calendar.get(Calendar.MONTH) == currentMonth &&
-            calendar.get(Calendar.YEAR) == currentYear) {
+        while (calendar.get(Calendar.MONTH) == currentMonth && calendar.get(Calendar.YEAR) == currentYear) {
             val dayKey = dateFormat.format(calendar.time)
             totalSteps += sharedPreferences.getInt(dayKey, 0)
             calendar.add(Calendar.DATE, 1)
@@ -186,7 +210,7 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
     private fun calculateYearlySteps(): Int {
         val calendar = Calendar.getInstance().apply {
             set(Calendar.MONTH, Calendar.JANUARY)
-            set(Calendar.DAY_OF_MONTH, 1) // 1 января
+            set(Calendar.DAY_OF_MONTH, 1)
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0)
@@ -197,13 +221,10 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
         var totalSteps = 0
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
 
-        // Проходим по всем дням текущего года
         while (calendar.get(Calendar.YEAR) == currentYear) {
             val dayKey = dateFormat.format(calendar.time)
             totalSteps += sharedPreferences.getInt(dayKey, 0)
             calendar.add(Calendar.DATE, 1)
-
-            // Защита от бесконечного цикла
             if (calendar.get(Calendar.YEAR) > currentYear) break
         }
 
@@ -212,7 +233,7 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
 
     private fun calculateAverageSteps(): Int {
         val calendar = Calendar.getInstance().apply {
-            add(Calendar.DATE, -30) // Последние 30 дней
+            add(Calendar.DATE, -30)
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0)
@@ -223,7 +244,6 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
         var totalSteps = 0
         var daysWithData = 0
 
-        // Считаем среднее за последние 30 дней
         repeat(30) {
             val dayKey = dateFormat.format(calendar.time)
             val daySteps = sharedPreferences.getInt(dayKey, 0)
@@ -249,7 +269,6 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
         val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
         var maxSteps = 0
 
-        // Ищем максимум за последние 30 дней
         repeat(30) {
             val dayKey = dateFormat.format(calendar.time)
             maxSteps = max(maxSteps, sharedPreferences.getInt(dayKey, 0))

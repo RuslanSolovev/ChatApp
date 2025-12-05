@@ -7,6 +7,19 @@
     <uses-permission android:name="android.permission.VIBRATE" />
 
 
+    <!-- Добавьте эти разрешения: -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+
+    <!-- Для TTS на Android 11+ -->
+    <uses-permission android:name="android.permission.TEXT_TO_SPEECH" />
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
     <!-- Только для Android 11 (API 30) и ниже -->
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <!-- Для Android 12+ (API 31+) -->

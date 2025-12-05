@@ -1,0 +1,373 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/popup_container"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginHorizontal="16dp"
+    android:orientation="vertical"
+    android:background="@drawable/popup_menu_background"
+    android:elevation="24dp"
+    android:outlineProvider="background">
+
+    <!-- Заголовок профиля -->
+    <LinearLayout
+        android:id="@+id/profile_section"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="20dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true">
+
+        <com.google.android.material.imageview.ShapeableImageView
+            android:id="@+id/iv_profile_avatar"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:layout_marginEnd="16dp"
+            app:shapeAppearanceOverlay="@style/CircleImageView"
+            android:scaleType="centerCrop"
+            android:src="@drawable/ic_default_profile" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/tv_profile_name"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Руслан"
+                android:textSize="18sp"
+                android:textColor="@color/on_surface"
+                android:fontFamily="sans-serif-medium"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+            <TextView
+                android:id="@+id/tv_profile_email"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="user@example.com"
+                android:textSize="14sp"
+                android:textColor="@color/on_surface_variant"
+                android:maxLines="1"
+                android:ellipsize="end" />
+
+        </LinearLayout>
+
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginStart="8dp"
+            android:src="@drawable/ic_chevron_right"
+            app:tint="@color/outline" />
+
+    </LinearLayout>
+
+    <!-- Разделитель с отступом -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="12dp"
+        android:background="@color/surface" />
+
+    <!-- Секция 1: Аккаунт -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="АККАУНТ"
+        android:textSize="12sp"
+        android:textColor="@color/on_surface_variant"
+        android:fontFamily="sans-serif-medium"
+        android:letterSpacing="0.1"
+        android:paddingStart="24dp"
+        android:paddingTop="12dp"
+        android:paddingEnd="24dp"
+        android:paddingBottom="12dp" />
+
+    <!-- Анкета -->
+    <LinearLayout
+        android:id="@+id/questionnaire_item"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:orientation="horizontal"
+        android:paddingStart="24dp"
+        android:paddingEnd="24dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical">
+
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginEnd="16dp"
+            android:src="@drawable/ic_profile_placeholder"
+            app:tint="@color/colorPrimary" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Моя анкета"
+            android:textSize="16sp"
+            android:textColor="@color/on_surface" />
+
+        <TextView
+            android:id="@+id/badge_questionnaire"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="NEW"
+            android:textSize="11sp"
+            android:textColor="@color/on_primary"
+            android:fontFamily="sans-serif-medium"
+            android:background="@drawable/badge_background"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="4dp"
+            android:visibility="gone" />
+
+    </LinearLayout>
+
+    <!-- Разделитель между секциями -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="8dp"
+        android:background="@color/surface" />
+
+    <!-- Секция 2: Развлечения -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="РАЗВЛЕЧЕНИЯ"
+        android:textSize="12sp"
+        android:textColor="@color/on_surface_variant"
+        android:fontFamily="sans-serif-medium"
+        android:letterSpacing="0.1"
+        android:paddingStart="24dp"
+        android:paddingTop="12dp"
+        android:paddingEnd="24dp"
+        android:paddingBottom="12dp" />
+
+    <!-- Лотерея -->
+    <LinearLayout
+        android:id="@+id/games_item"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:orientation="horizontal"
+        android:paddingStart="24dp"
+        android:paddingEnd="24dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical">
+
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginEnd="16dp"
+            android:src="@drawable/ic_forge"
+            app:tint="@color/alarm_stop" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="🎰 Лотерея"
+            android:textSize="16sp"
+            android:textColor="@color/on_surface" />
+
+        <ImageView
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:src="@drawable/ic_play"
+            android:visibility="gone" />
+
+    </LinearLayout>
+
+    <!-- Мозг тест -->
+    <LinearLayout
+        android:id="@+id/mozgi_item"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:orientation="horizontal"
+        android:paddingStart="24dp"
+        android:paddingEnd="24dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical">
+
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginEnd="16dp"
+            android:src="@drawable/ic_brain"
+            app:tint="@color/accent" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Мозг Тест"
+            android:textSize="16sp"
+            android:textColor="@color/on_surface" />
+
+    </LinearLayout>
+
+    <!-- Игра Блоки -->
+    <LinearLayout
+        android:id="@+id/blocks_item"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:orientation="horizontal"
+        android:paddingStart="24dp"
+        android:paddingEnd="24dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical">
+
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginEnd="16dp"
+            android:src="@drawable/ic_game"
+            app:tint="@color/alarm_text" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Игра Блоки"
+            android:textSize="16sp"
+            android:textColor="@color/on_surface" />
+
+    </LinearLayout>
+
+    <!-- Разделитель между секциями -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="8dp"
+        android:background="@color/surface" />
+
+    <!-- Секция 3: Утилиты -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="УТИЛИТЫ"
+        android:textSize="12sp"
+        android:textColor="@color/on_surface_variant"
+        android:fontFamily="sans-serif-medium"
+        android:letterSpacing="0.1"
+        android:paddingStart="24dp"
+        android:paddingTop="12dp"
+        android:paddingEnd="24dp"
+        android:paddingBottom="12dp" />
+
+    <!-- Будильник -->
+    <LinearLayout
+        android:id="@+id/alarm_item"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:orientation="horizontal"
+        android:paddingStart="24dp"
+        android:paddingEnd="24dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical">
+
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginEnd="16dp"
+            android:src="@drawable/ic_alarm"
+            app:tint="@color/alarm_text" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Будильник"
+            android:textSize="16sp"
+            android:textColor="@color/on_surface" />
+
+    </LinearLayout>
+
+    <!-- Таймер -->
+    <LinearLayout
+        android:id="@+id/timer_item"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:orientation="horizontal"
+        android:paddingStart="24dp"
+        android:paddingEnd="24dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical">
+
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginEnd="16dp"
+            android:src="@drawable/ic_timer"
+            app:tint="@color/accent" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="🥊 Таймер для груши"
+            android:textSize="16sp"
+            android:textColor="@color/on_surface" />
+
+    </LinearLayout>
+
+    <!-- Разделитель перед выходом -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="12dp"
+        android:background="@color/surface" />
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="@color/surface_variant" />
+
+    <!-- Выход -->
+    <LinearLayout
+        android:id="@+id/logout_item"
+        android:layout_width="match_parent"
+        android:layout_height="60dp"
+        android:orientation="horizontal"
+        android:paddingStart="24dp"
+        android:paddingEnd="24dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical">
+
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginEnd="16dp"
+            android:src="@drawable/ic_exit"
+            app:tint="@color/error" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Выйти"
+            android:textSize="16sp"
+            android:textColor="@color/error"
+            android:fontFamily="sans-serif-medium" />
+
+    </LinearLayout>
+
+</LinearLayout>

@@ -10,12 +10,21 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.util.Log
+import android.view.Gravity
+import android.view.LayoutInflater
+import android.view.MenuItem
 import android.view.View
+import android.view.ViewGroup
+import android.view.WindowManager
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
@@ -68,6 +77,7 @@ import com.example.chatapp.step.StepCounterFragment
 import com.example.chatapp.step.StepCounterService
 import com.example.chatapp.step.StepCounterServiceWorker
 import com.example.chatapp.utils.PhilosophyQuoteWorker
+import com.example.chatapp.utils.TTSManager
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.firebase.auth.FirebaseAuth
@@ -88,14 +98,15 @@ import kotlin.coroutines.suspendCoroutine
 import kotlin.math.min
 
 class MainActivity : AppCompatActivity() {
-    private lateinit var binding: ActivityMainBinding
+    lateinit var binding: ActivityMainBinding
     private lateinit var auth: FirebaseAuth
     private lateinit var bottomNav: BottomNavigationView
     private var isFirstLaunch = true
     private var currentPermissionIndex = 0
+    private var isAppInitialized = false // КРИТИЧЕСКИ ВАЖНО: флаг инициализации
 
     // Переменные для приветственного виджета
-    private lateinit var welcomeCard: CardView
+    lateinit var welcomeCard: CardView
     private lateinit var tvWelcomeTitle: TextView
     private lateinit var tvWelcomeQuestion: TextView
     private lateinit var tvWelcomeContext: TextView
@@ -139,6 +150,20 @@ class MainActivity : AppCompatActivity() {
     private val initDispatcher = Dispatchers.Default.limitedParallelism(2)
     private val ioDispatcher = Dispatchers.IO.limitedParallelism(4)
     private val uiDispatcher = Dispatchers.Main.immediate
+
+    // TTS (Text-to-Speech) переменные
+    private lateinit var ttsManager: TTSManager
+    private var isTTSInitialized = false
+    private var hasGreetingBeenSpoken = false
+    private var hasAIContinuationBeenSpoken = false
+    private var ttsInitializationAttempts = 0
+    private val MAX_TTS_INIT_ATTEMPTS = 3
+
+    // Переменные для отслеживания состояния приложения
+    private var isActivityResumed = false
+    private var wasActivityPaused = false
+    private var welcomeRetryCount = 0
+    private val MAX_WELCOME_RETRIES = 3
 
     // --- БЕЗОПАСНЫЙ СПИСОК РАЗРЕШЕНИЙ ---
     private val basicPermissions = listOf(
@@ -218,57 +243,471 @@ class MainActivity : AppCompatActivity() {
 
         // Задержки для приветственной последовательности
         private const val WELCOME_STAGE_1_DELAY = 0L
-        private const val WELCOME_STAGE_2_DELAY = 1000L
-        private const val WELCOME_STAGE_3_DELAY = 2000L
+        private const val WELCOME_STAGE_2_DELAY = 1500L // Увеличено для надежности
+        private const val WELCOME_STAGE_3_DELAY = 3000L // Увеличено для надежности
+
+        // TTS задержки
+        private const val TTS_INIT_DELAY = 1500L  // Увеличено для стабильности
+        private const val TTS_GREETING_DELAY = 500L
+        private const val TTS_CONTINUATION_DELAY = 2500L // Увеличено для правильного порядка
+        private const val TTS_PAUSE_BETWEEN_PHRASES = 800L
+
+        // Повторные попытки
+        private const val WELCOME_RETRY_DELAY = 2000L
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         try {
             super.onCreate(savedInstanceState)
 
-            val startTime = System.currentTimeMillis()
-            setupExceptionHandler()
-            makeSystemBarsTransparent()
-
-            auth = Firebase.auth
-            if (auth.currentUser == null) {
-                Log.d(TAG, "onCreate: Пользователь не авторизован, переход к AuthActivity")
-                redirectToAuth()
-                return
-            }
-
+            // КРИТИЧЕСКИ ВАЖНО: сначала показываем UI, потом всё остальное
             binding = ActivityMainBinding.inflate(layoutInflater)
             setContentView(binding.root)
-            WindowCompat.setDecorFitsSystemWindows(window, false)
 
-            // БЫСТРАЯ инициализация только критически важных элементов
+            // 1. Инициализируем TTS Manager ВМЕСТО TextToSpeech (синхронно для надежности)
+            initTTSManagerSync()
+
+            // 2. Включаем кнопки и навигацию СРАЗУ
+            enableAllButtonsImmediately()
+
+            // 3. Показываем базовый фрагмент
+            loadInitialFragmentFast()
+
+            // 4. Быстрая инициализация UI
             setupCriticalUI()
 
-            // Отложить тяжелые операции
+            // 5. Асинхронная проверка авторизации (в фоне)
             lifecycleScope.launch(uiDispatcher) {
-                initializeAppAsync()
-                logPerformance("onCreate completion", startTime)
+                checkAuthAsync()
+            }
+
+            // 6. Настройка прозрачных панелей (в фоне)
+            lifecycleScope.launch(uiDispatcher) {
+                makeSystemBarsTransparent()
+                handleSystemBarsInsets()
             }
 
         } catch (e: Exception) {
             Log.e(TAG, "Critical error in onCreate", e)
-            showErrorAndFinish("Ошибка запуска приложения")
+            // Даже при ошибке показываем базовый UI
+            showEmergencyUI()
         }
     }
 
     /**
-     * Быстрая инициализация только критически важных UI элементов
+     * Синхронная инициализация TTS Manager для надежности
+     */
+    private fun initTTSManagerSync() {
+        if (ttsInitializationAttempts >= MAX_TTS_INIT_ATTEMPTS) {
+            Log.w(TAG, "Max TTS initialization attempts reached, skipping")
+            isTTSInitialized = false
+            return
+        }
+
+        ttsInitializationAttempts++
+
+        try {
+            Log.d(TAG, "Initializing TTS Manager (attempt $ttsInitializationAttempts)")
+
+            ttsManager = TTSManager(this) { initialized ->
+                isTTSInitialized = initialized
+
+                if (initialized) {
+                    Log.d(TAG, "TTS Manager initialized successfully in MainActivity")
+
+                    // Сбрасываем счетчик попыток при успехе
+                    ttsInitializationAttempts = 0
+
+                    // Если активность активна - запускаем приветствие
+                    if (isActivityResumed && ::tvWelcomeTitle.isInitialized) {
+                        handler.postDelayed({
+                            speakInitialGreeting()
+                        }, TTS_INIT_DELAY)
+                    }
+                } else {
+                    Log.e(TAG, "TTS Manager initialization failed in MainActivity")
+                    isTTSInitialized = false
+
+                    // Пробуем еще раз если не превышен лимит
+                    if (ttsInitializationAttempts < MAX_TTS_INIT_ATTEMPTS) {
+                        handler.postDelayed({
+                            initTTSManagerSync()
+                        }, 2000L)
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error initializing TTS Manager", e)
+            isTTSInitialized = false
+
+            if (ttsInitializationAttempts < MAX_TTS_INIT_ATTEMPTS) {
+                handler.postDelayed({
+                    initTTSManagerSync()
+                }, 2000L)
+            }
+        }
+    }
+
+    /**
+     * Озвучивает начальное приветствие с улучшенной логикой
+     */
+    private fun speakInitialGreeting() {
+        if (!isTTSInitialized || hasGreetingBeenSpoken || !isActivityResumed) {
+            Log.w(TAG, "Skipping initial greeting - TTS: $isTTSInitialized, Spoken: $hasGreetingBeenSpoken, Resumed: $isActivityResumed")
+            return
+        }
+
+        try {
+            val userName = getUserName()
+            val greeting = getTimeBasedGreeting()
+            val greetingText = "$greeting, $userName!"
+
+            Log.d(TAG, "Speaking initial greeting: $greetingText")
+
+            // Сразу помечаем как сказанное, чтобы не повторять
+            hasGreetingBeenSpoken = true
+
+            // Используем TTS Manager для озвучки
+            ttsManager.speak(greetingText, TTSManager.TYPE_GREETING, true)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error speaking initial greeting", e)
+            // Сбрасываем флаг при ошибке, чтобы можно было повторить
+            hasGreetingBeenSpoken = false
+        }
+    }
+
+    /**
+     * Озвучивает базовое приветствие из приветственной карточки
+     */
+    private fun speakGreeting(text: String) {
+        if (!isTTSInitialized || !isActivityResumed) {
+            Log.w(TAG, "TTS not initialized or activity not resumed, skipping speech: $text")
+            return
+        }
+
+        try {
+            // Используем TYPE_GREETING для специальной обработки приветствий
+            ttsManager.speak(text, TTSManager.TYPE_GREETING, true)
+
+            Log.d(TAG, "Greeting spoken: ${text.take(50)}...")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error speaking greeting", e)
+        }
+    }
+
+    /**
+     * Озвучивает AI-продолжение диалога
+     */
+    private fun speakAIContinuation(continuation: String) {
+        if (!isTTSInitialized || hasAIContinuationBeenSpoken || !isActivityResumed) {
+            Log.w(TAG, "Skipping continuation - TTS: $isTTSInitialized, Spoken: $hasAIContinuationBeenSpoken, Resumed: $isActivityResumed")
+            return
+        }
+
+        try {
+            // Используем TYPE_CHAT_BOT для естественного звучания
+            ttsManager.speak(continuation, TTSManager.TYPE_CHAT_BOT, true)
+            hasAIContinuationBeenSpoken = true
+
+            Log.d(TAG, "Continuation spoken: ${continuation.take(50)}...")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error speaking continuation", e)
+        }
+    }
+
+    /**
+     * Останавливает TTS
+     */
+    private fun stopTTS() {
+        try {
+            ttsManager.stop()
+            Log.d(TAG, "TTS stopped in MainActivity")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error stopping TTS", e)
+        }
+    }
+
+    /**
+     * Освобождает ресурсы TTS
+     */
+    private fun releaseTTS() {
+        try {
+            ttsManager.release()
+            Log.d(TAG, "TTS released in MainActivity")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error releasing TTS", e)
+        }
+    }
+
+    /**
+     * Включает все кнопки и навигацию МГНОВЕННО
+     */
+    private fun enableAllButtonsImmediately() {
+        try {
+            // Включаем все UI элементы сразу
+            binding.bottomNavigation.isEnabled = true
+            binding.btnMusic.isEnabled = true
+            binding.btnQuestionnaire.isEnabled = true
+            binding.btnMenu.isEnabled = true
+            binding.ivUserAvatar.isEnabled = true
+            binding.tvUserName.isEnabled = true
+
+            // Настройка экстренной навигации (работает без сети)
+            setupEmergencyNavigation()
+
+            // Инициализация меню
+            binding.btnMenu.setOnClickListener { view ->
+                showPopupMenu(view)
+            }
+
+            Log.d(TAG, "All buttons enabled immediately")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error enabling buttons immediately", e)
+        }
+    }
+
+    /**
+     * Экстренная навигация (работает без сети и авторизации)
+     */
+    private fun setupEmergencyNavigation() {
+        binding.bottomNavigation.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.nav_home -> {
+                    safeSwitchToFragment(HOME_FRAGMENT_TAG) { HomeFragment() }
+                    true
+                }
+                R.id.nav_gigachat -> {
+                    // Для чата нужен интернет
+                    if (!isNetworkAvailable()) {
+                        Toast.makeText(this, "Для чата требуется интернет", Toast.LENGTH_SHORT).show()
+                        return@setOnItemSelectedListener false
+                    }
+                    safeSwitchToFragment(CHAT_FRAGMENT_TAG) { ChatWithGigaFragment() }
+                    true
+                }
+                R.id.nav_steps -> {
+                    safeSwitchToFragment(STEPS_FRAGMENT_TAG) { StepCounterFragment() }
+                    true
+                }
+                R.id.nav_maps -> {
+                    safeSwitchToFragment(MAPS_FRAGMENT_TAG) { LocationPagerFragment() }
+                    true
+                }
+                R.id.nav_games -> {
+                    safeSwitchToFragment(GAMES_FRAGMENT_TAG) { GamesFragment() }
+                    true
+                }
+                else -> false
+            }
+        }
+
+        // Настройка кнопок toolbar
+        binding.btnMusic.setOnClickListener {
+            try {
+                startActivity(Intent(this, MusicMainActivity::class.java))
+            } catch (e: Exception) {
+                Log.e(TAG, "Error starting MusicActivity", e)
+                Toast.makeText(this, "Ошибка открытия музыки", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        binding.ivUserAvatar.setOnClickListener {
+            try {
+                startActivity(Intent(this, ProfileActivity::class.java))
+            } catch (e: Exception) {
+                Log.e(TAG, "Error starting ProfileActivity", e)
+                Toast.makeText(this, "Ошибка открытия профиля", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        binding.tvUserName.setOnClickListener {
+            try {
+                startActivity(Intent(this, ProfileActivity::class.java))
+            } catch (e: Exception) {
+                Log.e(TAG, "Error starting ProfileActivity", e)
+                Toast.makeText(this, "Ошибка открытия профиля", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    /**
+     * Быстрая загрузка начального фрагмента
+     */
+    private fun loadInitialFragmentFast() {
+        try {
+            supportFragmentManager.commitNow {
+                add(R.id.fragment_container, HomeFragment(), HOME_FRAGMENT_TAG)
+            }
+            binding.bottomNavigation.selectedItemId = R.id.nav_home
+            currentFragmentTag = HOME_FRAGMENT_TAG
+            Log.d(TAG, "Initial fragment loaded fast")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading initial fragment fast", e)
+        }
+    }
+
+    /**
+     * Асинхронная проверка авторизации
+     */
+    private suspend fun checkAuthAsync() = withContext(ioDispatcher) {
+        try {
+            // Быстрая проверка с таймаутом
+            val currentUser = withTimeoutOrNull(3000L) {
+                try {
+                    Firebase.auth.currentUser
+                } catch (e: Exception) {
+                    Log.w(TAG, "Firebase auth check failed, using cache", e)
+                    null
+                }
+            }
+
+            if (currentUser == null) {
+                // Проверяем кэшированную авторизацию
+                val cachedAuth = getSharedPreferences("auth_cache", MODE_PRIVATE)
+                    .getBoolean("is_authenticated", false)
+
+                if (!cachedAuth) {
+                    withContext(uiDispatcher) {
+                        redirectToAuth()
+                    }
+                } else {
+                    // Работаем в оффлайн режиме
+                    withContext(uiDispatcher) {
+                        startOfflineMode()
+                    }
+                }
+            } else {
+                // Пользователь авторизован, продолжаем инициализацию
+                withContext(uiDispatcher) {
+                    auth = Firebase.auth
+                    initializeAppAsync()
+                }
+            }
+
+        } catch (e: TimeoutCancellationException) {
+            Log.w(TAG, "Auth check timeout - возможно нет интернета")
+            withContext(uiDispatcher) {
+                startOfflineMode()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking auth", e)
+            withContext(uiDispatcher) {
+                startOfflineMode()
+            }
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            // Если активный фрагмент - чат, скрываем системные панели
+            if (currentFragmentTag == CHAT_FRAGMENT_TAG) {
+                hideSystemUIForChat()
+            }
+        }
+    }
+
+    /**
+     * Запуск оффлайн режима
+     */
+    private fun startOfflineMode() {
+        try {
+            // Показываем предупреждение
+            Toast.makeText(this, "Работаем в оффлайн режиме", Toast.LENGTH_SHORT).show()
+
+            // Загружаем кэшированные данные
+            loadCachedUserData()
+
+            // Показываем базовое приветствие
+            showBasicWelcomeMessage()
+
+            // Помечаем приложение как инициализированное
+            isAppInitialized = true
+
+            Log.d(TAG, "Offline mode started")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting offline mode", e)
+        }
+    }
+
+    /**
+     * Загружает кэшированные данные пользователя
+     */
+    private fun loadCachedUserData() {
+        lifecycleScope.launch(ioDispatcher) {
+            try {
+                val sharedPref = getSharedPreferences("user_prefs", MODE_PRIVATE)
+                val firstName = sharedPref.getString("first_name", null)
+                val userName = sharedPref.getString("user_name", null)
+
+                withContext(uiDispatcher) {
+                    if (!firstName.isNullOrEmpty()) {
+                        binding.tvUserName.text = firstName
+                    } else if (!userName.isNullOrEmpty()) {
+                        binding.tvUserName.text = userName
+                    } else {
+                        binding.tvUserName.text = "Пользователь"
+                    }
+
+                    // Загружаем кэшированный аватар
+                    loadCachedAvatar()
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading cached user data", e)
+            }
+        }
+    }
+
+    /**
+     * Загружает кэшированный аватар
+     */
+    private fun loadCachedAvatar() {
+        try {
+            // Пытаемся загрузить из кэша Glide
+            binding.ivUserAvatar.setImageResource(R.drawable.ic_default_profile)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading cached avatar", e)
+        }
+    }
+
+    /**
+     * Показывает экстренный UI при критической ошибке
+     */
+    private fun showEmergencyUI() {
+        try {
+            // Минимальный рабочий UI
+            binding.toolbar.visibility = View.VISIBLE
+            binding.bottomNavigation.visibility = View.VISIBLE
+            binding.fragmentContainer.visibility = View.VISIBLE
+
+            // Простое сообщение
+            Toast.makeText(this, "Приложение запущено в базовом режиме", Toast.LENGTH_LONG).show()
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing emergency UI", e)
+        }
+    }
+
+    /**
+     * Быстрая инициализация только критически важных элементов
      */
     private fun setupCriticalUI() {
         try {
-            handleSystemBarsInsets()
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+
+            // Инициализация welcome widget
             initWelcomeWidget()
+
+            // Настройка базовых слушателей
             setupBasicClickListeners()
 
-            // Загрузить начальный фрагмент асинхронно
-            lifecycleScope.launch(uiDispatcher) {
-                loadInitialFragment()
-            }
+            Log.d(TAG, "Critical UI setup completed")
 
         } catch (e: Exception) {
             Log.e(TAG, "Error in critical UI setup", e)
@@ -304,64 +743,11 @@ class MainActivity : AppCompatActivity() {
      * Настройка внешнего вида приветственной карточки
      */
     private fun setupWelcomeCardAppearance() {
-        // Загружаем аватар пользователя
-        loadUserAvatarToWelcome()
-    }
-
-    /**
-     * Загрузка аватара в приветствие
-     */
-    private fun loadUserAvatarToWelcome() {
         try {
-            val currentUser = auth.currentUser
-            currentUser?.let { user ->
-                // Загружаем данные пользователя из Firebase Database
-                lifecycleScope.launch(ioDispatcher) {
-                    try {
-                        val snapshot = Firebase.database.reference
-                            .child("users")
-                            .child(user.uid)
-                            .get()
-                            .await()
-
-                        if (snapshot.exists()) {
-                            val userData = snapshot.getValue(User::class.java)
-                            userData?.let { userData ->
-                                withContext(uiDispatcher) {
-                                    // Используем тот же подход что и в updateToolbarUserInfo
-                                    userData.profileImageUrl?.takeIf { it.isNotBlank() }?.let { url ->
-                                        Glide.with(this@MainActivity)
-                                            .load(url)
-                                            .circleCrop()
-                                            .placeholder(R.drawable.ic_default_profile)
-                                            .error(R.drawable.ic_default_profile)
-                                            .diskCacheStrategy(DiskCacheStrategy.ALL)
-                                            .into(ivWelcomeAvatar)
-                                    } ?: run {
-                                        ivWelcomeAvatar.setImageResource(R.drawable.ic_default_profile)
-                                    }
-                                }
-                            }
-                        } else {
-                            // Если данных нет в базе, используем стандартную аватарку
-                            withContext(uiDispatcher) {
-                                ivWelcomeAvatar.setImageResource(R.drawable.ic_default_profile)
-                            }
-                        }
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error loading user data for avatar", e)
-                        withContext(uiDispatcher) {
-                            ivWelcomeAvatar.setImageResource(R.drawable.ic_default_profile)
-                        }
-                    }
-                }
-            } ?: run {
-                // Если пользователь не авторизован
-                ivWelcomeAvatar.setImageResource(R.drawable.ic_default_profile)
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error loading avatar to welcome card", e)
+            // Используем стандартный аватар для скорости
             ivWelcomeAvatar.setImageResource(R.drawable.ic_default_profile)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting up welcome card appearance", e)
         }
     }
 
@@ -425,7 +811,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Анимация нажатия кнопки
+     * Анимация нажатия кнопки (синхронная версия)
      */
     private fun animateButtonClick(view: View, action: () -> Unit) {
         val scaleDown = ObjectAnimator.ofPropertyValuesHolder(
@@ -455,75 +841,30 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Загрузка начального фрагмента
+     * Проверка доступности сети
      */
-    private suspend fun loadInitialFragment() = withContext(uiDispatcher) {
-        try {
-            if (supportFragmentManager.findFragmentByTag(HOME_FRAGMENT_TAG) == null) {
-                // Использовать commitNow для немедленного добавления
-                supportFragmentManager.commitNow {
-                    add(R.id.fragment_container, HomeFragment(), HOME_FRAGMENT_TAG)
+    private fun isNetworkAvailable(): Boolean {
+        return try {
+            val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE)
+                    as ConnectivityManager
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val network = connectivityManager.activeNetwork ?: return false
+                val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+
+                return when {
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> true
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> true
+                    capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> true
+                    else -> false
                 }
-                binding.bottomNavigation.selectedItemId = R.id.nav_home
-                currentFragmentTag = HOME_FRAGMENT_TAG
             } else {
-                // Фрагмент уже существует
+                @Suppress("DEPRECATION")
+                val networkInfo = connectivityManager.activeNetworkInfo
+                networkInfo?.isConnected == true
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error loading initial fragment", e)
-        }
-    }
-
-    private fun setupExceptionHandler() {
-        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
-
-        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            try {
-                val prefs = getSharedPreferences("service_prefs", Context.MODE_PRIVATE)
-                val editor = prefs.edit()
-
-                // Сохраняем текущий фрагмент для восстановления
-                editor.putString("last_fragment_tag", currentFragmentTag)
-                editor.putBoolean("was_crash", true)
-                editor.putLong("last_crash_time", System.currentTimeMillis())
-                editor.apply()
-
-                Log.e(TAG, "Uncaught exception, saving crash state. Current fragment: $currentFragmentTag", throwable)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error in exception handler", e)
-            } finally {
-                defaultHandler?.uncaughtException(thread, throwable)
-            }
-        }
-    }
-
-    /**
-     * Восстанавливает состояние фрагментов после краша
-     */
-    private fun restoreFragmentsAfterCrash() {
-        lifecycleScope.launch(ioDispatcher) {
-            try {
-                delay(1000) // Даем время на восстановление
-
-                val prefs = getSharedPreferences("service_prefs", Context.MODE_PRIVATE)
-                val wasCrash = prefs.getBoolean("was_crash", false)
-
-                if (wasCrash) {
-                    Log.w(TAG, "Восстанавливаем фрагменты после краша...")
-                    withContext(uiDispatcher) {
-                        clearAllFragments()
-
-                        // Восстанавливаем домашний фрагмент
-                        safeSwitchToFragment(HOME_FRAGMENT_TAG) { HomeFragment() }
-                        binding.bottomNavigation.selectedItemId = R.id.nav_home
-
-                        prefs.edit().putBoolean("was_crash", false).apply()
-                        Log.d(TAG, "Фрагменты восстановлены после краша")
-                    }
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Ошибка восстановления фрагментов", e)
-            }
+            false
         }
     }
 
@@ -542,27 +883,35 @@ class MainActivity : AppCompatActivity() {
                 showInstantBasicGreeting() // 1-я часть приветствия
             }
 
-            // Параллельная загрузка критически важных данных
-            val criticalTasks = listOf(
-                async { loadUserProfileAsync() },
-                async { loadCurrentUserDataAsync() }
-            )
+            // Проверяем сеть перед сетевыми операциями
+            val networkAvailable = isNetworkAvailable()
 
-            // Фоновые задачи (менее важные)
-            val backgroundTasks = listOf(
-                async { initializeBackgroundServices() },
-                async { loadAdditionalData() }
-            )
+            // Параллельная загрузка данных (сетевые только если есть интернет)
+            val userDataJob = async {
+                if (networkAvailable) {
+                    withTimeoutOrNull(5000L) { loadCurrentUserDataAsync() } ?: false
+                } else {
+                    loadCachedUserDataAsync()
+                    false
+                }
+            }
 
-            // Сначала ждем критические задачи
-            val criticalResults = criticalTasks.awaitAll()
-            val userProfile = criticalResults[0] as? UserProfile
-            val userDataLoaded = criticalResults[1] as? Boolean ?: false
+            val profileJob = async {
+                if (networkAvailable) {
+                    withTimeoutOrNull(5000L) { loadUserProfileAsync() } ?: null
+                } else {
+                    loadCachedProfile()
+                }
+            }
 
             // Инициализируем генераторы в фоне
             val analyzer = withContext(initDispatcher) {
                 SmartContextAnalyzer(this@MainActivity.applicationContext)
             }
+
+            val userProfile = profileJob.await()
+            val userDataLoaded = userDataJob.await()
+
             val generator = SmartQuestionGenerator(
                 this@MainActivity.applicationContext,
                 userProfile
@@ -576,7 +925,6 @@ class MainActivity : AppCompatActivity() {
 
                 hideLoadingProgress()
                 setupToolbar()
-                setupBottomNavigation()
 
                 // Запускаем AI-улучшенное поэтапное приветствие
                 startStagedWelcomeSequence()
@@ -592,12 +940,26 @@ class MainActivity : AppCompatActivity() {
             }
 
             // Фоновые задачи выполняем параллельно после UI обновления
-            backgroundTasks.awaitAll()
+            if (networkAvailable) {
+                try {
+                    withTimeout(10000L) {
+                        val backgroundTasks = listOf(
+                            async { initializeBackgroundServices() },
+                            async { loadAdditionalData() }
+                        )
+                        backgroundTasks.awaitAll()
+                    }
+                } catch (e: TimeoutCancellationException) {
+                    Log.w(TAG, "Background tasks timeout")
+                }
+            }
 
             // Отладочная информация о пользователе после загрузки
-            handler.postDelayed({
-                debugUserDataExtended()
-            }, 3000)
+            if (BuildConfig.DEBUG) {
+                handler.postDelayed({
+                    debugUserDataExtended()
+                }, 3000)
+            }
 
             logPerformance("App initialization", startTime)
 
@@ -606,7 +968,47 @@ class MainActivity : AppCompatActivity() {
             withContext(uiDispatcher) {
                 hideLoadingProgress()
                 showBasicWelcomeMessage()
+                isAppInitialized = true
             }
+        }
+    }
+
+    /**
+     * Загружает кэшированные данные асинхронно
+     */
+    private suspend fun loadCachedUserDataAsync() = withContext(ioDispatcher) {
+        return@withContext try {
+            val sharedPref = getSharedPreferences("user_prefs", MODE_PRIVATE)
+            val fullName = sharedPref.getString("user_name", null)
+            val firstName = sharedPref.getString("first_name", null)
+
+            withContext(uiDispatcher) {
+                if (!firstName.isNullOrEmpty()) {
+                    binding.tvUserName.text = firstName
+                } else if (!fullName.isNullOrEmpty()) {
+                    binding.tvUserName.text = fullName
+                }
+            }
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading cached user data async", e)
+            false
+        }
+    }
+
+    /**
+     * Загружает кэшированный профиль
+     */
+    private suspend fun loadCachedProfile(): UserProfile? = withContext(ioDispatcher) {
+        return@withContext try {
+            val sharedPref = getSharedPreferences("user_cache", MODE_PRIVATE)
+            val json = sharedPref.getString("cached_profile", null)
+            json?.let {
+                Gson().fromJson(it, UserProfile::class.java)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading cached profile", e)
+            null
         }
     }
 
@@ -636,13 +1038,16 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Показывает мгновенное базовое приветствие (1-я часть)
+     * Показывает мгновенное базовое приветствие (1-я часть) - СИНХРОННАЯ версия
      */
     private fun showInstantBasicGreeting() {
         try {
             val userName = getUserName()
             val greeting = getTimeBasedGreeting()
-            tvWelcomeTitle.text = "$greeting, $userName!"
+            val greetingText = "$greeting, $userName!"
+
+            // Сразу устанавливаем текст приветствия
+            tvWelcomeTitle.text = greetingText
 
             // Сбрасываем состояния
             resetWelcomeCardState()
@@ -650,13 +1055,19 @@ class MainActivity : AppCompatActivity() {
             // Запускаем анимацию появления
             startWelcomeCardEntranceAnimation()
 
-            Log.d(TAG, "Instant basic greeting shown with animation")
+            Log.d(TAG, "Instant basic greeting shown")
+
+            // ОЗВУЧИВАЕМ базовое приветствие СРАЗУ после показа
+            handler.postDelayed({
+                if (isTTSInitialized && isActivityResumed) {
+                    speakGreeting(greetingText)
+                }
+            }, TTS_GREETING_DELAY)
+
         } catch (e: Exception) {
             Log.e(TAG, "Error showing instant greeting", e)
         }
     }
-
-
 
     /**
      * Переключается на фрагмент лотереи
@@ -797,8 +1208,6 @@ class MainActivity : AppCompatActivity() {
         fadeOut.start()
     }
 
-
-
     /**
      * Асинхронное сохранение сгенерированной фразы для чата
      */
@@ -831,37 +1240,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Асинхронный переход к чату (использует сгенерированную фразу)
-     */
-    private suspend fun switchToChatAsync() = withContext(uiDispatcher) {
-        Log.d(TAG, "Start chat clicked")
-        hideWelcomeMessage()
-        saveLastChatTime()
-
-        // Берем сохраненную сгенерированную фразу
-        val continuationPhrase = withContext(ioDispatcher) {
-            val sharedPref = getSharedPreferences("chat_prefs", MODE_PRIVATE)
-            sharedPref.getString("continuation_phrase", null)
-        }
-
-        // Если есть сгенерированная фраза - используем ее, иначе fallback
-        val finalPhrase = if (!continuationPhrase.isNullOrEmpty() &&
-            continuationPhrase != "Анализирую наши предыдущие обсуждения...") {
-            continuationPhrase
-        } else {
-            // Fallback: генерируем простую фразу на основе времени
-            generateTimeBasedGreetingFallback()
-        }
-
-        // Сохраняем фразу для чата
-        saveWelcomePhraseForChat(finalPhrase)
-        safeSwitchToFragment(CHAT_FRAGMENT_TAG) { ChatWithGigaFragment() }
-        binding.bottomNavigation.selectedItemId = R.id.nav_gigachat
-
-        Log.d(TAG, "Switching to chat with phrase: $finalPhrase")
-    }
-
-    /**
      * Генерирует fallback-фразу на основе времени суток
      */
     private fun generateTimeBasedGreetingFallback(): String {
@@ -885,6 +1263,12 @@ class MainActivity : AppCompatActivity() {
         return@withContext try {
             Log.d(TAG, "Starting AI analysis of chat history...")
 
+            // ПРОВЕРКА 1: есть ли сеть?
+            if (!isNetworkAvailable()) {
+                Log.d(TAG, "Network unavailable, skipping AI analysis")
+                return@withContext null
+            }
+
             // Загружаем последние сообщения
             val recentMessages = loadRecentChatHistoryForAI()
             if (recentMessages.isEmpty()) {
@@ -894,9 +1278,12 @@ class MainActivity : AppCompatActivity() {
 
             Log.d(TAG, "Found ${recentMessages.size} messages for AI analysis")
 
-            // Получаем токен для API
-            val token = getAuthTokenForAnalysis()
-            if (token.isEmpty()) {
+            // Получаем токен для API с таймаутом
+            val token = withTimeoutOrNull(2000L) {
+                getAuthTokenForAnalysis()
+            }
+
+            if (token.isNullOrEmpty()) {
                 Log.w(TAG, "No auth token for AI analysis")
                 return@withContext null
             }
@@ -904,22 +1291,20 @@ class MainActivity : AppCompatActivity() {
             // Формируем промпт для анализа
             val analysisPrompt = buildAnalysisPrompt(recentMessages)
 
-            // Отправляем запрос к API с таймаутом
-            val continuation = withTimeout(5000L) {
+            // Отправляем запрос к API с таймаутом (3 секунды)
+            val continuation = withTimeoutOrNull(3000L) {
                 sendAnalysisRequest(token, analysisPrompt)
             }
 
-            logAIAnalysisPerformance(startTime, true, recentMessages.size)
+            logAIAnalysisPerformance(startTime, continuation != null, recentMessages.size)
             Log.d(TAG, "AI analysis completed: ${continuation?.take(50)}...")
             continuation
 
         } catch (e: TimeoutCancellationException) {
-            Log.w(TAG, "AI analysis timeout")
-            logAIAnalysisPerformance(startTime, false, 0)
+            Log.w(TAG, "AI analysis timeout after ${System.currentTimeMillis() - startTime}ms")
             null
         } catch (e: Exception) {
             Log.e(TAG, "Error in AI chat history analysis", e)
-            logAIAnalysisPerformance(startTime, false, 0)
             null
         }
     }
@@ -1080,6 +1465,75 @@ class MainActivity : AppCompatActivity() {
         // Ограничиваем количество стратегий для фокуса
         return strategies.take(5).joinToString("\n")
     }
+
+    fun showSystemUI() {
+        try {
+            // 1. Полностью прозрачные цвета
+            window?.apply {
+                navigationBarColor = Color.TRANSPARENT
+                statusBarColor = Color.TRANSPARENT
+
+                // Убираем ВСЕ флаги которые могут мешать
+                clearFlags(
+                    WindowManager.LayoutParams.FLAG_FULLSCREEN or
+                            WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                            WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION or
+                            WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS
+                )
+
+                // ОЧЕНЬ ВАЖНО: Добавляем этот флаг для управления цветом панелей
+                addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+            }
+
+            // 2. Устанавливаем systemUiVisibility - КРИТИЧЕСКИ ВАЖНО
+            window?.decorView?.apply {
+                // Полностью сбрасываем
+                systemUiVisibility = 0
+
+                // Устанавливаем ТОЛЬКО эти флаги
+                systemUiVisibility = (
+                        // ОСНОВНЫЕ флаги для прозрачности
+                        View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                                View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                                View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                        )
+            }
+
+            // 3. Для Android 10+ - особый подход
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                window?.isNavigationBarContrastEnforced = false
+                window?.navigationBarDividerColor = Color.TRANSPARENT
+            }
+
+            // 4. Показываем UI элементы
+            binding.bottomNavigation.visibility = View.VISIBLE
+            binding.toolbar.visibility = View.VISIBLE
+
+            // 5. Важно: WindowCompat
+            WindowCompat.setDecorFitsSystemWindows(window!!, false)
+
+            Log.d(TAG, "System UI shown with FULLY TRANSPARENT bars")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing system UI", e)
+        }
+    }
+
+    /**
+     * Восстанавливает видимость UI элементов без изменения системных панелей
+     */
+    fun restoreAppUI() {
+        try {
+            // Просто показываем скрытые элементы
+            binding.bottomNavigation.visibility = View.VISIBLE
+            binding.toolbar.visibility = View.VISIBLE
+
+            Log.d(TAG, "App UI restored")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error restoring app UI", e)
+        }
+    }
+
 
     /**
      * Анализирует основные темы для генерации стратегий
@@ -1257,7 +1711,7 @@ class MainActivity : AppCompatActivity() {
         if (mainTopics.isNotEmpty() && lastUserMessage != null && lastUserMessage.length > 20) {
             strategies.addAll(listOf(
                 "• Развивай текущую тему с новой перспективой",
-                "• Спроси о прогрессе или изменениях с прошлого обсуждения",
+                "• Спроси о прогрессе или изменениям с прошлого обсуждения",
                 "• Предложи практическое применение обсуждаемых идей"
             ))
         }
@@ -1316,10 +1770,176 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
+
+    fun restoreUIAfterChat() {
+        try {
+            // 1. Показываем системные панели
+            showSystemUI()
+
+            // 2. Показываем элементы приложения
+            binding.bottomNavigation.visibility = View.VISIBLE
+            binding.toolbar.visibility = View.VISIBLE
+
+            // 3. Обновляем навигацию
+            binding.bottomNavigation.selectedItemId = R.id.nav_home
+
+            // 4. ВАЖНО: Скрываем приветственную карточку после возвращения из чата
+            if (::welcomeCard.isInitialized && welcomeCard.visibility == View.VISIBLE) {
+                welcomeCard.visibility = View.GONE
+                Log.d(TAG, "Welcome card hidden after returning from chat")
+            }
+
+            // 5. Переключаемся на HomeFragment
+            safeSwitchToFragment(HOME_FRAGMENT_TAG) { HomeFragment() }
+
+
+            Log.d(TAG, "UI restored after chat exit, welcome card hidden")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error restoring UI after chat", e)
+        }
+    }
+
+
+
+
+
+    // В классе MainActivity добавьте или обновите метод:
+    private suspend fun switchToChatAsync() = withContext(uiDispatcher) {
+        Log.d(TAG, "Start chat clicked")
+
+        // Проверяем сеть перед открытием чата
+        if (!isNetworkAvailable()) {
+            Toast.makeText(this@MainActivity, "Для чата требуется интернет", Toast.LENGTH_SHORT).show()
+            return@withContext
+        }
+
+        hideWelcomeMessage()
+        saveLastChatTime()
+
+        // Берем сохраненную сгенерированную фразу
+        val continuationPhrase = withContext(ioDispatcher) {
+            val sharedPref = getSharedPreferences("chat_prefs", MODE_PRIVATE)
+            sharedPref.getString("continuation_phrase", null)
+        }
+
+        // Если есть сгенерированная фраза - используем ее, иначе fallback
+        val finalPhrase = if (!continuationPhrase.isNullOrEmpty() &&
+            continuationPhrase != "Анализирую наши предыдущие обсуждения...") {
+            continuationPhrase
+        } else {
+            // Fallback: генерируем простую фразу на основе времени
+            generateTimeBasedGreetingFallback()
+        }
+
+        // Сохраняем фразу для чата
+        saveWelcomePhraseForChat(finalPhrase)
+
+        // ВАЖНО: Используем safeSwitchToFragment вместо прямого replace
+        safeSwitchToFragment(CHAT_FRAGMENT_TAG) { ChatWithGigaFragment() }
+
+        // Обновляем навигацию
+        binding.bottomNavigation.selectedItemId = -1 // Снимаем выделение
+
+        Log.d(TAG, "Switching to chat with phrase: $finalPhrase")
+    }
+
     /**
-     * Генерирует конкретное продолжение на основе реального сообщения (ИСПРАВЛЕННАЯ версия)
+     * Обновленный метод переключения фрагментов с учетом чата
      */
-    private fun generateSpecificContinuation(lastMessage: String): String {
+    private fun switchToFragment(tag: String, fragmentFactory: () -> Fragment) {
+        if (currentFragmentTag == tag) return
+
+        lifecycleScope.launch(uiDispatcher) {
+            try {
+                // Если переходим в чат - скрываем панели
+                if (tag == CHAT_FRAGMENT_TAG) {
+                    hideSystemUIForChat()
+                } else {
+                    // Если выходим из чата - показываем панели
+                    if (currentFragmentTag == CHAT_FRAGMENT_TAG) {
+                        showSystemUI()
+                        restoreAppUI()
+                    }
+                }
+
+                // Далее ваш существующий код переключения фрагментов...
+                val fragment = supportFragmentManager.findFragmentByTag(tag)
+
+                if (fragment != null && fragment.isAdded) {
+                    showFragment(tag)
+                } else {
+                    val newFragment = fragmentFactory()
+                    loadFragment(newFragment, tag)
+                }
+
+                currentFragmentTag = tag
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error switching to fragment: $tag", e)
+            }
+        }
+    }
+
+    /**
+     * Скрывает системные панели для чата (полноэкранный режим)
+     */
+    fun hideSystemUIForChat() {
+        try {
+            // 1. Скрываем системные панели
+            window?.decorView?.systemUiVisibility = (
+                    View.SYSTEM_UI_FLAG_FULLSCREEN or
+                            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    )
+
+            // 2. Делаем панели прозрачными
+            window?.navigationBarColor = Color.TRANSPARENT
+            window?.statusBarColor = Color.TRANSPARENT
+
+            // 3. Убираем любые ограничения
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN)
+            window?.addFlags(
+                WindowManager.LayoutParams.FLAG_FULLSCREEN or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+            )
+
+            // 4. Скрываем нижнюю навигацию приложения ВСЕГДА
+            binding.bottomNavigation.visibility = View.GONE
+            binding.toolbar.visibility = View.GONE
+
+            // 5. Скрываем приветственную карточку если она видна
+            if (::welcomeCard.isInitialized && welcomeCard.visibility == View.VISIBLE) {
+                welcomeCard.visibility = View.GONE
+            }
+
+            Log.d(TAG, "System UI hidden for chat (FULLSCREEN MODE)")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error hiding system UI for chat", e)
+        }
+    }
+
+    // Метод для открытия настроек голоса
+    fun openVoiceSettings() {
+        val fragment = VoiceSettingsFragment.newInstance()
+        supportFragmentManager.beginTransaction()
+            .replace(R.id.fragment_container, fragment)
+            .addToBackStack("voice_settings")
+            .commitAllowingStateLoss()
+    }
+
+
+
+
+    /**
+     * Генерирует конкретное продолжение на основе реального сообщения
+     */
+    private fun generateSpecificContinuation(lastMessage: String): String? {
         val cleanMessage = lastMessage.lowercase().trim()
 
         return when {
@@ -1348,23 +1968,31 @@ class MainActivity : AppCompatActivity() {
             cleanMessage.length > 25 && hasSubstantialContent(cleanMessage) ->
                 generateEngagingContinuation(lastMessage)
 
-            else -> null.toString() // Возвращаем null вместо шаблонной фразы
+            else -> null
         }
     }
 
+
+    // В MainActivity.kt добавьте:
+    fun getTTSManager(): TTSManager {
+        return ttsManager
+    }
+
     /**
-     * Анализирует предыдущие диалоги для продолжения (ОКОНЧАТЕЛЬНАЯ исправленная версия)
+     * Анализирует предыдущие диалоги для продолжения
      */
     private suspend fun analyzePreviousDialogsForContinuation(): String? = withContext(initDispatcher) {
         return@withContext try {
-            // ПЕРВЫЙ ПРИОРИТЕТ: AI анализ истории чата
-            val aiContinuation = analyzeChatHistoryWithAI()
-            if (!aiContinuation.isNullOrEmpty() && !isGenericContinuation(aiContinuation)) {
-                Log.d(TAG, "Using AI-generated continuation: ${aiContinuation.take(50)}")
-                return@withContext aiContinuation
+            // ПЕРВЫЙ ПРИОРИТЕТ: AI анализ истории чата (только если есть сеть)
+            if (isNetworkAvailable()) {
+                val aiContinuation = analyzeChatHistoryWithAI()
+                if (!aiContinuation.isNullOrEmpty() && !isGenericContinuation(aiContinuation)) {
+                    Log.d(TAG, "Using AI-generated continuation: ${aiContinuation.take(50)}")
+                    return@withContext aiContinuation
+                }
             }
 
-            // ВТОРОЙ ПРИОРИТЕТ: Локальный анализ значимых сообщений
+            // ВТОРОЙ ПРИОРИТЕТ: Локальный анализ значимых сообщений (не требует сети)
             val chatHistory = loadRecentChatHistory()
             if (chatHistory.isNotEmpty()) {
                 val lastMeaningfulMessage = findLastMeaningfulMessage(chatHistory)
@@ -1478,7 +2106,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-
     /**
      * Запускает AI анализ в фоне при инициализации
      */
@@ -1490,6 +2117,12 @@ class MainActivity : AppCompatActivity() {
                 // Проверяем кэш
                 if (System.currentTimeMillis() - lastAIAnalysisTime < AI_ANALYSIS_CACHE_TIME && cachedAIContinuation != null) {
                     Log.d(TAG, "Using cached AI analysis")
+                    return@launch
+                }
+
+                // Проверяем сеть
+                if (!isNetworkAvailable()) {
+                    Log.d(TAG, "Network unavailable for background AI analysis")
                     return@launch
                 }
 
@@ -1520,7 +2153,13 @@ class MainActivity : AppCompatActivity() {
             return@withContext it
         }
 
-        // Если кэша нет, но есть сообщения - быстрый синхронный запрос с таймаутом
+        // Если кэша нет, проверяем сеть
+        if (!isNetworkAvailable()) {
+            Log.d(TAG, "Network unavailable for quick AI continuation")
+            return@withContext null
+        }
+
+        // Если есть сообщения - быстрый синхронный запрос с таймаутом
         val hasMessages = withContext(ioDispatcher) {
             loadRecentChatHistoryForAI().isNotEmpty()
         }
@@ -1528,7 +2167,7 @@ class MainActivity : AppCompatActivity() {
         if (hasMessages) {
             try {
                 Log.d(TAG, "Making quick AI analysis request")
-                withTimeout(3000L) { // Таймаут 3 секунды
+                withTimeoutOrNull(3000L) { // Таймаут 3 секунды
                     analyzeChatHistoryWithAI()
                 }
             } catch (e: TimeoutCancellationException) {
@@ -1553,7 +2192,7 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Запускает AI-улучшенное поэтапное отображение приветствия (ИСПРАВЛЕННАЯ версия)
+     * Запускает AI-улучшенное поэтапное отображение приветствия с УЛУЧШЕННОЙ последовательностью
      */
     private fun startStagedWelcomeSequence() {
         try {
@@ -1563,36 +2202,64 @@ class MainActivity : AppCompatActivity() {
             }
 
             isWelcomeSequenceRunning = true
-            Log.d(TAG, "Starting IMPROVED AI-enhanced staged welcome sequence")
+            welcomeRetryCount = 0
+
+            Log.d(TAG, "Starting IMPROVED AI-enhanced staged welcome sequence with TTS")
 
             welcomeSequenceJob?.cancel()
             welcomeSequenceJob = lifecycleScope.launch(uiDispatcher) {
                 try {
-                    // 1. Мгновенно - базовое приветствие (уже показано)
-                    Log.d(TAG, "Stage 1: Basic greeting already shown")
+                    // 1. Мгновенно - базовое приветствие (уже показано, озвучка идет)
+                    Log.d(TAG, "Stage 1: Basic greeting already shown and being spoken")
 
-                    // 2. Параллельно запускаем генерацию вопросов и AI анализ
-                    val contextQuestionDeferred = async(initDispatcher) {
-                        generateContextualQuestionFromProfile()
+                    // Даем время на озвучку приветствия
+                    delay(WELCOME_STAGE_2_DELAY - TTS_GREETING_DELAY)
+
+                    // 2. Показываем контекстный вопрос (ТОЛЬКО ТЕКСТ, БЕЗ ОЗВУЧКИ)
+                    val contextQuestion = withContext(initDispatcher) {
+                        try {
+                            withTimeoutOrNull(1500L) {
+                                generateContextualQuestionFromProfile()
+                            } ?: "Как ваши дела?"
+                        } catch (e: Exception) {
+                            "Как ваши дела?"
+                        }
                     }
 
-                    val aiAnalysisDeferred = async(initDispatcher) {
-                        getQuickAIContinuation()
+                    withContext(uiDispatcher) {
+                        animateTextChange(tvWelcomeQuestion, contextQuestion)
+                        Log.d(TAG, "Stage 2: Context question shown (no TTS): $contextQuestion")
+                    }
+
+                    // Даем время пользователю увидеть вопрос
+                    delay(1000L)
+
+                    // 3. Параллельно запускаем AI анализ для продолжения
+                    val aiAnalysisDeferred = if (isNetworkAvailable()) {
+                        async(initDispatcher) {
+                            try {
+                                withTimeoutOrNull(2000L) {
+                                    getQuickAIContinuation()
+                                }
+                            } catch (e: Exception) {
+                                null
+                            }
+                        }
+                    } else {
+                        CompletableDeferred<String?>(null)
                     }
 
                     val dialogAnalysisDeferred = async(initDispatcher) {
-                        analyzePreviousDialogsForContinuation()
+                        try {
+                            withTimeoutOrNull(1500L) {
+                                analyzePreviousDialogsForContinuation()
+                            }
+                        } catch (e: Exception) {
+                            null
+                        }
                     }
 
-                    // 3. Через 1 секунду - показываем контекстный вопрос
-                    delay(WELCOME_STAGE_2_DELAY)
-                    val contextQuestion = contextQuestionDeferred.await()
-                    withContext(uiDispatcher) {
-                        animateTextChange(tvWelcomeQuestion, contextQuestion)
-                        Log.d(TAG, "Stage 2: Context question shown: $contextQuestion")
-                    }
-
-                    // 4. Через 2 секунды - показываем AI-продолжение или fallback
+                    // Ждем завершения анализа
                     delay(WELCOME_STAGE_3_DELAY - WELCOME_STAGE_2_DELAY)
 
                     val aiContinuation = aiAnalysisDeferred.await()
@@ -1628,6 +2295,11 @@ class MainActivity : AppCompatActivity() {
 
                         animateTextChange(tvWelcomeContext, safeContinuation)
 
+                        // ОЗВУЧИВАЕМ AI-продолжение (через паузу после приветствия)
+                        handler.postDelayed({
+                            speakAIContinuation(safeContinuation)
+                        }, TTS_CONTINUATION_DELAY)
+
                         // Сохраняем ТОЛЬКО если это не шаблонная фраза
                         if (!isGenericContinuation(safeContinuation)) {
                             saveCompleteWelcomePhraseForChatAsync(safeContinuation)
@@ -1645,9 +2317,17 @@ class MainActivity : AppCompatActivity() {
                     Log.d(TAG, "Welcome sequence cancelled")
                 } catch (e: Exception) {
                     Log.e(TAG, "Error in improved welcome sequence", e)
-                    withContext(uiDispatcher) {
-                        // Используем естественное fallback-приветствие
-                        showNaturalFallbackGreeting()
+                    // Повторная попытка
+                    if (welcomeRetryCount < MAX_WELCOME_RETRIES) {
+                        welcomeRetryCount++
+                        Log.d(TAG, "Retrying welcome sequence (attempt $welcomeRetryCount)")
+                        delay(WELCOME_RETRY_DELAY)
+                        startStagedWelcomeSequence()
+                    } else {
+                        withContext(uiDispatcher) {
+                            // Используем естественное fallback-приветствие
+                            showNaturalFallbackGreeting()
+                        }
                     }
                 } finally {
                     isWelcomeSequenceRunning = false
@@ -1661,13 +2341,35 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Показывает естественное fallback-приветствие без шаблонов
+     * Показывает естественное fallback-приветствие без шаблонов с ПРАВИЛЬНЫМ порядком TTS
      */
     private fun showNaturalFallbackGreeting() {
-        val naturalGreeting = generateNaturalContinuationPhrase()
-        tvWelcomeContext.text = naturalGreeting
-        saveCompleteWelcomePhraseForChatAsync(naturalGreeting)
-        Log.d(TAG, "Natural fallback greeting shown: $naturalGreeting")
+        try {
+            val naturalGreeting = generateNaturalContinuationPhrase()
+            tvWelcomeContext.text = naturalGreeting
+
+            // 1. Сначала говорим основное приветствие (если еще не сказали)
+            if (!hasGreetingBeenSpoken && isTTSInitialized) {
+                val userName = getUserName()
+                val timeGreeting = getTimeBasedGreeting()
+                val fullGreeting = "$timeGreeting, $userName!"
+
+                speakGreeting(fullGreeting)
+            }
+
+            // 2. Через паузу говорим продолжение
+            handler.postDelayed({
+                speakAIContinuation(naturalGreeting)
+            }, TTS_CONTINUATION_DELAY)
+
+            // 3. Сохраняем для чата
+            saveCompleteWelcomePhraseForChatAsync(naturalGreeting)
+
+            Log.d(TAG, "Natural fallback greeting shown with proper TTS order")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing natural fallback greeting", e)
+        }
     }
 
     /**
@@ -1694,17 +2396,20 @@ class MainActivity : AppCompatActivity() {
                     } else null
 
                     // 25% вероятность - хобби
-                    in 41..65 -> profile.getHobbiesList().firstOrNull()?.let { mainHobby ->
-                        val hobbyQuestions = listOf(
-                            "Удалось позаниматься $mainHobby?",
-                            "Что нового в увлечении $mainHobby?",
-                            "Как прогресс в $mainHobby?",
-                            "Что вдохновляет в $mainHobby?",
-                            "Какие цели ставите в $mainHobby?",
-                            "Что сложного в $mainHobby преодолеваете?",
-                            "Как $mainHobby развивает вас?"
-                        )
-                        hobbyQuestions.random()
+                    in 41..65 -> profile.hobbies.takeIf { it.isNotEmpty() }?.let {
+                        val mainHobby = profile.hobbies.split(",").firstOrNull()?.trim()
+                        mainHobby?.let {
+                            val hobbyQuestions = listOf(
+                                "Удалось позаниматься $mainHobby?",
+                                "Что нового в увлечении $mainHobby?",
+                                "Как прогресс в $mainHobby?",
+                                "Что вдохновляет в $mainHobby?",
+                                "Какие цели ставите в $mainHobby?",
+                                "Что сложного в $mainHobby преодолеваете?",
+                                "Как $mainHobby развивает вас?"
+                            )
+                            hobbyQuestions.random()
+                        }
                     }
 
                     // 15% вероятность - семья
@@ -1733,14 +2438,17 @@ class MainActivity : AppCompatActivity() {
                     } else null
 
                     // 10% вероятность - цели
-                    else -> profile.getCurrentGoalsList().firstOrNull()?.let { mainGoal ->
-                        val goalQuestions = listOf(
-                            "Как продвигается цель '$mainGoal'?",
-                            "Что делаете для достижения $mainGoal?",
-                            "Какие шаги к $mainGoal предпринимаете?",
-                            "Что вдохновляет в достижении $mainGoal?"
-                        )
-                        goalQuestions.random()
+                    else -> profile.currentGoals.takeIf { it.isNotEmpty() }?.let {
+                        val mainGoal = profile.currentGoals.split(",").firstOrNull()?.trim()
+                        mainGoal?.let {
+                            val goalQuestions = listOf(
+                                "Как продвигается цель '$mainGoal'?",
+                                "Что делаете для достижения $mainGoal?",
+                                "Какие шаги к $mainGoal предпринимаете?",
+                                "Что вдохновляет в достижении $mainGoal?"
+                            )
+                            goalQuestions.random()
+                        }
                     }
                 } ?: "Чем увлекаетесь в последнее время?"
             } ?: "Как ваши дела?"
@@ -1765,106 +2473,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-
-
-
-
-
-
-    private fun showPopupMenu(view: View) {
-        try {
-            val popup = PopupMenu(this, view)
-            popup.menuInflater.inflate(R.menu.main_menu, popup.menu)
-
-            popup.setOnMenuItemClickListener { item ->
-                when (item.itemId) {
-                    R.id.menu_profile -> {
-                        try {
-                            startActivity(Intent(this, ProfileActivity::class.java))
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error starting ProfileActivity", e)
-                        }
-                        true
-                    }
-                    R.id.menu_questionnaire -> {
-                        startUserQuestionnaireActivity()
-                        true
-                    }
-                    R.id.menu_mozgi -> {
-                        try {
-                            startActivity(Intent(this, CategoriesActivity::class.java))
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error starting CategoriesActivity", e)
-                        }
-                        true
-                    }
-                    R.id.menu_alarm -> {
-                        try {
-                            startActivity(Intent(this, AlarmActivity::class.java))
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error starting AlarmActivity", e)
-                        }
-                        true
-                    }
-
-                    R.id.menu_blocks -> {
-                        try {
-                            startActivity(Intent(this@MainActivity, BlockGameActivity::class.java))
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error starting BlockGameActivity", e)
-                            Toast.makeText(this@MainActivity, "Ошибка открытия игры Блоки", Toast.LENGTH_SHORT).show()
-                        }
-                        true
-                    }
-
-                    R.id.menu_lottery -> {
-                        try {
-                            switchToLotteryFragment()
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error switching to lottery fragment", e)
-                            Toast.makeText(this, "Ошибка открытия лотереи", Toast.LENGTH_SHORT).show()
-                        }
-                        true
-                    }
-                    // ДОБАВЬТЕ ЭТОТ КЕЙС ДЛЯ ТАЙМЕРА
-                    R.id.menu_timer -> {
-                        try {
-                            startActivity(Intent(this@MainActivity, TimerActivity::class.java))
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Error starting TimerActivity", e)
-                            Toast.makeText(this@MainActivity, "Ошибка открытия таймера", Toast.LENGTH_SHORT).show()
-                        }
-                        true
-                    }
-                    R.id.menu_logout -> {
-                        logoutUser()
-                        true
-                    }
-                    else -> false
-                }
-            }
-            popup.show()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error showing popup menu", e)
-        }
-    }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     /**
      * Находит последнее значимое сообщение пользователя
      */
@@ -1876,8 +2484,6 @@ class MainActivity : AppCompatActivity() {
                     !message.contains("спасибо", ignoreCase = true)
         }
     }
-
-
 
     /**
      * Генерирует вовлекающую фразу продолжения для любых тем
@@ -2109,8 +2715,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-
-
     private fun showLoadingProgress() {
         try {
             binding.welcomeCard.visibility = View.GONE
@@ -2131,32 +2735,50 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Показывает базовое приветствие (fallback)
+     * Показывает базовое приветствие (fallback) с ПРАВИЛЬНЫМ порядком TTS
      */
     private fun showBasicWelcomeMessage() {
-        val userName = getUserName()
-        val greeting = getTimeBasedGreeting()
-        tvWelcomeTitle.text = "$greeting, $userName!"
-        tvWelcomeQuestion.text = "Чем увлекаетесь в последнее время?"
+        try {
+            val userName = getUserName()
+            val greeting = getTimeBasedGreeting()
+            val greetingText = "$greeting, $userName!"
 
-        // Генерируем осмысленную фразу вместо заглушки
-        val meaningfulContinuation = generateNaturalContinuationPhrase()
-        tvWelcomeContext.text = meaningfulContinuation
+            // Обновляем UI
+            tvWelcomeTitle.text = greetingText
+            tvWelcomeQuestion.text = "Чем увлекаетесь в последнее время?"
 
-        // Сразу сохраняем эту фразу для чата
-        saveCompleteWelcomePhraseForChatAsync(meaningfulContinuation)
+            // Генерируем осмысленную фразу вместо заглушки
+            val meaningfulContinuation = generateNaturalContinuationPhrase()
+            tvWelcomeContext.text = meaningfulContinuation
 
-        // Сбрасываем состояния и показываем без анимации
-        resetWelcomeCardState()
-        welcomeCard.visibility = View.VISIBLE
-        welcomeCard.alpha = 1f
-        welcomeCard.scaleX = 1f
-        welcomeCard.scaleY = 1f
-        welcomeCard.translationY = 0f
+            // 1. Сначала озвучиваем основное приветствие
+            speakGreeting(greetingText)
 
-        welcomeContent.visibility = View.VISIBLE
-        welcomeContent.alpha = 1f
-        progressWelcome.visibility = View.GONE
+            // 2. Через большую паузу озвучиваем продолжение
+            handler.postDelayed({
+                speakAIContinuation(meaningfulContinuation)
+            }, TTS_CONTINUATION_DELAY)
+
+            // Сохраняем эту фразу для чата
+            saveCompleteWelcomePhraseForChatAsync(meaningfulContinuation)
+
+            // Сбрасываем состояния и показываем без анимации
+            resetWelcomeCardState()
+            welcomeCard.visibility = View.VISIBLE
+            welcomeCard.alpha = 1f
+            welcomeCard.scaleX = 1f
+            welcomeCard.scaleY = 1f
+            welcomeCard.translationY = 0f
+
+            welcomeContent.visibility = View.VISIBLE
+            welcomeContent.alpha = 1f
+            progressWelcome.visibility = View.GONE
+
+            Log.d(TAG, "Basic welcome message shown with proper TTS order")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing basic welcome message", e)
+        }
     }
 
     /**
@@ -2165,25 +2787,54 @@ class MainActivity : AppCompatActivity() {
     private suspend fun loadUserProfileAsync(): UserProfile? = withContext(ioDispatcher) {
         val currentUser = Firebase.auth.currentUser ?: return@withContext null
 
-        try {
-            val snapshot = Firebase.database.reference
-                .child("user_profiles")
-                .child(currentUser.uid)
-                .get()
-                .await()
+        return@withContext try {
+            // ПРОВЕРКА СЕТИ
+            if (!isNetworkAvailable()) {
+                Log.d(TAG, "Network unavailable, loading cached profile")
+                return@withContext loadCachedProfile()
+            }
 
-            if (snapshot.exists()) {
+            // ТАЙМАУТ для Firebase
+            val snapshot = withTimeoutOrNull(3000L) {
+                Firebase.database.reference
+                    .child("user_profiles")
+                    .child(currentUser.uid)
+                    .get()
+                    .await()
+            }
+
+            if (snapshot != null && snapshot.exists()) {
                 val profile = snapshot.getValue(UserProfile::class.java)
-                Log.d(TAG, "User profile loaded: ${profile != null}")
-                return@withContext profile
+                Log.d(TAG, "User profile loaded from network: ${profile != null}")
+
+                // Кэшируем профиль
+                profile?.let { cacheProfile(it) }
+
+                profile
             } else {
-                Log.d(TAG, "No user profile found")
+                Log.d(TAG, "No user profile found in database")
                 createBasicUserProfile(currentUser.uid)
-                return@withContext UserProfile(userId = currentUser.uid)
+                UserProfile(userId = currentUser.uid)
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error loading user profile", e)
-            return@withContext null
+            loadCachedProfile()
+        }
+    }
+
+    /**
+     * Кэширует профиль пользователя
+     */
+    private fun cacheProfile(profile: UserProfile) {
+        try {
+            val json = Gson().toJson(profile)
+            getSharedPreferences("user_cache", MODE_PRIVATE)
+                .edit()
+                .putString("cached_profile", json)
+                .apply()
+            Log.d(TAG, "User profile cached")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error caching profile", e)
         }
     }
 
@@ -2211,14 +2862,22 @@ class MainActivity : AppCompatActivity() {
     private suspend fun loadCurrentUserDataAsync(): Boolean = withContext(ioDispatcher) {
         val currentUserId = auth.currentUser?.uid ?: return@withContext false
 
-        try {
-            val snapshot = Firebase.database.reference
-                .child("users")
-                .child(currentUserId)
-                .get()
-                .await()
+        return@withContext try {
+            // ПРОВЕРКА СЕТИ
+            if (!isNetworkAvailable()) {
+                Log.d(TAG, "Network unavailable for user data")
+                return@withContext false
+            }
 
-            if (snapshot.exists()) {
+            val snapshot = withTimeoutOrNull(3000L) {
+                Firebase.database.reference
+                    .child("users")
+                    .child(currentUserId)
+                    .get()
+                    .await()
+            }
+
+            if (snapshot != null && snapshot.exists()) {
                 val user = snapshot.getValue(User::class.java)
                 user?.let {
                     withContext(uiDispatcher) {
@@ -2234,15 +2893,15 @@ class MainActivity : AppCompatActivity() {
                         Log.d(TAG, "User data loaded and saved: $fullName")
                     }
                 }
-                return@withContext true
+                true
             } else {
                 loadUserNameFromAuthAsync()
-                return@withContext false
+                false
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error loading user data", e)
             loadUserNameFromAuthAsync()
-            return@withContext false
+            false
         }
     }
 
@@ -2359,7 +3018,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-
     /**
      * Получение приветствия по времени суток
      */
@@ -2418,13 +3076,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     /**
-     * Скрытие приветственного сообщения с анимацией
+     * Скрытие приветственного сообщения с анимацией и остановкой TTS
      */
     private fun hideWelcomeMessage() {
         try {
             // Отменяем последовательность приветствия
             welcomeSequenceJob?.cancel()
             isWelcomeSequenceRunning = false
+
+            // Останавливаем ВСЕ TTS
+            ttsManager.stop()
+            ttsManager.clearQueue()  // Очищаем очередь
 
             val exitAnimator = ValueAnimator.ofFloat(1f, 0f).apply {
                 duration = 300
@@ -2442,16 +3104,22 @@ class MainActivity : AppCompatActivity() {
                     override fun onAnimationEnd(animation: Animator) {
                         welcomeCard.visibility = View.GONE
                         resetWelcomeCardState() // Сбрасываем для следующего показа
+
+                        // Сбрасываем флаги TTS
+                        hasGreetingBeenSpoken = false
+                        hasAIContinuationBeenSpoken = false
                     }
                 })
             }
 
             exitAnimator.start()
 
-            Log.d(TAG, "Welcome message hidden with animation")
+            Log.d(TAG, "Welcome message hidden with animation, TTS stopped")
+
         } catch (e: Exception) {
             Log.e(TAG, "Error hiding welcome message", e)
             welcomeCard.visibility = View.GONE
+            ttsManager.stop()
         }
     }
 
@@ -2534,6 +3202,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 Log.d(TAG, "GreetingGenerator - initialized: ${greetingGenerator != null}")
                 Log.d(TAG, "ContextAnalyzer - initialized: ${contextAnalyzer != null}")
+                Log.d(TAG, "TTS Manager - initialized: $isTTSInitialized")
 
                 checkFirebaseUserData()
 
@@ -2634,18 +3303,18 @@ class MainActivity : AppCompatActivity() {
                 Glide.with(this)
                     .load(url)
                     .circleCrop()
-                    .placeholder(R.drawable.ic_default_profile)
-                    .error(R.drawable.ic_default_profile)
+                    .placeholder(R.drawable.fill)
+                    .error(R.drawable.fill)
                     .diskCacheStrategy(DiskCacheStrategy.ALL)
                     .into(binding.ivUserAvatar)
             } ?: run {
-                binding.ivUserAvatar.setImageResource(R.drawable.ic_default_profile)
+                binding.ivUserAvatar.setImageResource(R.drawable.fill)
             }
 
             Log.d(TAG, "User info updated: $fullName")
         } catch (e: Exception) {
             Log.e(TAG, "Error updating toolbar user info", e)
-            binding.ivUserAvatar.setImageResource(R.drawable.ic_default_profile)
+            binding.ivUserAvatar.setImageResource(R.drawable.fill)
         }
     }
 
@@ -2749,8 +3418,6 @@ class MainActivity : AppCompatActivity() {
             loadCurrentUserDataAsync()
         }
     }
-
-
 
     private fun makeSystemBarsTransparent() {
         try {
@@ -2879,6 +3546,24 @@ class MainActivity : AppCompatActivity() {
                 }
             }
             isFirstLaunch = false
+        }
+    }
+
+    fun openChatWithGigaFragment() {
+        supportFragmentManager.beginTransaction()
+            .replace(R.id.fragment_container, ChatWithGigaFragment())
+            .addToBackStack("chat")  // Добавляем в стек для возможности возврата
+            .commit()
+    }
+
+    /**
+     * Обработка кнопки назад
+     */
+    override fun onBackPressed() {
+        if (supportFragmentManager.backStackEntryCount > 0) {
+            supportFragmentManager.popBackStack()
+        } else {
+            super.onBackPressed()
         }
     }
 
@@ -3091,6 +3776,9 @@ class MainActivity : AppCompatActivity() {
                 fragmentCache.clear()
                 auth.signOut()
 
+                // Освобождаем TTS при выходе
+                ttsManager.release()
+
                 startActivity(Intent(this@MainActivity, AuthActivity::class.java).apply {
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
                 })
@@ -3172,7 +3860,36 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
 
+        isActivityResumed = true
+        wasActivityPaused = false
+
         Log.d(TAG, "onResume: Activity становится активной")
+
+        // Переинициализируем TTS если было паузирование
+        if (wasActivityPaused && !isTTSInitialized) {
+            Log.d(TAG, "Reinitializing TTS after pause")
+            ttsInitializationAttempts = 0
+            initTTSManagerSync()
+        }
+
+        // Сбрасываем флаги TTS для повторного озвучивания
+        hasGreetingBeenSpoken = false
+        hasAIContinuationBeenSpoken = false
+
+        // Если приветствие видно - обновляем и повторно озвучиваем
+        if (::welcomeCard.isInitialized && welcomeCard.visibility == View.VISIBLE) {
+            handler.postDelayed({
+                val currentText = tvWelcomeTitle.text.toString()
+                if (currentText.isNotEmpty() && isTTSInitialized) {
+                    speakGreeting(currentText)
+                }
+
+                // Повторно показываем контекстный вопрос и продолжение
+                if (greetingGenerator != null) {
+                    startStagedWelcomeSequence()
+                }
+            }, 1000)
+        }
 
         // ОТЛОЖИТЬ тяжелые операции
         lifecycleScope.launch(uiDispatcher) {
@@ -3331,6 +4048,17 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    override fun onPause() {
+        super.onPause()
+
+        isActivityResumed = false
+        wasActivityPaused = true
+
+        // Останавливаем TTS при уходе с экрана
+        ttsManager.stop()
+        Log.d(TAG, "TTS stopped on pause")
+    }
+
     override fun onDestroy() {
         Log.d(TAG, "MainActivity destroyed")
         // Отменяем все корутины и задачи
@@ -3340,6 +4068,10 @@ class MainActivity : AppCompatActivity() {
         fragmentCache.clear()
         isLocationServiceStarting.set(false)
         isStepServiceStarting.set(false)
+
+        // Освобождаем ресурсы TTS Manager
+        ttsManager.release()
+
         super.onDestroy()
     }
 
@@ -3394,35 +4126,6 @@ class MainActivity : AppCompatActivity() {
             binding.bottomNavigation.selectedItemId = R.id.nav_home
         } catch (e: Exception) {
             Log.e(TAG, "Error switching to news tab", e)
-        }
-    }
-
-    /**
-     * Оптимизированное переключение фрагментов с проверкой
-     */
-    private fun switchToFragment(tag: String, fragmentFactory: () -> Fragment) {
-        if (currentFragmentTag == tag) return
-
-        lifecycleScope.launch(uiDispatcher) {
-            try {
-                val fragment = supportFragmentManager.findFragmentByTag(tag)
-
-                if (fragment != null && fragment.isAdded) {
-                    // Фрагмент уже добавлен, просто показываем его
-                    showFragment(tag)
-                } else {
-                    // Создаем новый фрагмент
-                    val newFragment = fragmentFactory()
-                    loadFragment(newFragment, tag)
-                }
-
-                currentFragmentTag = tag
-
-            } catch (e: Exception) {
-                Log.e(TAG, "Error switching to fragment: $tag", e)
-                // Fallback: простая замена
-                loadFragment(fragmentFactory(), tag)
-            }
         }
     }
 
@@ -3510,6 +4213,393 @@ class MainActivity : AppCompatActivity() {
             Log.e(TAG, "Error clearing fragments", e)
         }
     }
+
+    private fun showPopupMenu(view: View) {
+        try {
+            // Используем кастомное меню
+            showCustomPopupMenu(view)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing popup menu", e)
+            // Fallback на стандартное меню
+            showStandardPopupMenu(view)
+        }
+    }
+
+    /**
+     * Показывает кастомное всплывающее меню
+     */
+    private fun showCustomPopupMenu(anchorView: View) {
+        try {
+            val inflater = getSystemService(Context.LAYOUT_INFLATER_SERVICE) as LayoutInflater
+            val popupView = inflater.inflate(R.layout.popup_menu_layout, null)
+
+            // Загружаем данные пользователя в меню
+            loadUserDataToMenu(popupView)
+
+            val popupWindow = PopupWindow(
+                popupView,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                ViewGroup.LayoutParams.WRAP_CONTENT,
+                true
+            )
+
+            // Настройка внешнего вида
+            setupPopupWindowAppearance(popupWindow)
+
+            // Настройка обработчиков кликов
+            setupMenuClickListeners(popupView, popupWindow)
+
+            // Показать меню с анимацией
+            showPopupWithAnimation(popupWindow, anchorView)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing custom popup menu", e)
+            throw e
+        }
+    }
+
+    /**
+     * Загружает данные пользователя в меню
+     */
+    private fun loadUserDataToMenu(popupView: View) {
+        try {
+            val tvProfileName = popupView.findViewById<TextView>(R.id.tv_profile_name)
+            val tvProfileEmail = popupView.findViewById<TextView>(R.id.tv_profile_email)
+            val ivProfileAvatar = popupView.findViewById<ImageView>(R.id.iv_profile_avatar)
+
+            val currentUser = auth.currentUser
+            currentUser?.let { user ->
+                // Имя
+                tvProfileName.text = user.displayName ?: extractFirstName(getUserName())
+                // Email
+                tvProfileEmail.text = user.email ?: "Пользователь"
+
+                // Аватар
+                loadUserAvatarToMenu(ivProfileAvatar, user.uid)
+            } ?: run {
+                tvProfileName.text = "Гость"
+                tvProfileEmail.text = "Войдите в аккаунт"
+                ivProfileAvatar.setImageResource(R.drawable.fill)
+            }
+
+            // Бейдж для анкеты (если не заполнена)
+            checkAndShowQuestionnaireBadge(popupView)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading user data to menu", e)
+        }
+    }
+
+    /**
+     * Загружает аватар пользователя в меню
+     */
+    private fun loadUserAvatarToMenu(imageView: ImageView, userId: String) {
+        lifecycleScope.launch(ioDispatcher) {
+            try {
+                val snapshot = Firebase.database.reference
+                    .child("users")
+                    .child(userId)
+                    .get()
+                    .await()
+
+                if (snapshot.exists()) {
+                    val user = snapshot.getValue(User::class.java)
+                    user?.profileImageUrl?.takeIf { it.isNotBlank() }?.let { url ->
+                        withContext(uiDispatcher) {
+                            Glide.with(this@MainActivity)
+                                .load(url)
+                                .circleCrop()
+                                .placeholder(R.drawable.fill)
+                                .error(R.drawable.fill)
+                                .diskCacheStrategy(DiskCacheStrategy.ALL)
+                                .into(imageView)
+                        }
+                    } ?: withContext(uiDispatcher) {
+                        imageView.setImageResource(R.drawable.fill)
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(uiDispatcher) {
+                    imageView.setImageResource(R.drawable.fill)
+                }
+            }
+        }
+    }
+
+    /**
+     * Проверяет и показывает бейдж анкеты
+     */
+    private fun checkAndShowQuestionnaireBadge(popupView: View) {
+        val sharedPref = getSharedPreferences("user_prefs", MODE_PRIVATE)
+        val questionnaireCompleted = sharedPref.getBoolean("questionnaire_completed", false)
+
+        val badge = popupView.findViewById<TextView>(R.id.badge_questionnaire)
+        badge.visibility = if (questionnaireCompleted) View.GONE else View.VISIBLE
+    }
+
+    /**
+     * Настраивает обработчики кликов меню
+     */
+    private fun setupMenuClickListeners(popupView: View, popupWindow: PopupWindow) {
+        // Профиль
+        popupView.findViewById<View>(R.id.profile_section).setOnClickListener {
+            animateMenuItemClick(it)
+            startActivity(Intent(this, ProfileActivity::class.java))
+            popupWindow.dismiss()
+        }
+
+        // Анкета
+        popupView.findViewById<View>(R.id.questionnaire_item).setOnClickListener {
+            animateMenuItemClick(it)
+            startUserQuestionnaireActivity()
+            popupWindow.dismiss()
+        }
+
+        // Лотерея
+        popupView.findViewById<View>(R.id.games_item).setOnClickListener {
+            animateMenuItemClick(it)
+            switchToLotteryFragment()
+            popupWindow.dismiss()
+        }
+
+        // Мозг тест
+        popupView.findViewById<View>(R.id.mozgi_item).setOnClickListener {
+            animateMenuItemClick(it)
+            startActivity(Intent(this, CategoriesActivity::class.java))
+            popupWindow.dismiss()
+        }
+
+        // Игра Блоки
+        popupView.findViewById<View>(R.id.blocks_item).setOnClickListener {
+            animateMenuItemClick(it)
+            startActivity(Intent(this, BlockGameActivity::class.java))
+            popupWindow.dismiss()
+        }
+
+        // Будильник
+        popupView.findViewById<View>(R.id.alarm_item).setOnClickListener {
+            animateMenuItemClick(it)
+            startActivity(Intent(this, AlarmActivity::class.java))
+            popupWindow.dismiss()
+        }
+
+        // Таймер
+        popupView.findViewById<View>(R.id.timer_item).setOnClickListener {
+            animateMenuItemClick(it)
+            startActivity(Intent(this, TimerActivity::class.java))
+            popupWindow.dismiss()
+        }
+
+        // Выход
+        popupView.findViewById<View>(R.id.logout_item).setOnClickListener {
+            animateMenuItemClick(it)
+            popupWindow.dismiss()
+            Handler(Looper.getMainLooper()).postDelayed({
+                showLogoutConfirmationDialog()
+            }, 200)
+        }
+    }
+
+    /**
+     * Анимация нажатия пункта меню
+     */
+    private fun animateMenuItemClick(view: View) {
+        view.animate()
+            .scaleX(0.95f)
+            .scaleY(0.95f)
+            .setDuration(100)
+            .withEndAction {
+                view.animate()
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(100)
+                    .start()
+            }
+            .start()
+    }
+
+    /**
+     * Показывает меню с анимацией
+     */
+    private fun showPopupWithAnimation(popupWindow: PopupWindow, anchorView: View) {
+        // Вычисляем позицию
+        val location = IntArray(2)
+        anchorView.getLocationOnScreen(location)
+
+        val screenWidth = resources.displayMetrics.widthPixels
+        val popupWidth = popupWindow.width
+
+        // Центрируем относительно кнопки меню
+        val anchorCenterX = location[0] + anchorView.width / 2
+        val x = anchorCenterX - popupWidth / 2
+
+        // Сдвигаем если выходит за экран
+        val adjustedX = when {
+            x < 16.dpToPx() -> 16.dpToPx()
+            x + popupWidth > screenWidth - 16.dpToPx() ->
+                screenWidth - popupWidth - 16.dpToPx()
+            else -> x
+        }
+
+        // Показываем с анимацией
+        popupWindow.showAtLocation(
+            anchorView,
+            Gravity.NO_GRAVITY,
+            adjustedX,
+            location[1] + anchorView.height + 8.dpToPx()
+        )
+
+        // Анимация появления
+        popupView?.apply {
+            scaleX = 0.85f
+            scaleY = 0.85f
+            alpha = 0f
+            animate()
+                .scaleX(1f)
+                .scaleY(1f)
+                .alpha(1f)
+                .setDuration(250)
+                .setInterpolator(OvershootInterpolator(0.9f))
+                .start()
+        }
+    }
+
+    /**
+     * Fallback на стандартное меню
+     */
+    private fun showStandardPopupMenu(view: View) {
+        val popup = PopupMenu(this, view)
+        popup.menuInflater.inflate(R.menu.main_menu, popup.menu)
+
+        // Применяем стиль
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            popup.setForceShowIcon(true)
+        }
+
+        popup.setOnMenuItemClickListener { item ->
+            handleMenuItemClick(item)
+            true
+        }
+
+        popup.show()
+    }
+
+    /**
+     * Показывает диалог подтверждения выхода
+     */
+    private fun showLogoutConfirmationDialog() {
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Выход")
+            .setMessage("Вы уверены, что хотите выйти из аккаунта?")
+            .setPositiveButton("Выйти") { _, _ ->
+                logoutUser()
+            }
+            .setNegativeButton("Отмена", null)
+            .setCancelable(true)
+            .show()
+    }
+
+
+
+    /**
+     * Настраивает внешний вид PopupWindow
+     */
+    private fun setupPopupWindowAppearance(popupWindow: PopupWindow) {
+        // Фон
+        popupWindow.setBackgroundDrawable(
+            ContextCompat.getDrawable(this, R.drawable.popup_menu_background)
+        )
+
+        // Анимация
+        popupWindow.animationStyle = R.style.PopupAnimation
+
+        // Элевация и тень
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            popupWindow.elevation = 32f
+            popupWindow.isClippingEnabled = true
+        }
+
+        // Закрытие при клике вне меню
+        popupWindow.isOutsideTouchable = true
+        popupWindow.isFocusable = true
+
+        // Ширина - адаптивная, но не слишком широкая
+        val screenWidth = resources.displayMetrics.widthPixels
+        val maxWidth = (screenWidth * 0.9).toInt()
+        val minWidth = 320.dpToPx()
+        val preferredWidth = (screenWidth - 32.dpToPx()).coerceAtMost(400.dpToPx())
+
+        popupWindow.width = preferredWidth.coerceIn(minWidth, maxWidth)
+    }
+
+    /**
+     * Конвертация dp в px
+     */
+    private fun Int.dpToPx(): Int {
+        return (this * resources.displayMetrics.density).toInt()
+    }
+
+    /**
+     * Обрабатывает клики по пунктам стандартного меню
+     */
+    private fun handleMenuItemClick(item: MenuItem) {
+        when (item.itemId) {
+            R.id.menu_profile -> {
+                try {
+                    startActivity(Intent(this, ProfileActivity::class.java))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error starting ProfileActivity", e)
+                }
+            }
+            R.id.menu_questionnaire -> {
+                startUserQuestionnaireActivity()
+            }
+            R.id.menu_mozgi -> {
+                try {
+                    startActivity(Intent(this, CategoriesActivity::class.java))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error starting CategoriesActivity", e)
+                }
+            }
+            R.id.menu_alarm -> {
+                try {
+                    startActivity(Intent(this, AlarmActivity::class.java))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error starting AlarmActivity", e)
+                }
+            }
+            R.id.menu_blocks -> {
+                try {
+                    startActivity(Intent(this@MainActivity, BlockGameActivity::class.java))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error starting BlockGameActivity", e)
+                    Toast.makeText(this@MainActivity, "Ошибка открытия игры Блоки", Toast.LENGTH_SHORT).show()
+                }
+            }
+            R.id.menu_lottery -> {
+                try {
+                    switchToLotteryFragment()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error switching to lottery fragment", e)
+                    Toast.makeText(this, "Ошибка открытия лотереи", Toast.LENGTH_SHORT).show()
+                }
+            }
+            R.id.menu_timer -> {
+                try {
+                    startActivity(Intent(this@MainActivity, TimerActivity::class.java))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error starting TimerActivity", e)
+                    Toast.makeText(this@MainActivity, "Ошибка открытия таймера", Toast.LENGTH_SHORT).show()
+                }
+            }
+            R.id.menu_logout -> {
+                showLogoutConfirmationDialog()
+            }
+        }
+    }
+
+    // Сохраняем ссылку на popupView для анимации
+    private var popupView: View? = null
 
     /**
      * Обновленный setupBottomNavigation с безопасной навигацией

@@ -3,20 +3,19 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/bg_gradient"
-    android:orientation="vertical"
-    android:padding="16dp">
+    android:background="@drawable/bg_gradient_game"
+    android:orientation="vertical">
 
     <!-- Заголовок -->
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Выберите игру"
-        android:textSize="28sp"
-        android:textColor="@color/white"
+        android:textSize="30sp"
+        android:textColor="@color/alarm_emergency"
         android:gravity="center"
         android:textStyle="bold"
-        android:layout_marginBottom="24dp"
+        android:layout_marginBottom="4dp"
         android:shadowColor="@color/black"
         android:shadowDx="2"
         android:shadowDy="2"
@@ -65,7 +64,7 @@
                         android:padding="8dp"
                         android:text="Угадай число"
                         android:textColor="@color/white"
-                        android:textSize="14sp"
+                        android:textSize="16sp"
                         android:textStyle="bold"
                         android:gravity="center" />
 
@@ -102,7 +101,7 @@
                         android:padding="8dp"
                         android:text="Сложение чисел"
                         android:textColor="@color/white"
-                        android:textSize="14sp"
+                        android:textSize="16sp"
                         android:textStyle="bold"
                         android:gravity="center" />
 
@@ -136,12 +135,12 @@
                         android:layout_height="wrap_content"
                         android:layout_alignParentBottom="true"
                         android:background="#80000000"
+                        android:gravity="center"
                         android:padding="8dp"
                         android:text="Шахматы"
                         android:textColor="@color/white"
-                        android:textSize="14sp"
-                        android:textStyle="bold"
-                        android:gravity="center" />
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
 
                 </RelativeLayout>
 
@@ -173,12 +172,12 @@
                         android:layout_height="wrap_content"
                         android:layout_alignParentBottom="true"
                         android:background="#80000000"
+                        android:gravity="center"
                         android:padding="8dp"
                         android:text="На память"
                         android:textColor="@color/white"
-                        android:textSize="14sp"
-                        android:textStyle="bold"
-                        android:gravity="center" />
+                        android:textSize="16sp"
+                        android:textStyle="bold" />
 
                 </RelativeLayout>
 
@@ -213,7 +212,7 @@
                         android:padding="8dp"
                         android:text="Стратегия"
                         android:textColor="@color/white"
-                        android:textSize="14sp"
+                        android:textSize="16sp"
                         android:textStyle="bold"
                         android:gravity="center" />
 
@@ -250,7 +249,7 @@
                         android:padding="8dp"
                         android:text="ПВО"
                         android:textColor="@color/white"
-                        android:textSize="14sp"
+                        android:textSize="16sp"
                         android:textStyle="bold"
                         android:gravity="center" />
 
@@ -287,7 +286,7 @@
                         android:padding="8dp"
                         android:text="Кирпичики"
                         android:textColor="@color/white"
-                        android:textSize="14sp"
+                        android:textSize="16sp"
                         android:textStyle="bold"
                         android:gravity="center" />
 

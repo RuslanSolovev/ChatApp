@@ -1,39 +1,77 @@
 <?xml version="1.0" encoding="utf-8"?>
-<menu xmlns:android="http://schemas.android.com/apk/res/android">
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
 
-    <item
-        android:id="@+id/menu_questionnaire"
-        android:title="Моя анкета"
-        android:icon="@drawable/ic_questionnaire" />
+    <group
+        android:id="@+id/group_profile"
+        android:checkableBehavior="none">
 
-    <item
-        android:id="@+id/menu_profile"
-        android:title="Профиль"/>
+        <item
+            android:id="@+id/menu_profile"
+            android:title="Профиль"
+            android:icon="@drawable/ic_user_avatar"
+            app:showAsAction="never" />
 
-    <item
-        android:id="@+id/menu_mozgi"
-        android:title="Мозг Тест" />
+        <item
+            android:id="@+id/menu_questionnaire"
+            android:title="Моя анкета"
+            android:icon="@drawable/ic_chat"
+            app:showAsAction="never" />
 
-    <item
-        android:id="@+id/menu_alarm"
-        android:title="Будильник"
-        android:icon="@drawable/ic_alarm"/>
+    </group>
 
-    <!-- ДОБАВЬТЕ ЭТОТ ПУНКТ ДЛЯ ГРУШИ (ТАЙМЕРА) -->
-    <item
-        android:id="@+id/menu_timer"
-        android:title="🥊 Груша" />
+    <group
+        android:id="@+id/group_activities"
+        android:checkableBehavior="none">
 
-    <!-- ДОБАВЬТЕ ЭТОТ ПУНКТ ДЛЯ ЛОТЕРЕИ -->
-    <item
-        android:id="@+id/menu_lottery"
-        android:title="🎰 Лотерея" />
+        <item
+            android:id="@+id/menu_mozgi"
+            android:title="Мозг Тест"
+            android:icon="@drawable/ic_brain"
+            app:showAsAction="never" />
 
-    <item
-        android:id="@+id/menu_blocks"
-        android:title="🧱 Блоки"/>
+        <item
+            android:id="@+id/menu_alarm"
+            android:title="Будильник"
+            android:icon="@drawable/ic_alarm"
+            app:showAsAction="never" />
 
-    <item
-        android:id="@+id/menu_logout"
-        android:title="Выйти"/>
+        <item
+            android:id="@+id/menu_timer"
+            android:title="🥊 Таймер для груши"
+            android:icon="@drawable/ic_timer"
+            app:showAsAction="never" />
+
+        <item
+            android:id="@+id/menu_blocks"
+            android:title="Игра Блоки"
+            android:icon="@drawable/ic_save"
+            app:showAsAction="never" />
+
+    </group>
+
+    <group
+        android:id="@+id/group_games"
+        android:checkableBehavior="none">
+
+        <item
+            android:id="@+id/menu_lottery"
+            android:title="🎰 Лотерея"
+            android:icon="@drawable/ic_army_enemy"
+            app:showAsAction="never" />
+
+    </group>
+
+    <group
+        android:id="@+id/group_logout"
+        android:checkableBehavior="none">
+
+        <item
+            android:id="@+id/menu_logout"
+            android:title="Выйти"
+            android:icon="@drawable/ic_medium"
+            app:showAsAction="never" />
+
+    </group>
+
 </menu>

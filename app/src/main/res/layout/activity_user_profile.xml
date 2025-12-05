@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     xmlns:tools="http://schemas.android.com/tools"
-    android:background="@drawable/bg_gradient"
+    android:background="@drawable/bg_gradient_game"
     android:padding="16dp">
 
     <LinearLayout
@@ -17,10 +17,10 @@
             android:id="@+id/toolbar"
             android:layout_width="match_parent"
             android:layout_height="?attr/actionBarSize"
-            android:background="@color/colorPrimary"
+            android:background="#F0FFEF"
             app:navigationIcon="?attr/homeAsUpIndicator"
             app:title="Профиль"
-            app:titleTextColor="@color/white"
+            app:titleTextColor="@color/alarm_emergency"
             android:layout_marginBottom="16dp" />
 
         <!-- Аватар -->
@@ -31,8 +31,8 @@
             android:layout_gravity="center_horizontal"
             android:layout_marginTop="16dp"
             android:contentDescription="Аватар пользователя"
-            android:src="@drawable/ic_default_profile"
-            android:background="@drawable/avatar_background_circle"
+            android:src="@drawable/splash_background"
+            android:background="@drawable/battle_result_background"
             android:padding="8dp" />
 
         <!-- Основная информация -->
@@ -44,7 +44,7 @@
             android:layout_marginTop="16dp"
             android:textSize="24sp"
             android:textStyle="bold"
-            android:textColor="@color/white"
+            android:textColor="@color/alarm_emergency"
             tools:text="Иван Иванов" />
 
         <TextView
@@ -53,7 +53,7 @@
             android:layout_height="wrap_content"
             android:layout_gravity="center_horizontal"
             android:layout_marginTop="8dp"
-            android:textColor="@color/gray_light"
+            android:textColor="@color/alarm_emergency"
             tools:text="user@example.com" />
 
         <!-- Блок с геолокацией -->
@@ -93,7 +93,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
                     android:text="Показать на карте"
-                    android:textColor="@color/colorPrimary"
+                    android:textColor="@color/alarm_text"
                     android:backgroundTint="@color/white"
                     android:padding="8dp" />
             </LinearLayout>

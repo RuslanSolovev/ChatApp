@@ -173,6 +173,14 @@
         <item name="android:windowBackground">@color/black</item>
     </style>
 
+    <style name="CircleImageView2" parent="">
+        <item name="cornerSize">50%</item>
+    </style>
+    <style name="PopupAnimation">
+        <item name="android:windowEnterAnimation">@anim/popup_animation</item>
+        <item name="android:windowExitAnimation">@android:anim/fade_out</item>
+    </style>
+
 
 
 </resources>

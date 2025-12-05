@@ -29,6 +29,14 @@ class GigaChatViewModel(private val context: Context) : ViewModel() {
         }
     }
 
+    // В GigaChatViewModel добавьте:
+
+    fun removeMessage(message: GigaMessage) {
+        _messages.remove(message)
+    }
+
+
+
     // Метод для очистки всех сообщений
     fun clearAllMessages() {
         _messages.clear()

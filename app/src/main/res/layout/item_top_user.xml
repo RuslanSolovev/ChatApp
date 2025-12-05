@@ -26,8 +26,8 @@
             android:layout_width="36dp"
             android:layout_height="36dp"
             android:gravity="center"
-            android:textColor="@color/white"
-            android:background="@drawable/bg_position_circle"
+            android:textColor="@color/alarm_text"
+            android:background="@drawable/avatar_border"
             android:textSize="16sp"
             android:textStyle="bold"
             tools:text="1"
@@ -38,9 +38,9 @@
             android:id="@+id/ivAvatar"
             android:layout_width="48dp"
             android:layout_height="48dp"
-            android:src="@drawable/ic_default_profile"
+            android:src="@drawable/fill"
             app:civ_border_width="1dp"
-            app:civ_border_color="@color/avatar_border"
+            app:civ_border_color="@color/primary3"
             android:layout_marginEnd="12dp"/>
 
         <!-- Имя и шаги -->

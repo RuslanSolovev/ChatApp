@@ -14,7 +14,7 @@
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:background="@drawable/rounded_background_accent"
+        android:background="@drawable/bg_gradient_game"
         android:gravity="center_vertical"
         android:padding="12dp"
         app:layout_constraintEnd_toEndOf="parent"
@@ -39,7 +39,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="Чат"
-            android:textColor="@color/accent_light"
+            android:textColor="@color/alarm_emergency"
             android:textSize="20sp"
             android:textStyle="bold"
             android:maxLines="1"
@@ -152,7 +152,7 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@drawable/ic_plus"
             android:contentDescription="Добавить участника"
-            app:tint="@color/colorPrimary"
+            app:tint="#9CFB06"
             android:scaleType="centerInside" />
 
         <!-- Кнопка "Прикрепить изображение" -->
@@ -164,7 +164,7 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@drawable/ic_attach"
             android:contentDescription="Прикрепить изображение"
-            app:tint="@color/colorPrimary"
+            app:tint="#9CFB06"
             android:scaleType="centerInside" />
 
         <!-- Поле ввода сообщения -->
@@ -190,7 +190,7 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@drawable/ic_send"
             android:contentDescription="Отправить сообщение"
-            app:tint="@color/colorPrimary"
+            app:tint="#9CFB06"
             android:scaleType="centerInside" />
     </LinearLayout>
 

@@ -60,7 +60,8 @@
                 android:src="@drawable/ic_questionnaire"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Анкета"
-                android:layout_marginEnd="8dp"/>
+                android:layout_marginEnd="8dp"
+                android:visibility="gone"/>
 
             <!-- Кнопка для музыки -->
             <ImageButton

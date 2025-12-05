@@ -1,18 +1,24 @@
 package com.example.chatapp.privetstvie_giga
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
+import android.graphics.Color
+import android.media.MediaPlayer
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.text.Editable
 import android.text.TextWatcher
 import android.util.Log
-import android.view.LayoutInflater
-import android.view.View
-import android.view.ViewGroup
+import android.view.*
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
+import android.widget.FrameLayout
 import android.widget.ImageButton
+import android.widget.TextView
 import android.widget.Toast
 import androidx.core.view.GravityCompat
 import androidx.core.view.ViewCompat
@@ -25,11 +31,12 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.chatapp.R
 import com.example.chatapp.SavedDialog
-import com.example.chatapp.SavedDialogsAdapter
+import com.example.chatapp.activities.MainActivity
 import com.example.chatapp.api.AuthRetrofitInstance
 import com.example.chatapp.api.GigaChatRequest
 import com.example.chatapp.api.Message
 import com.example.chatapp.api.RetrofitInstance
+import com.example.chatapp.utils.TTSManager
 import com.example.chatapp.viewmodels.DialogsViewModel
 import com.google.android.material.internal.ViewUtils.hideKeyboard
 import com.google.firebase.auth.ktx.auth
@@ -37,27 +44,50 @@ import com.google.firebase.database.ktx.database
 import com.google.firebase.ktx.Firebase
 import com.google.gson.Gson
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.tasks.await
+import okhttp3.*
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
+import java.io.File
+import java.net.URLEncoder
 import java.util.*
 import kotlin.math.abs
 
 class ChatWithGigaFragment : Fragment() {
-
     private lateinit var recyclerView: RecyclerView
     private lateinit var messageAdapter: GigaMessageAdapter
     private lateinit var editTextMessage: EditText
     private lateinit var btnSendMessage: ImageButton
-    private lateinit var btnClearDialog: ImageButton
     private val viewModel: GigaChatViewModel by viewModels { GigaChatViewModelFactory(requireActivity()) }
     private val dialogsViewModel: DialogsViewModel by viewModels()
+
+    // Навигация
     private lateinit var drawerLayout: DrawerLayout
+    private lateinit var btnBackToMain: ImageButton
+    private lateinit var btnMenu: ImageButton
+    private lateinit var btnCloseMenu: ImageButton
+    private lateinit var btnBackToMenu: ImageButton
+    private lateinit var btnCloseDialogs: ImageButton
+
+    // Контейнеры для панелей
+    private lateinit var menuContainer: FrameLayout
+    private lateinit var dialogsContainer: FrameLayout
+
+    // Пункты меню
+    private lateinit var menuSavedDialogs: View
+    private lateinit var menuSaveDialog: View
+    private lateinit var menuClearDialog: View
+    private lateinit var menuSettings: View
+
+    // TTS меню
+    private lateinit var menuTTSControl: View
+    private lateinit var switchTTS: android.widget.Switch
+    private lateinit var tvTTSStatus: TextView
+
     private lateinit var savedDialogsRecyclerView: RecyclerView
     private lateinit var savedDialogsAdapter: SavedDialogsAdapter
-    private lateinit var btnSaveDialog: ImageButton
+    private lateinit var tvEmptyDialogs: TextView
 
     // Компоненты для персонализации
     private var greetingGenerator: SmartQuestionGenerator? = null
@@ -73,22 +103,38 @@ class ChatWithGigaFragment : Fragment() {
     private var isGeneratingResponse = false
     private var chatStartTime: Long = 0
 
+    // TTS
+    private lateinit var ttsManager: TTSManager
+    private var isTTSEnabled = true
+    private var isTTSInitializationStarted = false
+    private val pendingTTSQueue = mutableListOf<Pair<String, String>>()
+
     // Асинхронные компоненты
     private val handler = Handler(Looper.getMainLooper())
     private val uiScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
     private val ioScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val computationScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
+
     // Флаг инициализации
     private var isInitialized = false
     private var greetingJob: Job? = null
 
+    // YANDEX SPEECHKIT TTS (fallback)
+    private val YC_API_KEY = "AQVN2daCiBDJ8-CoJCdT5f1Rhz7wFEDqClbRpJwM"
+
     companion object {
         private const val TAG = "ChatWithGigaFragment"
         private const val SCROLL_DELAY = 100L
-        private const val GREETING_DELAY = 5000L
+        private const val GREETING_DELAY = 500L
         private const val KEYBOARD_DELAY = 100L
-        private const val INIT_DELAY = 1000L
+        private const val INIT_DELAY = 100L
+        private const val MAX_TTS_TEXT_LENGTH = 500
+        private const val DOUBLE_CLICK_DELAY = 300L
+
+        fun newInstance(): ChatWithGigaFragment {
+            return ChatWithGigaFragment()
+        }
     }
 
     override fun onCreateView(
@@ -102,39 +148,166 @@ class ChatWithGigaFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // Сначала быстрая инициализация UI
-        initBasicUI(view)
+        // ВАЖНО: Проверяем, что фрагмент прикреплен к Activity
+        if (!isAdded || activity == null) {
+            Log.w(TAG, "Fragment not attached to activity in onViewCreated")
+            return
+        }
 
-        // Отложенная инициализация тяжелых компонентов
+        // Инициализация TTS как можно раньше
+        initTTSManager()
+
+        hideSystemUI()
+        activity?.window?.setSoftInputMode(
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+        )
+        initBasicUI(view)
+        setupSystemInsets(view)
+
+        // Загрузка настроек TTS
+        loadTTSSettings()
+
         handler.postDelayed({
             initializeAsyncComponents()
         }, INIT_DELAY)
     }
 
+    override fun onResume() {
+        super.onResume()
+        // ВАЖНО: При возобновлении фрагмента чата снова скрываем системные панели
+        activity?.let {
+            if (it is MainActivity) {
+                it.hideSystemUIForChat()
+            }
+        }
+    }
+
     /**
-     * Базовая инициализация UI (быстрая, не блокирующая)
+     * Инициализация TTS Manager с защитой от повторной инициализации и проверкой Activity
+     */
+    private fun initTTSManager() {
+        if (isTTSInitializationStarted) {
+            Log.d(TAG, "TTS initialization already started")
+            return
+        }
+
+        // ВАЖНО: Проверяем, что фрагмент прикреплен к Activity
+        if (!isAdded || activity == null) {
+            Log.w(TAG, "Fragment not attached to activity, delaying TTS initialization")
+            handler.postDelayed({
+                if (isAdded && !isDetached && activity != null) {
+                    initTTSManager()
+                }
+            }, 500)
+            return
+        }
+
+        isTTSInitializationStarted = true
+
+        ttsManager = TTSManager(requireActivity().applicationContext) { initialized ->
+            if (!isAdded || isDetached || activity == null) {
+                Log.w(TAG, "Fragment detached during TTS initialization")
+                return@TTSManager
+            }
+
+            requireActivity().runOnUiThread {
+                if (initialized) {
+                    Log.d(TAG, "TTS Manager initialized successfully")
+
+                    // Обновляем UI в главном потоке
+                    if (::switchTTS.isInitialized) {
+                        switchTTS.isEnabled = true
+                        tvTTSStatus.text = "Озвучка: ВКЛ"
+                    }
+
+                    // Обрабатываем очередь если есть
+                    processTTSPendingQueue()
+
+                } else {
+                    Log.e(TAG, "TTS Manager initialization failed")
+                    isTTSEnabled = false
+
+                    if (::switchTTS.isInitialized) {
+                        switchTTS.isChecked = false
+                        switchTTS.isEnabled = false
+                        tvTTSStatus.text = "Озвучка: недоступна"
+                    }
+
+                    showToast("Озвучка недоступна")
+                }
+            }
+        }
+    }
+
+
+    // Метод для открытия настроек голоса:
+    private fun openVoiceSettings() {
+        try {
+            val fragment = VoiceSettingsFragment.newInstance()
+            requireActivity().supportFragmentManager.beginTransaction()
+                .replace(R.id.fragment_container, fragment)
+                .addToBackStack("voice_settings")
+                .commitAllowingStateLoss()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error opening voice settings", e)
+            Toast.makeText(requireContext(), "Ошибка открытия настроек", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+
+    /**
+     * Обработка очереди сообщений ожидающих TTS инициализации
+     */
+    private fun processTTSPendingQueue() {
+        if (!isAdded || activity == null) return
+
+        if (pendingTTSQueue.isNotEmpty() && ttsManager.isInitialized) {
+            Log.d(TAG, "Processing ${pendingTTSQueue.size} pending TTS messages")
+
+            pendingTTSQueue.forEach { (text, type) ->
+                speakText(text, type, false)
+            }
+            pendingTTSQueue.clear()
+        }
+    }
+
+    /**
+     * Базовая инициализация UI
      */
     private fun initBasicUI(view: View) {
         try {
-            // Инициализация основных UI элементов
             recyclerView = view.findViewById(R.id.recyclerViewMessages)
             editTextMessage = view.findViewById(R.id.editTextMessage)
             btnSendMessage = view.findViewById(R.id.btnSendMessage)
-            btnClearDialog = view.findViewById(R.id.btnClearDialog)
-            btnSaveDialog = view.findViewById(R.id.btnSaveDialog)
             drawerLayout = view.findViewById(R.id.drawer_layout)
 
-            // Быстрая настройка адаптеров
+            btnBackToMain = view.findViewById(R.id.btnBackToMain)
+            btnMenu = view.findViewById(R.id.btnMenu)
+            btnCloseMenu = view.findViewById(R.id.btnCloseMenu)
+            btnBackToMenu = view.findViewById(R.id.btnBackToMenu)
+            btnCloseDialogs = view.findViewById(R.id.btnCloseDialogs)
+
+            menuContainer = view.findViewById(R.id.menuContainer)
+            dialogsContainer = view.findViewById(R.id.dialogsContainer)
+
+            menuSavedDialogs = view.findViewById(R.id.menuSavedDialogs)
+            menuSaveDialog = view.findViewById(R.id.menuSaveDialog)
+            menuClearDialog = view.findViewById(R.id.menuClearDialog)
+            menuSettings = view.findViewById(R.id.menuSettings)
+
+            // TTS элементы меню
+            menuTTSControl = view.findViewById(R.id.menuTTSControl)
+            switchTTS = view.findViewById(R.id.switchTTS)
+            tvTTSStatus = view.findViewById(R.id.tvTTSStatus)
+
+            savedDialogsRecyclerView = view.findViewById(R.id.recyclerViewSavedDialogs)
+            tvEmptyDialogs = view.findViewById(R.id.tvEmptyDialogs)
+
             setupBasicAdapters()
-
-            // Быстрая настройка слушателей
             setupBasicListeners()
-
-            // Загрузка существующих сообщений
             loadExistingMessagesFast()
-
-            // Настройка системных инсетов
-            setupSystemInsetsAsync(view)
+            setupKeyboardHandling()
+            setupSystemUISwipeListener()
 
             Log.d(TAG, "Basic UI initialized successfully")
         } catch (e: Exception) {
@@ -147,21 +320,61 @@ class ChatWithGigaFragment : Fragment() {
      */
     private fun setupBasicAdapters() {
         try {
-            messageAdapter = GigaMessageAdapter()
+            messageAdapter = GigaMessageAdapter { message ->
+                // Обработчик клика по сообщению для повторной озвучки
+                onMessageClicked(message)
+            }
+
             recyclerView.apply {
                 layoutManager = LinearLayoutManager(requireContext()).apply {
                     stackFromEnd = true
                 }
                 adapter = messageAdapter
-                itemAnimator = null // Отключаем анимацию для производительности
+                itemAnimator = null
+
+                // Создаем и добавляем обработчик касаний для двойного клика
+                val touchListener = object : RecyclerView.OnItemTouchListener {
+                    private var lastClickTime = 0L
+
+                    override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
+                        if (e.action == MotionEvent.ACTION_DOWN) {
+                            val view = rv.findChildViewUnder(e.x, e.y)
+                            if (view != null) {
+                                val position = rv.getChildAdapterPosition(view)
+                                if (position != RecyclerView.NO_POSITION) {
+                                    val message = messageAdapter.getMessage(position)
+                                    message?.let {
+                                        val currentTime = System.currentTimeMillis()
+                                        if (currentTime - lastClickTime < DOUBLE_CLICK_DELAY) {
+                                            // Двойной клик - повторная озвучка
+                                            repeatMessageSpeech(it)
+                                            lastClickTime = 0
+                                        } else {
+                                            lastClickTime = currentTime
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        return false
+                    }
+
+                    override fun onTouchEvent(rv: RecyclerView, e: MotionEvent) {
+                        // Не используется
+                    }
+
+                    override fun onRequestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {
+                        // Не используется
+                    }
+                }
+
+                addOnItemTouchListener(touchListener)
             }
 
-            savedDialogsRecyclerView = requireView().findViewById(R.id.recyclerViewSavedDialogs)
             savedDialogsAdapter = SavedDialogsAdapter(
                 onDialogSelected = { loadSavedDialogAsync(it) },
                 onDialogDeleted = { deleteDialogAsync(it.id) }
             )
-
             savedDialogsRecyclerView.apply {
                 layoutManager = LinearLayoutManager(requireContext())
                 adapter = savedDialogsAdapter
@@ -174,18 +387,247 @@ class ChatWithGigaFragment : Fragment() {
     }
 
     /**
+     * Обработчик клика по сообщению
+     */
+    private fun onMessageClicked(message: GigaMessage) {
+        try {
+            // Проверяем состояние TTS
+            if (!ttsManager.isInitialized && isTTSEnabled) {
+                showToast("Озвучка ещё инициализируется...")
+                pendingTTSQueue.add(Pair(message.text,
+                    if (message.isUser) TTSManager.TYPE_CHAT_USER else TTSManager.TYPE_CHAT_BOT))
+                return
+            }
+
+            // Показываем контекстное меню для сообщения
+            showMessageContextMenu(message)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error handling message click", e)
+        }
+    }
+
+    /**
+     * Показывает контекстное меню для сообщения
+     */
+    private fun showMessageContextMenu(message: GigaMessage) {
+        try {
+            // Проверка перед показом меню
+            if (!isAdded || activity == null) return
+
+            val options = arrayOf(
+                "🔊 Повторить озвучку",
+                "📋 Скопировать текст",
+                "📤 Поделиться",
+                "❌ Удалить сообщение"
+            )
+
+            android.app.AlertDialog.Builder(requireContext())
+                .setTitle("Сообщение")
+                .setItems(options) { _, which ->
+                    when (which) {
+                        0 -> {
+                            // Повторить озвучку
+                            repeatMessageSpeech(message)
+                        }
+                        1 -> {
+                            // Скопировать текст
+                            copyMessageText(message)
+                        }
+                        2 -> {
+                            // Поделиться
+                            shareMessageText(message)
+                        }
+                        3 -> {
+                            // Удалить сообщение
+                            deleteMessage(message)
+                        }
+                    }
+                }
+                .setNegativeButton("Отмена", null)
+                .show()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing message context menu", e)
+        }
+    }
+
+    /**
+     * Повторяет озвучку сообщения
+     */
+    private fun repeatMessageSpeech(message: GigaMessage) {
+        if (!isTTSEnabled) {
+            showToast("Озвучка отключена")
+            return
+        }
+
+        if (!ttsManager.isInitialized) {
+            showToast("Озвучка ещё не готова, подождите...")
+
+            // Добавляем в очередь ожидания только если его там еще нет
+            val isAlreadyInQueue = pendingTTSQueue.any { it.first == message.text }
+            if (!isAlreadyInQueue) {
+                pendingTTSQueue.add(Pair(message.text,
+                    if (message.isUser) TTSManager.TYPE_CHAT_USER else TTSManager.TYPE_CHAT_BOT))
+            }
+            return
+        }
+
+        // Останавливаем текущую озвучку и говорим новое сообщение
+        ttsManager.stop()
+        ttsManager.speak(message.text,
+            if (message.isUser) TTSManager.TYPE_CHAT_USER else TTSManager.TYPE_CHAT_BOT,
+            true
+        )
+
+        // Показывает анимацию повторной озвучки
+        showSpeechRepeatAnimation()
+    }
+
+    /**
+     * Показывает анимацию повторной озвучки
+     */
+    private fun showSpeechRepeatAnimation() {
+        try {
+            if (!isAdded || activity == null) return
+            Toast.makeText(requireContext(), "🔊 Повторяю...", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing speech repeat animation", e)
+        }
+    }
+
+    /**
+     * Копирует текст сообщения в буфер обмена
+     */
+    private fun copyMessageText(message: GigaMessage) {
+        try {
+            if (!isAdded || activity == null) return
+
+            val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+            val clip = ClipData.newPlainText("Сообщение из чата", message.text)
+            clipboard.setPrimaryClip(clip)
+
+            Toast.makeText(requireContext(), "Текст скопирован", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error copying message text", e)
+            Toast.makeText(requireContext(), "Ошибка копирования", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Делится текстом сообщения
+     */
+    private fun shareMessageText(message: GigaMessage) {
+        try {
+            if (!isAdded || activity == null) return
+
+            val shareIntent = Intent().apply {
+                action = Intent.ACTION_SEND
+                putExtra(Intent.EXTRA_TEXT, message.text)
+                type = "text/plain"
+            }
+
+            startActivity(Intent.createChooser(shareIntent, "Поделиться сообщением"))
+        } catch (e: Exception) {
+            Log.e(TAG, "Error sharing message text", e)
+            Toast.makeText(requireContext(), "Ошибка при попытке поделиться", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Удаляет сообщение
+     */
+    private fun deleteMessage(message: GigaMessage) {
+        try {
+            if (!isAdded || activity == null) return
+
+            android.app.AlertDialog.Builder(requireContext())
+                .setTitle("Удалить сообщение")
+                .setMessage("Вы уверены, что хотите удалить это сообщение?")
+                .setPositiveButton("Удалить") { _, _ ->
+                    // Удаляем сообщение из ViewModel и адаптера
+                    viewModel.removeMessage(message)
+                    messageAdapter.updateMessages(viewModel.messages.toList())
+
+                    Toast.makeText(requireContext(), "Сообщение удалено", Toast.LENGTH_SHORT).show()
+                }
+                .setNegativeButton("Отмена", null)
+                .show()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error deleting message", e)
+            Toast.makeText(requireContext(), "Ошибка удаления сообщения", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
      * Базовая настройка слушателей
      */
     private fun setupBasicListeners() {
         try {
+            // === КНОПКА ВЫХОДА (возврат в MainActivity) ===
+            btnBackToMain.setOnClickListener {
+                navigateToMainScreen()
+            }
+
+            // === КНОПКА МЕНЮ ===
+            btnMenu.setOnClickListener {
+                openSidePanel()
+                showMenuPanel()
+            }
+
+            // === Закрыть меню ===
+            btnCloseMenu.setOnClickListener {
+                closeSidePanel()
+            }
+
+            // === Назад из диалогов в меню ===
+            btnBackToMenu.setOnClickListener {
+                showMenuPanel()
+            }
+
+            // === Закрыть диалоги ===
+            btnCloseDialogs.setOnClickListener {
+                closeSidePanel()
+            }
+
+            // === Пункты меню ===
+            menuSavedDialogs.setOnClickListener {
+                showDialogsPanel()
+                loadSavedDialogsAsync()
+            }
+
+            menuSaveDialog.setOnClickListener {
+                closeSidePanel()
+                showSaveDialogPromptAsync()
+            }
+
+            menuClearDialog.setOnClickListener {
+                closeSidePanel()
+                showClearDialogConfirmationAsync()
+            }
+
+            menuSettings.setOnClickListener {
+                closeSidePanel()
+                openSettings()
+            }
+
+            // === Управление TTS ===
+            menuTTSControl.setOnClickListener {
+                // При клике на весь элемент - переключаем switch
+                switchTTS.isChecked = !switchTTS.isChecked
+                onTTSSwitchChanged(switchTTS.isChecked)
+            }
+
+            switchTTS.setOnCheckedChangeListener { _, isChecked ->
+                onTTSSwitchChanged(isChecked)
+            }
+
             // Отправка сообщения
             btnSendMessage.setOnClickListener {
                 sendUserMessageAsync()
             }
 
-            // Отправка сообщения по Enter
             editTextMessage.setOnKeyListener { _, keyCode, event ->
-                if (keyCode == android.view.KeyEvent.KEYCODE_ENTER && event.action == android.view.KeyEvent.ACTION_DOWN) {
+                if (keyCode == android.view.KeyEvent.KEYCODE_ENTER &&
+                    event.action == android.view.KeyEvent.ACTION_DOWN) {
                     sendUserMessageAsync()
                     true
                 } else {
@@ -193,27 +635,15 @@ class ChatWithGigaFragment : Fragment() {
                 }
             }
 
-            // Очистка диалога
-            btnClearDialog.setOnClickListener {
-                showClearDialogConfirmationAsync()
-            }
-
-            // Сохранение диалога
-            btnSaveDialog.setOnClickListener {
-                showSaveDialogPromptAsync()
-            }
-
-            // Навигация по диалогам
-            setupDialogsNavigationAsync()
-
-            // Слушатель изменения текста
-            setupTextWatcherAsync()
-
-            // Скрытие клавиатуры
+            // Скрытие клавиатуры при касании списка сообщений
             recyclerView.setOnTouchListener { _, _ ->
-                hideKeyboardAsync()
+                hideKeyboard()
+                hideSystemUI()
                 false
             }
+
+            // Отслеживание текста
+            setupTextWatcherAsync()
 
             Log.d(TAG, "Basic listeners setup completed")
         } catch (e: Exception) {
@@ -222,295 +652,149 @@ class ChatWithGigaFragment : Fragment() {
     }
 
     /**
-     * Асинхронная инициализация тяжелых компонентов
+     * Загрузка настроек TTS
      */
-    private fun initializeAsyncComponents() {
-        if (isInitialized) return
-
-        uiScope.launch {
-            try {
-                Log.d(TAG, "Starting async components initialization...")
-
-                // Параллельная загрузка всех компонентов
-                val initializationJob = ioScope.async {
-                    loadAllComponentsInBackground()
-                }
-
-                // Ждем завершения инициализации с таймаутом
-                val components = withTimeout(10000) {
-                    initializationJob.await()
-                }
-
-                // Обновляем UI в главном потоке
-                withContext(Dispatchers.Main) {
-                    userProfile = components.first
-                    contextAnalyzer = components.second
-                    greetingGenerator = components.third
-
-                    isInitialized = true
-
-                    // Загружаем сохраненные диалоги
-                    loadSavedDialogsAsync()
-
-                    // Показываем приветствие с задержкой
-                    scheduleDelayedGreeting()
-
-                    setupScrollBehaviorAsync()
-                    chatStartTime = System.currentTimeMillis()
-
-                    Log.d(TAG, "All components initialized successfully")
-                }
-
-            } catch (e: TimeoutCancellationException) {
-                Log.e(TAG, "Component initialization timeout", e)
-                withContext(Dispatchers.Main) {
-                    showFallbackGreetingAsync()
-                    isInitialized = true
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error initializing components", e)
-                withContext(Dispatchers.Main) {
-                    showFallbackGreetingAsync()
-                    isInitialized = true
-                }
-            }
-        }
-    }
-
-    /**
-     * Загрузка всех компонентов в фоне
-     */
-    private suspend fun loadAllComponentsInBackground(): Triple<UserProfile?, SmartContextAnalyzer?, SmartQuestionGenerator?> =
-        withContext(Dispatchers.IO) {
-            try {
-                Log.d(TAG, "Loading components in background...")
-
-                // Параллельная загрузка всех тяжелых компонентов
-                val profileDeferred = async {
-                    try {
-                        loadUserProfileAsync()
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error loading profile", e)
-                        null
-                    }
-                }
-
-                val analyzerDeferred = async {
-                    try {
-                        SmartContextAnalyzer(requireContext().applicationContext)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error creating analyzer", e)
-                        null
-                    }
-                }
-
-                val profile = profileDeferred.await()
-                val analyzer = analyzerDeferred.await()
-
-                val generator = try {
-                    SmartQuestionGenerator(requireContext().applicationContext, profile)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error creating generator", e)
-                    null
-                }
-
-                Log.d(TAG, "Background component loading completed")
-                return@withContext Triple(profile, analyzer, generator)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error in background component loading", e)
-                return@withContext Triple(null, null, null)
-            }
-        }
-
-    /**
-     * Отложенное показание приветствия
-     */
-    private fun scheduleDelayedGreeting() {
-        // Отменяем предыдущее задание если есть
-        greetingJob?.cancel()
-
-        greetingJob = uiScope.launch {
-            try {
-                Log.d(TAG, "Scheduling delayed greeting...")
-
-                // Ждем 5 секунд перед показом приветствия
-                delay(GREETING_DELAY)
-
-                if (isAdded && !isDetached && view != null) {
-                    showSmartChatGreetingAsync()
-                }
-
-            } catch (e: CancellationException) {
-                Log.d(TAG, "Greeting scheduling cancelled")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error in scheduled greeting", e)
-            }
-        }
-    }
-
-    /**
-     * Показ умного приветствия в чате (ИСПРАВЛЕННАЯ версия - ОДНО сообщение)
-     */
-    private fun showSmartChatGreetingAsync() {
-        if (!shouldShowGreeting()) return
-
-        uiScope.launch {
-            try {
-                Log.d(TAG, "Showing CORRECT smart chat greeting...")
-
-                // Загружаем КОНКРЕТНУЮ фразу продолжения
-                val continuationPhrase = withContext(Dispatchers.IO) {
-                    try {
-                        loadContinuationPhraseForChat()
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error loading continuation phrase", e)
-                        "Рад нашей беседе! Чем могу помочь?"
-                    }
-                }
-
-                // Показываем ОДНО сообщение с контекстом
-                addWelcomeMessageAsync(continuationPhrase)
-
-                Log.d(TAG, "Single contextual greeting displayed: $continuationPhrase")
-
-            } catch (e: Exception) {
-                Log.e(TAG, "Error showing smart chat greeting", e)
-                showFallbackGreetingAsync()
-            }
-        }
-    }
-
-    /**
-     * Загружает фразу продолжения для чата
-     */
-    private fun loadContinuationPhraseForChat(): String {
-        return try {
-            val sharedPref = requireContext().getSharedPreferences("chat_prefs", Context.MODE_PRIVATE)
-            val phrase = sharedPref.getString("continuation_phrase", null)
-            // Очищаем после использования
-            sharedPref.edit().remove("continuation_phrase").apply()
-            phrase ?: "Рад нашей беседе! Чем могу помочь?"
-        } catch (e: Exception) {
-            Log.e(TAG, "Error loading continuation phrase", e)
-            "Рад нашей беседе! Чем могу помочь?"
-        }
-    }
-
-    /**
-     * Fallback приветствие для чата (асинхронно)
-     */
-    private fun showFallbackChatGreetingAsync() {
-        uiScope.launch {
-            try {
-                val greeting = "Рад нашей беседе! Чем могу помочь?"
-                addWelcomeMessageAsync(greeting)
-                Log.d(TAG, "Fallback greeting shown: $greeting")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error in fallback chat greeting", e)
-                showFallbackGreetingAsync()
-            }
-        }
-    }
-
-    /**
-     * Проверка необходимости показа приветствия
-     */
-    private fun shouldShowGreeting(): Boolean {
-        return try {
-            if (viewModel.messages.isEmpty()) return true
-
-            val lastMessageTime = viewModel.messages.lastOrNull()?.timestamp ?: 0L
-            val timeSinceLastMessage = System.currentTimeMillis() - lastMessageTime
-
-            timeSinceLastMessage > 2 * 60 * 60 * 1000 ||
-                    viewModel.messages.size < 3 ||
-                    isFirstLaunch
-        } catch (e: Exception) {
-            Log.e(TAG, "Error checking greeting condition", e)
-            true
-        }
-    }
-
-    /**
-     * Добавление приветственного сообщения (UI операция)
-     */
-    private fun addWelcomeMessageAsync(phrase: String) {
-        uiScope.launch {
-            try {
-                viewModel.addMessage(phrase, false)
-                messageAdapter.addMessage(GigaMessage(phrase, false))
-
-                recyclerView.post {
-                    try {
-                        recyclerView.smoothScrollToPosition(viewModel.messages.size - 1)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error scrolling after welcome", e)
-                    }
-                }
-                Log.d(TAG, "Welcome message added: $phrase")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error adding welcome message", e)
-            }
-        }
-    }
-
-    /**
-     * Быстрая загрузка существующих сообщений
-     */
-    private fun loadExistingMessagesFast() {
+    private fun loadTTSSettings() {
         try {
-            if (viewModel.messages.isNotEmpty()) {
-                messageAdapter.updateMessages(viewModel.messages.toList())
+            if (!isAdded || activity == null) return
 
-                // Прокручиваем к последнему сообщению с задержкой
-                recyclerView.postDelayed({
-                    try {
-                        recyclerView.scrollToPosition(viewModel.messages.size - 1)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error scrolling to position", e)
+            val sharedPref = requireContext().getSharedPreferences("chat_settings", Context.MODE_PRIVATE)
+            isTTSEnabled = sharedPref.getBoolean("tts_enabled", true)
+
+            // Обновляем UI если view уже создан
+            if (::switchTTS.isInitialized) {
+                requireActivity().runOnUiThread {
+                    switchTTS.isChecked = isTTSEnabled
+                    val statusText = when {
+                        !isTTSEnabled -> "Озвучка: ВЫКЛ"
+                        !ttsManager.isInitialized -> "Озвучка: инициализация..."
+                        else -> "Озвучка: ВКЛ"
                     }
-                }, SCROLL_DELAY)
+                    tvTTSStatus.text = statusText
+                    switchTTS.isEnabled = ttsManager.isInitialized || !isTTSEnabled
+                }
             }
-            Log.d(TAG, "Existing messages loaded")
         } catch (e: Exception) {
-            Log.e(TAG, "Error loading existing messages", e)
+            Log.e(TAG, "Error loading TTS settings", e)
         }
     }
 
     /**
-     * Асинхронная настройка системных инсетов
+     * Сохранение настроек TTS
      */
-    private fun setupSystemInsetsAsync(view: View) {
-        ViewCompat.setOnApplyWindowInsetsListener(view) { v, insets ->
-            try {
-                val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
-                val navigationBarHeight = insets.getInsets(WindowInsetsCompat.Type.navigationBars()).bottom
-                val statusBarHeight = insets.getInsets(WindowInsetsCompat.Type.statusBars()).top
-
-                Log.d(TAG, "System bars - status: $statusBarHeight, navigation: $navigationBarHeight")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error setting up system insets", e)
-            }
-            insets
-        }
-    }
-
-    /**
-     * Настройка навигации по диалогам
-     */
-    private fun setupDialogsNavigationAsync() {
+    private fun saveTTSSettings() {
         try {
-            val btnOpenDialogs = requireView().findViewById<ImageButton>(R.id.btnOpenDialogs)
-            btnOpenDialogs.setOnClickListener {
-                drawerLayout.openDrawer(GravityCompat.END)
-            }
+            if (!isAdded || activity == null) return
 
-            val btnCloseDialogs = requireView().findViewById<ImageButton>(R.id.btnCloseDialogs)
-            btnCloseDialogs.setOnClickListener {
-                drawerLayout.closeDrawer(GravityCompat.END)
-            }
+            val sharedPref = requireContext().getSharedPreferences("chat_settings", Context.MODE_PRIVATE)
+            sharedPref.edit().putBoolean("tts_enabled", isTTSEnabled).apply()
         } catch (e: Exception) {
-            Log.e(TAG, "Error setting up dialogs navigation", e)
+            Log.e(TAG, "Error saving TTS settings", e)
+        }
+    }
+
+    /**
+     * Обработка изменения состояния TTS
+     */
+    private fun onTTSSwitchChanged(isEnabled: Boolean) {
+        isTTSEnabled = isEnabled
+
+        // Обновляем текст статуса
+        val statusText = when {
+            !isEnabled -> "Озвучка: ВЫКЛ"
+            !ttsManager.isInitialized -> "Озвучка: инициализация..."
+            else -> "Озвучка: ВКЛ"
+        }
+
+        tvTTSStatus.text = statusText
+
+        if (!isEnabled) {
+            // Останавливаем текущую озвучку и очищаем очередь
+            ttsManager.stop()
+            ttsManager.clearQueue()
+            pendingTTSQueue.clear()
+        } else {
+            // При включении проверяем инициализацию
+            if (!ttsManager.isInitialized) {
+                showToast("Озвучка инициализируется...")
+            } else {
+                // Озвучиваем последнее сообщение бота если есть
+                val lastMessage = viewModel.messages.lastOrNull { !it.isUser }
+                lastMessage?.let { message ->
+                    speakText(message.text, TTSManager.TYPE_CHAT_BOT)
+                }
+            }
+        }
+
+        // Сохраняем настройку
+        saveTTSSettings()
+    }
+
+    private fun navigateToMainScreen() {
+        try {
+            saveChatSessionDuration()
+            closeSidePanel()
+
+            // Останавливаем TTS перед уходом
+            ttsManager.stop()
+
+            // Восстанавливаем UI через метод MainActivity
+            val mainActivity = requireActivity() as? MainActivity
+            mainActivity?.restoreUIAfterChat()
+
+            // Убираем текущий фрагмент
+            requireActivity().supportFragmentManager.beginTransaction()
+                .remove(this@ChatWithGigaFragment)
+                .commit()
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error navigating to main screen", e)
+        }
+    }
+
+    /**
+     * Открытие боковой панели
+     */
+    private fun openSidePanel() {
+        try {
+            drawerLayout.openDrawer(GravityCompat.END)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error opening side panel", e)
+        }
+    }
+
+    /**
+     * Закрытие боковой панели
+     */
+    private fun closeSidePanel() {
+        try {
+            drawerLayout.closeDrawer(GravityCompat.END)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error closing side panel", e)
+        }
+    }
+
+    /**
+     * Показать панель меню
+     */
+    private fun showMenuPanel() {
+        try {
+            menuContainer.visibility = View.VISIBLE
+            dialogsContainer.visibility = View.GONE
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing menu panel", e)
+        }
+    }
+
+    /**
+     * Показать панель диалогов
+     */
+    private fun showDialogsPanel() {
+        try {
+            menuContainer.visibility = View.GONE
+            dialogsContainer.visibility = View.VISIBLE
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing dialogs panel", e)
         }
     }
 
@@ -532,9 +816,536 @@ class ChatWithGigaFragment : Fragment() {
     }
 
     /**
-     * Асинхронная настройка поведения прокрутки
+     * Асинхронная загрузка сохраненных диалогов
      */
-    private fun setupScrollBehaviorAsync() {
+    private fun loadSavedDialogsAsync() {
+        uiScope.launch {
+            try {
+                dialogsViewModel.savedDialogs.observe(viewLifecycleOwner) { dialogs ->
+                    try {
+                        savedDialogsAdapter.updateDialogs(dialogs)
+                        tvEmptyDialogs.visibility = if (dialogs.isEmpty()) View.VISIBLE else View.GONE
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error updating dialogs UI", e)
+                    }
+                }
+                Log.d(TAG, "Saved dialogs loading initiated")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error loading saved dialogs", e)
+            }
+        }
+    }
+
+    /**
+     * Озвучивает текст через TTS Manager или Yandex SpeechKit (fallback)
+     */
+    private fun speakText(text: String, type: String = TTSManager.TYPE_CHAT_BOT, interrupt: Boolean = true) {
+        if (!isTTSEnabled || text.isBlank()) return
+
+        try {
+            // Очищаем текст для TTS
+            val cleanText = prepareTextForTTS(text)
+
+            if (cleanText.isBlank()) {
+                Log.w(TAG, "Text is empty after cleaning")
+                return
+            }
+
+            if (!ttsManager.isInitialized) {
+                Log.d(TAG, "TTS not initialized yet, adding to pending queue: ${cleanText.take(30)}...")
+                pendingTTSQueue.add(Pair(cleanText, type))
+                return
+            }
+
+            // Проверяем длину текста
+            if (cleanText.length > MAX_TTS_TEXT_LENGTH) {
+                Log.w(TAG, "Text too long for TTS (${cleanText.length} chars)")
+
+                // Разделяем текст на части
+                val textParts = splitTextForTTS(cleanText)
+                textParts.forEachIndexed { index, part ->
+                    if (part.isNotBlank()) {
+                        // Добавляем небольшую задержку между частями
+                        val delay = if (index > 0) 500L else 0L
+                        handler.postDelayed({
+                            ttsManager.speak(part, type, interrupt) {
+                                Log.d(TAG, "TTS part $index completed")
+                            }
+                        }, delay)
+                    }
+                }
+            } else {
+                // Используем TTS Manager
+                ttsManager.speak(cleanText, type, interrupt) {
+                    Log.d(TAG, "TTS completed for: ${cleanText.take(30)}...")
+                }
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error speaking text", e)
+        }
+    }
+
+    /**
+     * Подготовка текста для TTS
+     */
+    private fun prepareTextForTTS(text: String): String {
+        return try {
+            var cleaned = text.trim()
+
+            // Удаляем URL
+            cleaned = cleaned.replace(Regex("https?://\\S+"), " [ссылка] ")
+
+            // Удаляем специальные символы которые могут мешать TTS
+            cleaned = cleaned.replace(Regex("[*_~`>|<\\[\\]{}]"), "")
+
+            // Заменяем переносы строк
+            cleaned = cleaned.replace(Regex("\\n+"), ". ")
+
+            // Удаляем множественные пробелы
+            cleaned = cleaned.replace(Regex("\\s+"), " ")
+
+            // Добавляем точку в конце если нет знаков препинания
+            if (cleaned.isNotEmpty() && !cleaned.last().isWhitespace()) {
+                val lastChar = cleaned.last()
+                if (!lastChar.isLetterOrDigit() && lastChar !in setOf('.', '!', '?', ',', ';', ':')) {
+                    cleaned += "."
+                }
+            }
+
+            cleaned.trim()
+        } catch (e: Exception) {
+            text
+        }
+    }
+
+    /**
+     * Разделение длинного текста для TTS
+     */
+    private fun splitTextForTTS(text: String): List<String> {
+        val parts = mutableListOf<String>()
+        var current = StringBuilder()
+
+        // Разделяем по предложениям
+        val sentences = text.split(Regex("(?<=[.!?])\\s+"))
+
+        for (sentence in sentences) {
+            if (current.length + sentence.length + 1 > MAX_TTS_TEXT_LENGTH) {
+                if (current.isNotEmpty()) {
+                    parts.add(current.toString())
+                    current.clear()
+                }
+
+                // Если одно предложение длиннее лимита, разбиваем по словам
+                if (sentence.length > MAX_TTS_TEXT_LENGTH) {
+                    val words = sentence.split(" ")
+                    for (word in words) {
+                        if (current.length + word.length + 1 > MAX_TTS_TEXT_LENGTH) {
+                            if (current.isNotEmpty()) {
+                                parts.add(current.toString())
+                                current.clear()
+                            }
+                        }
+                        if (current.isNotEmpty()) current.append(" ")
+                        current.append(word)
+                    }
+                } else {
+                    current.append(sentence)
+                }
+            } else {
+                if (current.isNotEmpty()) current.append(" ")
+                current.append(sentence)
+            }
+        }
+
+        if (current.isNotEmpty()) {
+            parts.add(current.toString())
+        }
+
+        return parts
+    }
+
+    /**
+     * Fallback озвучка через Yandex SpeechKit
+     */
+    private fun speakWithYandex(text: String) {
+        if (text.isBlank() || YC_API_KEY.isBlank()) return
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                // Получаем IAM-токен по API-ключу
+                val iamTokenResponse = OkHttpClient().newCall(
+                    Request.Builder()
+                        .url("https://iam.api.cloud.yandex.net/iam/v1/tokens")
+                        .post(RequestBody.create(null, """{"apiKey":"$YC_API_KEY"}"""))
+                        .build()
+                ).execute()
+
+                if (!iamTokenResponse.isSuccessful) {
+                    Log.e(TAG, "Не удалось получить IAM-токен")
+                    return@launch
+                }
+
+                val iamToken = iamTokenResponse.body?.string()
+                    ?.substringAfter("\"iamToken\":\"")
+                    ?.substringBefore("\"") ?: return@launch
+
+                // Запрашиваем аудио у SpeechKit
+                val encodedText = URLEncoder.encode(text, "UTF-8")
+                val body = "text=$encodedText&lang=ru-RU&voice=alena&format=mp3"
+
+                val ttsResponse = OkHttpClient().newCall(
+                    Request.Builder()
+                        .url("https://tts.api.cloud.yandex.net/speech/v1/tts:synthesize")
+                        .post(RequestBody.create(null, body))
+                        .addHeader("Authorization", "Bearer $iamToken")
+                        .addHeader("Content-Type", "application/x-www-form-urlencoded")
+                        .build()
+                ).execute()
+
+                if (!ttsResponse.isSuccessful) {
+                    Log.e(TAG, "Ошибка синтеза речи: ${ttsResponse.code}")
+                    return@launch
+                }
+
+                val audioBytes = ttsResponse.body?.bytes() ?: return@launch
+
+                // Воспроизводим аудио в главном потоке
+                withContext(Dispatchers.Main) {
+                    playAudio(audioBytes)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка озвучки через Yandex", e)
+            }
+        }
+    }
+
+    /**
+     * Воспроизводит аудио из байтов (для Yandex TTS)
+     */
+    private fun playAudio(audioBytes: ByteArray) {
+        try {
+            val tempFile = File(requireContext().cacheDir, "speech_${System.currentTimeMillis()}.mp3")
+            tempFile.writeBytes(audioBytes)
+
+            val mediaPlayer = MediaPlayer().apply {
+                setDataSource(tempFile.absolutePath)
+                setOnPreparedListener { start() }
+                setOnCompletionListener {
+                    tempFile.delete()
+                    release()
+                }
+                prepareAsync()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка воспроизведения аудио", e)
+        }
+    }
+
+    /**
+     * Настройка системных инсетов
+     */
+    private fun setupSystemInsets(view: View) {
+        ViewCompat.setOnApplyWindowInsetsListener(view) { v, insets ->
+            try {
+                val navigationBars = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
+                val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
+                Log.d(TAG, "System insets - navigation: ${navigationBars.bottom}, IME visible: $imeVisible")
+                // Прокручиваем при появлении клавиатуры
+                if (imeVisible) {
+                    handler.postDelayed({
+                        scrollToLastMessage()
+                    }, 150)
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in system insets setup", e)
+            }
+            return@setOnApplyWindowInsetsListener insets
+        }
+    }
+
+    /**
+     * Асинхронная инициализация тяжелых компонентов
+     */
+    private fun initializeAsyncComponents() {
+        if (isInitialized) return
+        uiScope.launch {
+            try {
+                Log.d(TAG, "Starting async components initialization...")
+
+                // Проверяем состояние TTS
+                val ttsStatus = when {
+                    !::ttsManager.isInitialized -> "TTS не создан"
+                    !ttsManager.isInitialized -> "TTS инициализируется"
+                    else -> "TTS готов"
+                }
+                Log.d(TAG, "TTS status: $ttsStatus")
+
+                // Устанавливаем начальные настройки TTS в UI
+                requireActivity().runOnUiThread {
+                    if (::switchTTS.isInitialized) {
+                        switchTTS.isChecked = isTTSEnabled
+                        val statusText = when {
+                            !isTTSEnabled -> "Озвучка: ВЫКЛ"
+                            !ttsManager.isInitialized -> "Озвучка: инициализация..."
+                            else -> "Озвучка: ВКЛ"
+                        }
+                        tvTTSStatus.text = statusText
+
+                        // Блокируем switch пока TTS не инициализирован
+                        switchTTS.isEnabled = ttsManager.isInitialized || !isTTSEnabled
+                    }
+                }
+
+                val initializationJob = ioScope.async {
+                    loadAllComponentsInBackground()
+                }
+
+                val components = withTimeout(10000) {
+                    initializationJob.await()
+                }
+
+                withContext(Dispatchers.Main) {
+                    userProfile = components.first
+                    contextAnalyzer = components.second
+                    greetingGenerator = components.third
+                    isInitialized = true
+
+                    loadSavedDialogsAsync()
+                    scheduleDelayedGreeting()
+                    setupScrollBehavior()
+                    chatStartTime = System.currentTimeMillis()
+
+                    // Разблокируем TTS switch если нужно
+                    if (::switchTTS.isInitialized) {
+                        switchTTS.isEnabled = true
+                    }
+
+                    Log.d(TAG, "All components initialized successfully")
+                }
+            } catch (e: TimeoutCancellationException) {
+                Log.e(TAG, "Component initialization timeout", e)
+                withContext(Dispatchers.Main) {
+                    showFallbackGreeting()
+                    isInitialized = true
+
+                    // Все равно разблокируем switch
+                    if (::switchTTS.isInitialized) {
+                        switchTTS.isEnabled = true
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error initializing components", e)
+                withContext(Dispatchers.Main) {
+                    showFallbackGreeting()
+                    isInitialized = true
+
+                    // Все равно разблокируем switch
+                    if (::switchTTS.isInitialized) {
+                        switchTTS.isEnabled = true
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * Загрузка всех компонентов в фоне
+     */
+    private suspend fun loadAllComponentsInBackground(): Triple<UserProfile?, SmartContextAnalyzer?, SmartQuestionGenerator?> =
+        withContext(Dispatchers.IO) {
+            try {
+                Log.d(TAG, "Loading components in background...")
+                val profileDeferred = async {
+                    try {
+                        loadUserProfile()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error loading profile", e)
+                        null
+                    }
+                }
+                val analyzerDeferred = async {
+                    try {
+                        SmartContextAnalyzer(requireContext().applicationContext)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error creating analyzer", e)
+                        null
+                    }
+                }
+                val profile = profileDeferred.await()
+                val analyzer = analyzerDeferred.await()
+                val generator = try {
+                    SmartQuestionGenerator(requireContext().applicationContext, profile)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error creating generator", e)
+                    null
+                }
+                Log.d(TAG, "Background component loading completed")
+                return@withContext Triple(profile, analyzer, generator)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in background component loading", e)
+                return@withContext Triple(null, null, null)
+            }
+        }
+
+    /**
+     * Отложенное показание приветствия
+     */
+    private fun scheduleDelayedGreeting() {
+        greetingJob?.cancel()
+        greetingJob = uiScope.launch {
+            try {
+                Log.d(TAG, "Scheduling delayed greeting...")
+                delay(GREETING_DELAY)
+                if (isAdded && !isDetached && view != null) {
+                    showSmartChatGreeting()
+                }
+            } catch (e: CancellationException) {
+                Log.d(TAG, "Greeting scheduling cancelled")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in scheduled greeting", e)
+            }
+        }
+    }
+
+    /**
+     * Показ умного приветствия в чате
+     */
+    private fun showSmartChatGreeting() {
+        if (!shouldShowGreeting()) return
+        uiScope.launch {
+            try {
+                Log.d(TAG, "Showing smart chat greeting...")
+                val continuationPhrase = withContext(Dispatchers.IO) {
+                    try {
+                        loadContinuationPhraseForChat()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error loading continuation phrase", e)
+                        "Рад нашей беседе! Чем могу помочь?"
+                    }
+                }
+                addWelcomeMessage(continuationPhrase)
+                Log.d(TAG, "Contextual greeting displayed: $continuationPhrase")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error showing smart chat greeting", e)
+                showFallbackGreeting()
+            }
+        }
+    }
+
+    /**
+     * Загружает фразу продолжения для чата
+     */
+    private fun loadContinuationPhraseForChat(): String {
+        return try {
+            val sharedPref = requireContext().getSharedPreferences("chat_prefs", Context.MODE_PRIVATE)
+            val phrase = sharedPref.getString("continuation_phrase", null)
+            sharedPref.edit().remove("continuation_phrase").apply()
+            phrase ?: "Рад нашей беседе! Чем могу помочь?"
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading continuation phrase", e)
+            "Рад нашей беседе! Чем могу помочь?"
+        }
+    }
+
+    /**
+     * Настройка обработки клавиатуры
+     */
+    private fun setupKeyboardHandling() {
+        try {
+            editTextMessage.setOnFocusChangeListener { _, hasFocus ->
+                if (hasFocus) {
+                    handler.postDelayed({
+                        scrollToLastMessage()
+                    }, 200)
+                }
+            }
+            editTextMessage.setOnClickListener {
+                handler.postDelayed({
+                    scrollToLastMessage()
+                }, 200)
+            }
+            Log.d(TAG, "Keyboard handling setup completed")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting up keyboard handling", e)
+        }
+    }
+
+    /**
+     * Прокручивает к последнему сообщению
+     */
+    private fun scrollToLastMessage() {
+        try {
+            if (messageAdapter.itemCount > 0) {
+                recyclerView.smoothScrollToPosition(messageAdapter.itemCount - 1)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scrolling to last message", e)
+        }
+    }
+
+    /**
+     * Проверка необходимости показа приветствия
+     */
+    private fun shouldShowGreeting(): Boolean {
+        return try {
+            if (viewModel.messages.isEmpty()) return true
+            val lastMessageTime = viewModel.messages.lastOrNull()?.timestamp ?: 0L
+            val timeSinceLastMessage = System.currentTimeMillis() - lastMessageTime
+            timeSinceLastMessage > 2 * 60 * 60 * 1000 ||
+                    viewModel.messages.size < 3 ||
+                    isFirstLaunch
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking greeting condition", e)
+            true
+        }
+    }
+
+    /**
+     * Добавление приветственного сообщения
+     */
+    private fun addWelcomeMessage(phrase: String) {
+        uiScope.launch {
+            try {
+                viewModel.addMessage(phrase, false)
+                messageAdapter.addMessage(GigaMessage(phrase, false))
+                scrollToLastMessage()
+
+                // ОЗВУЧКА приветствия
+                speakText(phrase, TTSManager.TYPE_GREETING)
+
+                Log.d(TAG, "Welcome message added: $phrase")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error adding welcome message", e)
+            }
+        }
+    }
+
+    /**
+     * Быстрая загрузка существующих сообщений
+     */
+    private fun loadExistingMessagesFast() {
+        try {
+            if (viewModel.messages.isNotEmpty()) {
+                messageAdapter.updateMessages(viewModel.messages.toList())
+                recyclerView.postDelayed({
+                    try {
+                        recyclerView.scrollToPosition(viewModel.messages.size - 1)
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error scrolling to position", e)
+                    }
+                }, SCROLL_DELAY)
+            }
+            Log.d(TAG, "Existing messages loaded")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading existing messages", e)
+        }
+    }
+
+    /**
+     * Настройка поведения прокрутки
+     */
+    private fun setupScrollBehavior() {
         try {
             messageAdapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
                 override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
@@ -559,47 +1370,20 @@ class ChatWithGigaFragment : Fragment() {
     }
 
     /**
-     * Асинхронная загрузка сохраненных диалогов
+     * Загрузка профиля пользователя
      */
-    private fun loadSavedDialogsAsync() {
-        uiScope.launch {
-            try {
-                // Наблюдаем за изменениями в сохраненных диалогах
-                dialogsViewModel.savedDialogs.observe(viewLifecycleOwner) { dialogs ->
-                    try {
-                        savedDialogsAdapter.updateDialogs(dialogs)
-
-                        // Показываем/скрываем подсказку о пустом списке
-                        val tvEmptyDialogs = requireView().findViewById<android.widget.TextView>(R.id.tvEmptyDialogs)
-                        tvEmptyDialogs.visibility = if (dialogs.isEmpty()) View.VISIBLE else View.GONE
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error updating dialogs UI", e)
-                    }
-                }
-                Log.d(TAG, "Saved dialogs loading initiated")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error loading saved dialogs", e)
-            }
-        }
-    }
-
-    /**
-     * Загрузка профиля пользователя (IO операция)
-     */
-    private suspend fun loadUserProfileAsync(): UserProfile? = withContext(Dispatchers.IO) {
+    private suspend fun loadUserProfile(): UserProfile? = withContext(Dispatchers.IO) {
         try {
             val currentUser = Firebase.auth.currentUser
             if (currentUser == null) {
                 Log.d(TAG, "User not authenticated, using contextual welcome")
                 return@withContext null
             }
-
             val snapshot = Firebase.database.reference
                 .child("user_profiles")
                 .child(currentUser.uid)
                 .get()
                 .await()
-
             if (snapshot.exists()) {
                 val profile = snapshot.getValue(UserProfile::class.java)
                 Log.d(TAG, "User profile loaded for chat: ${profile != null}")
@@ -620,35 +1404,26 @@ class ChatWithGigaFragment : Fragment() {
             Toast.makeText(requireContext(), "Подождите, идет генерация ответа...", Toast.LENGTH_SHORT).show()
             return
         }
-
         val userMessage = editTextMessage.text.toString().trim()
         if (userMessage.isEmpty()) return
-
         uiScope.launch {
             try {
-                // Сохраняем сообщение в историю
                 saveMessageToHistory(userMessage)
-
-                // Быстро добавляем сообщение пользователя
                 viewModel.addMessage(userMessage, true)
                 messageAdapter.addMessage(GigaMessage(userMessage, true))
-                editTextMessage.text.clear()
-                hideKeyboardAsync()
 
-                // Прокручиваем в фоне
-                recyclerView.post {
-                    try {
-                        recyclerView.smoothScrollToPosition(viewModel.messages.size - 1)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error scrolling after user message", e)
-                    }
+                // ОЗВУЧКА сообщения пользователя (опционально)
+                if (isTTSEnabled) {
+                    speakText(userMessage, TTSManager.TYPE_CHAT_USER)
                 }
 
-                // Получаем ответ в фоне
+                editTextMessage.text.clear()
+                hideKeyboard()
+                scrollToLastMessage()
                 getBotResponseAsync(userMessage)
             } catch (e: Exception) {
                 Log.e(TAG, "Error sending user message", e)
-                showErrorAsync("Ошибка отправки сообщения")
+                showError("Ошибка отправки сообщения")
             }
         }
     }
@@ -662,20 +1437,14 @@ class ChatWithGigaFragment : Fragment() {
                 val sharedPref = requireContext().getSharedPreferences("chat_history", Context.MODE_PRIVATE)
                 val historyJson = sharedPref.getString("recent_messages", "[]")
                 val messages = Gson().fromJson(historyJson, Array<String>::class.java).toMutableList()
-
-                // Добавляем новое сообщение и ограничиваем размер
                 messages.add(message)
                 if (messages.size > 20) {
-                    // ВСЕГДА используем совместимый метод для minSdk 30
                     if (messages.isNotEmpty()) {
                         messages.removeAt(0)
                     }
                 }
-
-                // Сохраняем обратно
                 val newHistoryJson = Gson().toJson(messages)
                 sharedPref.edit().putString("recent_messages", newHistoryJson).apply()
-
                 Log.d(TAG, "Message saved to history: ${message.take(50)}...")
             } catch (e: Exception) {
                 Log.e(TAG, "Error saving message to history", e)
@@ -688,27 +1457,25 @@ class ChatWithGigaFragment : Fragment() {
      */
     private fun getBotResponseAsync(userMessage: String) {
         if (isGeneratingResponse) return
-
         isGeneratingResponse = true
-        updateSendButtonStateAsync()
-
+        updateSendButtonState()
         ioScope.launch {
             try {
                 if (accessToken.isEmpty()) {
-                    fetchAuthTokenAsync { token ->
+                    fetchAuthToken { token ->
                         uiScope.launch {
-                            sendMessageWithTokenAsync(token, userMessage)
+                            sendMessageWithToken(token, userMessage)
                         }
                     }
                 } else {
-                    sendMessageWithTokenAsync(accessToken, userMessage)
+                    sendMessageWithToken(accessToken, userMessage)
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error getting bot response", e)
                 uiScope.launch {
-                    showErrorAsync("Ошибка получения ответа")
+                    showError("Ошибка получения ответа")
                     isGeneratingResponse = false
-                    updateSendButtonStateAsync()
+                    updateSendButtonState()
                 }
             }
         }
@@ -717,7 +1484,7 @@ class ChatWithGigaFragment : Fragment() {
     /**
      * Обновление состояния кнопки отправки
      */
-    private fun updateSendButtonStateAsync() {
+    private fun updateSendButtonState() {
         uiScope.launch {
             try {
                 btnSendMessage.isEnabled = !isGeneratingResponse &&
@@ -731,17 +1498,15 @@ class ChatWithGigaFragment : Fragment() {
     /**
      * Асинхронное получение токена авторизации
      */
-    private fun fetchAuthTokenAsync(onTokenReceived: (String) -> Unit) {
+    private fun fetchAuthToken(onTokenReceived: (String) -> Unit) {
         try {
             val rqUid = UUID.randomUUID().toString()
             val authHeader = "Basic M2JhZGQ0NzktNGVjNy00ZmYyLWE4ZGQtNTMyOTViZDgzYzlkOjU4OGRkZDg1LTMzZmMtNDNkYi04MmJmLWFmZDM5Nzk5NmM2MQ=="
-
             val call = AuthRetrofitInstance.authApi.getAuthToken(
                 rqUid = rqUid,
                 authHeader = authHeader,
                 scope = authScope
             )
-
             call.enqueue(object : Callback<com.example.chatapp.api.AuthResponse> {
                 override fun onResponse(
                     call: Call<com.example.chatapp.api.AuthResponse>,
@@ -756,28 +1521,27 @@ class ChatWithGigaFragment : Fragment() {
                             Log.e("API_ERROR", "Тело ошибки: ${it.string()}")
                         }
                         uiScope.launch {
-                            showErrorAsync("Ошибка авторизации в API")
+                            showError("Ошибка авторизации в API")
                             isGeneratingResponse = false
-                            updateSendButtonStateAsync()
+                            updateSendButtonState()
                         }
                     }
                 }
-
                 override fun onFailure(call: Call<com.example.chatapp.api.AuthResponse>, t: Throwable) {
                     Log.e("API_ERROR", "Ошибка подключения: ${t.message}")
                     uiScope.launch {
-                        showErrorAsync("Ошибка подключения к серверу")
+                        showError("Ошибка подключения к серверу")
                         isGeneratingResponse = false
-                        updateSendButtonStateAsync()
+                        updateSendButtonState()
                     }
                 }
             })
         } catch (e: Exception) {
             Log.e(TAG, "Error fetching auth token", e)
             uiScope.launch {
-                showErrorAsync("Ошибка получения токена")
+                showError("Ошибка получения токена")
                 isGeneratingResponse = false
-                updateSendButtonStateAsync()
+                updateSendButtonState()
             }
         }
     }
@@ -785,17 +1549,11 @@ class ChatWithGigaFragment : Fragment() {
     /**
      * Асинхронная отправка сообщения с токеном
      */
-    private suspend fun sendMessageWithTokenAsync(token: String, userMessage: String) = withContext(Dispatchers.IO) {
+    private suspend fun sendMessageWithToken(token: String, userMessage: String) = withContext(Dispatchers.IO) {
         try {
-            // Создаем системное сообщение с информацией о пользователе в фоне
-            val systemMessage = buildPersonalizedSystemMessageAsync()
-
+            val systemMessage = buildPersonalizedSystemMessage()
             val messagesList = mutableListOf<Message>()
-
-            // Добавляем системное сообщение
             messagesList.add(Message(role = "system", content = systemMessage))
-
-            // Добавляем историю сообщений
             val recentMessages = viewModel.messages.takeLast(15)
             messagesList.addAll(recentMessages.map { message ->
                 Message(
@@ -803,15 +1561,12 @@ class ChatWithGigaFragment : Fragment() {
                     content = message.text
                 )
             })
-
             val request = GigaChatRequest(
                 model = "GigaChat",
                 messages = messagesList,
                 max_tokens = 2000
             )
-
             val call = RetrofitInstance.api.sendMessage("Bearer $token", request)
-
             call.enqueue(object : Callback<com.example.chatapp.api.GigaChatResponse> {
                 override fun onResponse(
                     call: Call<com.example.chatapp.api.GigaChatResponse>,
@@ -822,98 +1577,81 @@ class ChatWithGigaFragment : Fragment() {
                             if (response.isSuccessful) {
                                 val botMessage = response.body()?.choices?.firstOrNull()?.message?.content
                                     ?: "Ошибка: пустой ответ"
+
                                 viewModel.addMessage(botMessage, false)
                                 messageAdapter.addMessage(GigaMessage(botMessage, false))
+                                scrollToLastMessage()
 
-                                recyclerView.post {
-                                    try {
-                                        recyclerView.smoothScrollToPosition(viewModel.messages.size - 1)
-                                    } catch (e: Exception) {
-                                        Log.e(TAG, "Error scrolling after bot message", e)
-                                    }
-                                }
+                                // ОЗВУЧКА ответа бота
+                                speakText(botMessage, TTSManager.TYPE_CHAT_BOT)
+
                             } else {
                                 val errorMessage = "Ошибка API: ${response.code()}"
                                 viewModel.addMessage(errorMessage, false)
                                 messageAdapter.addMessage(GigaMessage(errorMessage, false))
+                                scrollToLastMessage()
 
-                                recyclerView.post {
-                                    try {
-                                        recyclerView.smoothScrollToPosition(viewModel.messages.size - 1)
-                                    } catch (e: Exception) {
-                                        Log.e(TAG, "Error scrolling after error", e)
-                                    }
-                                }
+                                // ОЗВУЧКА ошибки
+                                speakText("Произошла ошибка при получении ответа", TTSManager.TYPE_ERROR)
+
                                 Log.e("API_ERROR", "Ошибка ответа: ${response.errorBody()?.string()}")
                             }
                         } catch (e: Exception) {
                             Log.e(TAG, "Error processing API response", e)
                         } finally {
                             isGeneratingResponse = false
-                            updateSendButtonStateAsync()
+                            updateSendButtonState()
                         }
                     }
                 }
-
                 override fun onFailure(call: Call<com.example.chatapp.api.GigaChatResponse>, t: Throwable) {
                     uiScope.launch {
                         try {
                             val errorMessage = "Ошибка подключения: ${t.message}"
                             viewModel.addMessage(errorMessage, false)
                             messageAdapter.addMessage(GigaMessage(errorMessage, false))
+                            scrollToLastMessage()
 
-                            recyclerView.post {
-                                try {
-                                    recyclerView.smoothScrollToPosition(viewModel.messages.size - 1)
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "Error scrolling after network error", e)
-                                }
-                            }
+                            // ОЗВУЧКА ошибки сети
+                            speakText("Ошибка подключения к серверу", TTSManager.TYPE_ERROR)
+
                             Log.e("API_ERROR", "Ошибка сети", t)
                         } catch (e: Exception) {
                             Log.e(TAG, "Error processing network failure", e)
                         } finally {
                             isGeneratingResponse = false
-                            updateSendButtonStateAsync()
+                            updateSendButtonState()
                         }
                     }
                 }
             })
-
         } catch (e: Exception) {
             Log.e(TAG, "Error in sendMessageWithToken", e)
             uiScope.launch {
                 isGeneratingResponse = false
-                updateSendButtonStateAsync()
-                showErrorAsync("Ошибка отправки сообщения")
+                updateSendButtonState()
+                showError("Ошибка отправки сообщения")
             }
         }
     }
 
-    /**
-     * Создание персонализированного системного сообщения
-     */
-    private suspend fun buildPersonalizedSystemMessageAsync(): String = withContext(Dispatchers.Default) {
+    private suspend fun buildPersonalizedSystemMessage(): String = withContext(Dispatchers.Default) {
         try {
             val userName = getCurrentUserName()
             val analyzer = contextAnalyzer
             val deepContext = analyzer?.analyzeDeepContext() ?: DeepConversationContext()
             val profile = userProfile
-
             val prompt = StringBuilder()
             prompt.append("Ты - персональный ассистент, который знает пользователя ОЧЕНЬ хорошо. ")
-            prompt.append("Используй ВСЮ информацию ниже для максимально персонализированного общения.\n\n")
-
+            prompt.append("Используй ВСЮ информацию ниже для максимально персонализированного общения.\n")
             prompt.append("КОМАНДА ДЛЯ АССИСТЕНТА:\n")
             prompt.append("1. Учитывай ВСЮ информацию о пользователе в КАЖДОМ ответе\n")
             prompt.append("2. Будь естественным, дружелюбным и поддерживающим\n")
             prompt.append("3. Проявляй искренний интерес к его жизни\n")
             prompt.append("4. Задавай уместные вопросы на основе его интересов\n")
             prompt.append("5. Поддерживай естественную беседу как близкий друг\n")
-            prompt.append("6. Используй конкретные детали из его профиля\n\n")
-
-            prompt.append("ПОЛНАЯ ИНФОРМАЦИЯ О ПОЛЬЗОВАТЕЛЕ:\n\n")
-
+            prompt.append("6. Используй конкретные детали из его профиля\n")
+            prompt.append("ПОЛНАЯ ИНФОРМАЦИЯ О ПОЛЬЗОВАТЕЛЕ:\n")
             // Основная информация
             prompt.append("👤 ОСНОВНАЯ ИНФОРМАЦИЯ:\n")
             prompt.append("- Имя: $userName\n")
@@ -923,7 +1661,6 @@ class ChatWithGigaFragment : Fragment() {
                 if (p.relationshipStatus.isNotEmpty()) prompt.append("- Семейное положение: ${p.relationshipStatus}\n")
                 if (p.city.isNotEmpty()) prompt.append("- Город: ${p.city}\n")
             }
-
             // Профессия и работа
             prompt.append("\n💼 ПРОФЕССИЯ И РАБОТА:\n")
             profile?.let { p ->
@@ -934,7 +1671,6 @@ class ChatWithGigaFragment : Fragment() {
                 if (p.workEndTime.isNotEmpty()) prompt.append("- Окончание работы: ${p.workEndTime}\n")
                 if (p.dailyCommuteTime > 0) prompt.append("- Время на дорогу: ${p.dailyCommuteTime} мин\n")
             }
-
             // Семья и домашние условия
             prompt.append("\n🏠 СЕМЬЯ И ДОМ:\n")
             profile?.let { p ->
@@ -949,7 +1685,6 @@ class ChatWithGigaFragment : Fragment() {
                     if (p.petTypes.isNotEmpty()) prompt.append("- Вид питомцев: ${p.petTypes}\n")
                 }
             }
-
             // ХОББИ И ИНТЕРЕСЫ
             prompt.append("\n🎯 ХОББИ И ИНТЕРЕСЫ:\n")
             profile?.let { p ->
@@ -960,7 +1695,6 @@ class ChatWithGigaFragment : Fragment() {
                 if (p.fitnessLevel.isNotEmpty()) prompt.append("- Уровень физической подготовки: ${p.fitnessLevel}\n")
                 if (p.workoutFrequency.isNotEmpty()) prompt.append("- Частота тренировок: ${p.workoutFrequency}\n")
             }
-
             // ПРЕДПОЧТЕНИЯ
             prompt.append("\n🎵 ПРЕДПОЧТЕНИЯ:\n")
             profile?.let { p ->
@@ -971,7 +1705,6 @@ class ChatWithGigaFragment : Fragment() {
                 if (p.favoriteSeasons.isNotEmpty()) prompt.append("- Любимые времена года: ${p.favoriteSeasons}\n")
                 if (p.cookingHabit.isNotEmpty()) prompt.append("- Привычки в готовке: ${p.cookingHabit}\n")
             }
-
             // ОБРАЗ ЖИЗНИ И РАСПИСАНИЕ
             prompt.append("\n📅 ОБРАЗ ЖИЗНИ:\n")
             profile?.let { p ->
@@ -981,7 +1714,6 @@ class ChatWithGigaFragment : Fragment() {
                 if (p.travelFrequency.isNotEmpty()) prompt.append("- Частота путешествий: ${p.travelFrequency}\n")
                 if (p.weekendActivities.isNotEmpty()) prompt.append("- Активности на выходных: ${p.weekendActivities}\n")
             }
-
             // ЦЕЛИ И РАЗВИТИЕ
             prompt.append("\n🎯 ЦЕЛИ И РАЗВИТИЕ:\n")
             profile?.let { p ->
@@ -989,7 +1721,6 @@ class ChatWithGigaFragment : Fragment() {
                 if (p.learningInterests.isNotEmpty()) prompt.append("- Интересы в обучении: ${p.learningInterests}\n")
                 if (p.learningStyle.isNotEmpty()) prompt.append("- Стиль обучения: ${p.learningStyle}\n")
             }
-
             // ЛИЧНОСТНЫЕ ХАРАКТЕРИСТИКИ
             prompt.append("\n💫 ЛИЧНОСТНЫЕ ХАРАКТЕРИСТИКИ:\n")
             profile?.let { p ->
@@ -998,44 +1729,36 @@ class ChatWithGigaFragment : Fragment() {
                 if (p.stressManagement.isNotEmpty()) prompt.append("- Справление со стрессом: ${p.stressManagement}\n")
                 if (p.socialActivity.isNotEmpty()) prompt.append("- Социальная активность: ${p.socialActivity}\n")
             }
-
             // ТЕКУЩИЙ КОНТЕКСТ
             prompt.append("\n🕒 ТЕКУЩИЙ КОНТЕКСТ:\n")
             prompt.append("- Время суток: ${deepContext.timeContext.timeOfDay}\n")
             prompt.append("- Настроение: ${deepContext.emotionalState.mood}\n")
             prompt.append("- Уровень энергии: ${deepContext.emotionalState.energyLevel}\n")
-
             // Активные темы из истории
             if (deepContext.activeTopics.isNotEmpty()) {
                 prompt.append("- Недавние темы обсуждения: ")
                 prompt.append(deepContext.activeTopics.take(3).joinToString { it.name })
                 prompt.append("\n")
             }
-
             prompt.append("\n🎯 КОНКРЕТНЫЕ РЕКОМЕНДАЦИИ ДЛЯ ОБЩЕНИЯ:\n")
-
             // Рекомендации на основе профессии
             profile?.occupation?.let { occupation ->
                 prompt.append("- Учитывай профессиональную сферу '$occupation' в советах\n")
             }
-
             // Рекомендации на основе хобби
             profile?.hobbies?.takeIf { it.isNotEmpty() }?.let { hobbies ->
                 prompt.append("- Проявляй интерес к хобби: $hobbies\n")
             }
-
             // Рекомендации для родителей
             if (profile?.hasChildren == true) {
                 prompt.append("- Интересуйся детьми и семейными делами\n")
                 prompt.append("- Учитывай родительские обязанности в советах по времени\n")
             }
-
             // Рекомендации для спортивных людей
             if (profile?.fitnessLevel?.isNotEmpty() == true && profile.fitnessLevel != "Не занимаюсь спортом") {
                 prompt.append("- Поддерживай спортивные темы и мотивируй к тренировкам\n")
                 prompt.append("- Учитывай график тренировок\n")
             }
-
             // Рекомендации на основе стиля общения
             profile?.communicationStyle?.let { style ->
                 when (style.lowercase()) {
@@ -1047,39 +1770,30 @@ class ChatWithGigaFragment : Fragment() {
                     else -> {}
                 }
             }
-
             prompt.append("\n📝 ПРИМЕРЫ ПЕРСОНАЛИЗИРОВАННЫХ ОТВЕТОВ:\n")
-
             // Примеры для работы
             profile?.occupation?.let { occupation ->
                 prompt.append("- Вместо 'Как работа?' спроси 'Как продвигаются проекты в $occupation?'\n")
             }
-
             // Примеры для хобби
             profile?.getHobbiesList()?.firstOrNull()?.let { hobby ->
                 prompt.append("- Спроси 'Удалось позаниматься $hobby на этой неделе?'\n")
             }
-
             // Примеры для семьи
             if (profile?.hasChildren == true) {
                 prompt.append("- Спроси 'Как дела у детей? Чем увлекаются?'\n")
             }
-
             // Примеры для спорта
             if (profile?.fitnessLevel?.isNotEmpty() == true) {
                 prompt.append("- Спроси 'Как тренировки? Удается придерживаться графика?'\n")
             }
-
             prompt.append("\n🚀 ФИНАЛЬНАЯ КОМАНДА: ")
             prompt.append("Используй ВСЮ эту информацию в КАЖДОМ ответе! ")
             prompt.append("Будь максимально персонализированным! ")
             prompt.append("Задавай вопросы на основе конкретных деталей из профиля! ")
             prompt.append("Проявляй искренний интерес к его жизни!")
-
             Log.d(TAG, "Personalized system prompt created with ${profile?.let { "full profile" } ?: "basic info"}")
-
             return@withContext prompt.toString()
-
         } catch (e: Exception) {
             Log.e(TAG, "Error building personalized system message", e)
             return@withContext "Ты - полезный ассистент. Будь дружелюбным и помогай пользователю."
@@ -1094,7 +1808,6 @@ class ChatWithGigaFragment : Fragment() {
             try {
                 val editText = EditText(requireContext())
                 editText.hint = "Введите название диалога"
-
                 android.app.AlertDialog.Builder(requireContext())
                     .setTitle("Сохранить диалог")
                     .setView(editText)
@@ -1103,10 +1816,14 @@ class ChatWithGigaFragment : Fragment() {
                         if (title.isNotEmpty()) {
                             saveDialogAsync(title)
                         } else {
-                            showErrorAsync("Введите название диалога")
+                            showError("Введите название диалога")
                         }
                     }
-                    .setNegativeButton("Отмена", null)
+                    .setNegativeButton("Отмена") { dialog, _ ->
+                        dialog.dismiss()
+                        openSidePanel()
+                        showMenuPanel()
+                    }
                     .show()
             } catch (e: Exception) {
                 Log.e(TAG, "Error showing save dialog prompt", e)
@@ -1115,7 +1832,7 @@ class ChatWithGigaFragment : Fragment() {
     }
 
     /**
-     * Сохранение диалога (IO операция)
+     * Сохранение диалога
      */
     private fun saveDialogAsync(title: String) {
         ioScope.launch {
@@ -1127,7 +1844,7 @@ class ChatWithGigaFragment : Fragment() {
             } catch (e: Exception) {
                 Log.e(TAG, "Error saving dialog", e)
                 uiScope.launch {
-                    showErrorAsync("Ошибка сохранения")
+                    showError("Ошибка сохранения")
                 }
             }
         }
@@ -1139,42 +1856,26 @@ class ChatWithGigaFragment : Fragment() {
     private fun loadSavedDialogAsync(savedDialog: SavedDialog) {
         uiScope.launch {
             try {
-                // Закрываем панель
-                drawerLayout.closeDrawer(GravityCompat.END)
+                closeSidePanel()
 
                 ioScope.launch {
                     try {
-                        // Очищаем текущий диалог
                         viewModel.clearAllMessages()
-
-                        // Загружаем сохраненный диалог
                         val loadedMessages = dialogsViewModel.loadDialog(savedDialog)
-
                         uiScope.launch {
                             messageAdapter.updateMessages(emptyList())
                             loadedMessages.forEach { message ->
                                 viewModel.addMessage(message.text, message.isUser)
                                 messageAdapter.addMessage(message)
                             }
-
-                            recyclerView.post {
-                                try {
-                                    recyclerView.scrollToPosition(viewModel.messages.size - 1)
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "Error scrolling after loading dialog", e)
-                                }
-                            }
-
+                            scrollToLastMessage()
                             Toast.makeText(requireContext(), "Диалог загружен", Toast.LENGTH_SHORT).show()
-
-                            // Сбрасываем флаг первого запуска
                             isFirstLaunch = false
                         }
-
                     } catch (e: Exception) {
                         Log.e(TAG, "Error loading saved dialog", e)
                         uiScope.launch {
-                            showErrorAsync("Ошибка загрузки диалога")
+                            showError("Ошибка загрузки диалога")
                         }
                     }
                 }
@@ -1207,10 +1908,12 @@ class ChatWithGigaFragment : Fragment() {
                     .setTitle("Очистить диалог")
                     .setMessage("Вы уверены, что хотите очистить весь диалог?")
                     .setPositiveButton("Да") { _, _ ->
-                        clearCurrentDialogAsync()
+                        clearCurrentDialog()
                     }
                     .setNegativeButton("Нет") { dialog, _ ->
                         dialog.dismiss()
+                        openSidePanel()
+                        showMenuPanel()
                     }
                     .create()
                     .show()
@@ -1221,28 +1924,21 @@ class ChatWithGigaFragment : Fragment() {
     }
 
     /**
-     * Асинхронная очистка текущего диалога
+     * Очистка текущего диалога
      */
-    private fun clearCurrentDialogAsync() {
+    private fun clearCurrentDialog() {
         uiScope.launch {
             try {
                 viewModel.clearAllMessages()
                 messageAdapter.updateMessages(emptyList())
-
-                recyclerView.post {
-                    try {
-                        recyclerView.scrollToPosition(0)
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error scrolling after clear", e)
-                    }
-                }
-
-                // Сбрасываем флаг первого запуска
                 isFirstLaunch = true
 
-                // Показываем новое приветствие после очистки с задержкой
+                // Останавливаем TTS при очистке
+                ttsManager.stop()
+                pendingTTSQueue.clear()
+
                 handler.postDelayed({
-                    showSmartChatGreetingAsync()
+                    showSmartChatGreeting()
                 }, 1000)
             } catch (e: Exception) {
                 Log.e(TAG, "Error clearing current dialog", e)
@@ -1250,10 +1946,41 @@ class ChatWithGigaFragment : Fragment() {
         }
     }
 
-    // Вспомогательные методы
+    /**
+     * Скрытие клавиатуры
+     */
+    private fun hideKeyboard() {
+        try {
+            editTextMessage.clearFocus()
+            val inputMethodManager = requireContext().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
+            val windowToken = editTextMessage.windowToken
+            if (windowToken != null) {
+                inputMethodManager.hideSoftInputFromWindow(windowToken, 0)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error hiding keyboard", e)
+        }
+    }
 
+    /**
+     * Открытие настройки
+     */
+    private fun openSettings() {
+        uiScope.launch {
+            try {
+                // Здесь можно добавить переход в настройки
+                Toast.makeText(requireContext(), "Настройки будут доступны в следующем обновлении", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Log.e(TAG, "Error opening settings", e)
+            }
+        }
+    }
+
+    // Вспомогательные методы
     private fun getCurrentUserName(): String {
         return try {
+            if (!isAdded || activity == null) return "Пользователь"
+
             val sharedPref = requireContext().getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
             sharedPref.getString("first_name", "Пользователь") ?: "Пользователь"
         } catch (e: Exception) {
@@ -1261,19 +1988,7 @@ class ChatWithGigaFragment : Fragment() {
         }
     }
 
-    private fun getTimeBasedGreeting(): String {
-        val calendar = Calendar.getInstance()
-        val hour = calendar.get(Calendar.HOUR_OF_DAY)
-
-        return when (hour) {
-            in 5..11 -> "Доброе утро"
-            in 12..17 -> "Добрый день"
-            in 18..23 -> "Добрый вечер"
-            else -> "Доброй ночи"
-        }
-    }
-
-    private fun showErrorAsync(message: String) {
+    private fun showError(message: String) {
         uiScope.launch {
             try {
                 Toast.makeText(requireContext(), message, Toast.LENGTH_LONG).show()
@@ -1283,76 +1998,79 @@ class ChatWithGigaFragment : Fragment() {
         }
     }
 
-    private fun showKeyboardAsync() {
+    /**
+     * Показ запасного приветствия
+     */
+    private fun showFallbackGreeting() {
         uiScope.launch {
             try {
-                val inputMethodManager = requireContext().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-                editTextMessage.postDelayed({
-                    editTextMessage.requestFocus()
-                    inputMethodManager.showSoftInput(editTextMessage, InputMethodManager.SHOW_IMPLICIT)
-                }, KEYBOARD_DELAY)
+                val userName = getCurrentUserName()
+                val calendar = Calendar.getInstance()
+                val hour = calendar.get(Calendar.HOUR_OF_DAY)
+                val greeting = when (hour) {
+                    in 5..11 -> "Доброе утро"
+                    in 12..17 -> "Добрый день"
+                    in 18..23 -> "Добрый вечер"
+                    else -> "Доброй ночи"
+                }
+                val fallbackMessage = "$greeting, $userName! Рад вас видеть! Чем могу помочь?"
+                addWelcomeMessage(fallbackMessage)
             } catch (e: Exception) {
-                Log.e(TAG, "Error showing keyboard", e)
+                Log.e(TAG, "Error showing fallback greeting", e)
+                addWelcomeMessage("Привет! Рад вас видеть! Чем могу помочь?")
             }
         }
     }
 
-    private fun hideKeyboardAsync() {
-        uiScope.launch {
-            try {
-                val inputMethodManager = requireContext().getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager
-                inputMethodManager.hideSoftInputFromWindow(editTextMessage.windowToken, 0)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error hiding keyboard", e)
-            }
+    /**
+     * Показать Toast сообщение
+     */
+    private fun showToast(message: String) {
+        if (!isAdded || activity == null) return
+
+        requireActivity().runOnUiThread {
+            Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun saveWelcomePhraseForChatAsync(phrase: String) {
-        uiScope.launch {
-            try {
-                (activity as? com.example.chatapp.activities.MainActivity)?.saveWelcomePhraseForChat(phrase)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error saving welcome phrase", e)
+    /**
+     * Настройка слушателя для свайпов
+     */
+    private fun setupSystemUISwipeListener() {
+        try {
+            val rootView = requireView()
+            rootView.setOnSystemUiVisibilityChangeListener { visibility ->
+                if (visibility and View.SYSTEM_UI_FLAG_FULLSCREEN == 0) {
+                    handler.postDelayed({
+                        hideSystemUI()
+                    }, 2000)
+                }
             }
+            recyclerView.setOnTouchListener { _, event ->
+                handler.postDelayed({
+                    hideSystemUI()
+                }, 100)
+                false
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting up system UI swipe listener", e)
         }
     }
 
     // Жизненный цикл
-
-    override fun onResume() {
-        super.onResume()
-
-        // При возвращении в чат обновляем контекст асинхронно
-        computationScope.launch {
-            try {
-                if (!isInitialized) {
-                    greetingGenerator = SmartQuestionGenerator(requireContext().applicationContext, userProfile)
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error updating greeting generator on resume", e)
-            }
-        }
-
-        // Сохраняем время входа в чат для контекста
-        uiScope.launch {
-            try {
-                (activity as? com.example.chatapp.activities.MainActivity)?.saveLastChatTime()
-            } catch (e: Exception) {
-                Log.e(TAG, "Error saving last chat time", e)
-            }
-        }
-    }
-
     override fun onPause() {
         super.onPause()
-        saveChatSessionDurationAsync()
+        showSystemUI()
+        saveChatSessionDuration()
+
+        // Останавливаем TTS при уходе с экрана
+        ttsManager.stop()
     }
 
     /**
-     * Асинхронное сохранение продолжительности сессии чата
+     * Сохранение продолжительности сессии чата
      */
-    private fun saveChatSessionDurationAsync() {
+    private fun saveChatSessionDuration() {
         if (chatStartTime > 0) {
             val duration = System.currentTimeMillis() - chatStartTime
             uiScope.launch {
@@ -1361,28 +2079,29 @@ class ChatWithGigaFragment : Fragment() {
                 } catch (e: Exception) {
                     Log.e(TAG, "Error saving chat duration", e)
                 }
-                chatStartTime = 0 // Сбрасываем время начала
+                chatStartTime = 0
             }
         }
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
-        // Отменяем все отложенные задания
+        showSystemUI()
         greetingJob?.cancel()
         handler.removeCallbacksAndMessages(null)
-
-        // Очищаем все корутины при уничтожении фрагмента
         uiScope.coroutineContext.cancelChildren()
         ioScope.coroutineContext.cancelChildren()
         computationScope.coroutineContext.cancelChildren()
 
+        // Освобождаем ресурсы TTS
+        ttsManager.release()
+
         isInitialized = false
+        isTTSInitializationStarted = false
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        // Полная очистка всех scope
         uiScope.cancel()
         ioScope.cancel()
         computationScope.cancel()
@@ -1393,7 +2112,6 @@ class ChatWithGigaFragment : Fragment() {
      */
     fun updateUserProfile(newProfile: UserProfile) {
         userProfile = newProfile
-
         computationScope.launch {
             try {
                 greetingGenerator = SmartQuestionGenerator(requireContext().applicationContext, userProfile)
@@ -1401,27 +2119,71 @@ class ChatWithGigaFragment : Fragment() {
                 Log.e(TAG, "Error updating greeting generator", e)
             }
         }
-
-        // Перезагружаем приветствие если чат пустой
         if (viewModel.messages.isEmpty()) {
             scheduleDelayedGreeting()
         }
     }
 
     /**
-     * Показ запасного приветствия
+     * Полное скрытие системных панелей
      */
-    private fun showFallbackGreetingAsync() {
-        uiScope.launch {
-            try {
-                val userName = getCurrentUserName()
-                val greeting = getTimeBasedGreeting()
-                val fallbackMessage = "$greeting, $userName! Рад вас видеть! Чем могу помочь?"
-                addWelcomeMessageAsync(fallbackMessage)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error showing fallback greeting", e)
-                addWelcomeMessageAsync("Привет! Рад вас видеть! Чем могу помочь?")
+    private fun hideSystemUI() {
+        activity?.window?.decorView?.systemUiVisibility = (
+                View.SYSTEM_UI_FLAG_FULLSCREEN or
+                        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                        View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                        View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                        View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                )
+        activity?.window?.navigationBarColor = Color.TRANSPARENT
+        activity?.window?.statusBarColor = Color.TRANSPARENT
+        activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN)
+        activity?.window?.addFlags(
+            WindowManager.LayoutParams.FLAG_FULLSCREEN or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+        )
+    }
+
+    /**
+     * Восстановление системных панелей
+     */
+    private fun showSystemUI() {
+        try {
+            activity?.window?.let { window ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    window.setDecorFitsSystemWindows(true)
+                    val controller = window.insetsController
+                    controller?.let {
+                        it.show(android.view.WindowInsets.Type.statusBars())
+                        it.show(android.view.WindowInsets.Type.navigationBars())
+                    }
+                } else {
+                    @Suppress("DEPRECATION")
+                    window.decorView.systemUiVisibility = (
+                            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                                    or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                                    or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                            )
+                    window.navigationBarColor = Color.BLACK
+                    window.statusBarColor = Color.BLACK
+                }
+                window.clearFlags(
+                    WindowManager.LayoutParams.FLAG_FULLSCREEN
+                            or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+                )
             }
+            Log.d(TAG, "System UI shown successfully")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing system UI", e)
         }
     }
+}
+
+/**
+ * Интерфейс для взаимодействия с MainActivity
+ */
+interface MainActivityInterface {
+    fun showMainScreen()
+    fun showSettingsFragment()
 }

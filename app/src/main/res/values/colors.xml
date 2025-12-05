@@ -22,6 +22,17 @@
     <color name="text_secondary2">#757575</color>
     <color name="divider">#E0E0E0</color>
 
+
+    <color name="surface">#FFFFFF</color>
+    <color name="on_surface">#1C1B1F</color>
+    <color name="surface_variant">#E7E0EC</color>
+    <color name="on_surface_variant">#49454F</color>
+    <color name="on_primary">#FFFFFF</color>
+    <color name="error">#BA1A1A</color>
+    <color name="outline">#79747E</color>
+
+
+
     <color name="external_news_bg">#4CAF50</color>
     <color name="hint_text">#9E9E9E</color>
     <color name="grey">#FF9E9E9E</color>
