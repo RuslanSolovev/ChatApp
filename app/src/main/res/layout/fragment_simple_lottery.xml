@@ -307,7 +307,7 @@
                     android:id="@+id/tvBankDetails"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="💳 Карта: 5536 9140 1234 5678\n👤 Получатель: Руслан Соловьев\n💰 1 билет = 100 рублей"
+                    android:text="💳 номер тлефона: 5536 9140 1234 5678\n👤 Получатель: Руслан Соловьев\n💰 1 билет = 100 рублей"
                     android:textSize="14sp"
                     android:lineSpacingExtra="6dp"
                     android:textColor="#5d6d7e" />

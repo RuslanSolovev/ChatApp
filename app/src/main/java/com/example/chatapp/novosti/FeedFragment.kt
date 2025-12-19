@@ -3,10 +3,14 @@ package com.example.chatapp.novosti
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AccelerateInterpolator
+import android.view.animation.DecelerateInterpolator
 import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
@@ -16,6 +20,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.chatapp.R
 import com.example.chatapp.activities.MainActivity
 import com.example.chatapp.databinding.FragmentFeedBinding
+import com.example.chatapp.fragments.HomeFragment
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -36,13 +41,37 @@ class FeedFragment : Fragment() {
     private var isFirstLoad = true
     private var isLoading = false
 
-    // НОВЫЕ ПЕРЕМЕННЫЕ ДЛЯ КЭШИРОВАНИЯ
+    // КЭШИРОВАНИЕ
     private var lastLoadTime: Long = 0
     private var isFragmentVisible = false
     private var shouldReloadOnResume = false
-    private val CACHE_DURATION = 5 * 60 * 1000L // 5 минут кэширования
-    private val FORCE_RELOAD_DURATION = 10 * 60 * 1000L // 10 минут для принудительной перезагрузки
+    private val CACHE_DURATION = 5 * 60 * 1000L
+    private val FORCE_RELOAD_DURATION = 10 * 60 * 1000L
     private var currentNewsCount = 0
+
+    // Обновленный интерфейс для управления навигацией
+    interface OnNavigationVisibilityChangeListener {
+        // Основные методы
+        fun onHideFullNavigation()
+        fun onShowFullNavigation()
+
+        // Методы для обратной совместимости с дефолтными реализациями
+        fun onHideNavigation() = onHideFullNavigation()
+        fun onShowNavigation() = onShowFullNavigation()
+        fun onHideTopNavigation() = onHideFullNavigation()
+        fun onShowTopNavigation() = onShowFullNavigation()
+    }
+
+
+
+    private var isProcessingNavigation = false
+    private var isNavigationHidden = false
+    private var lastScrollY = 0
+    private var totalScrolled = 0
+    private var navigationListener: OnNavigationVisibilityChangeListener? = null
+    private var isScrollingUp = false
+    private var isScrollingDown = false
+    private var lastScrollDirection = 0
 
     companion object {
         private const val TAG = "FeedFragment"
@@ -61,7 +90,6 @@ class FeedFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        // Дополнительная проверка безопасности
         if (_binding == null) {
             Log.e(TAG, "onViewCreated: Binding is null, cannot setup UI")
             return
@@ -72,6 +100,9 @@ class FeedFragment : Fragment() {
         setupRecyclerView()
         setupSwipeRefresh()
         setupFab()
+
+        // Настраиваем слушатель скролла ДО загрузки данных
+        setupScrollListener()
 
         // Проверяем, нужно ли загружать заново или использовать кэш
         if (shouldReloadFromScratch()) {
@@ -91,6 +122,9 @@ class FeedFragment : Fragment() {
         Log.d(TAG, "onResume: called, isFragmentVisible: $isFragmentVisible, lastLoad: ${if (lastLoadTime == 0L) "never" else "${(System.currentTimeMillis() - lastLoadTime) / 1000} sec ago"}")
 
         isFragmentVisible = true
+
+        // При возвращении на фрагмент всегда показываем ВСЮ навигацию
+        showNavigationWithDelay()
 
         if (!hasFetchedExternalNewsOnThisResume && !isFirstLoad) {
             Log.d(TAG, "onResume: Background refresh only")
@@ -122,6 +156,9 @@ class FeedFragment : Fragment() {
         isFragmentVisible = false
         fetchJob?.cancel()
         isLoading = false
+
+        // При уходе с фрагмента сбрасываем состояние скролла
+        resetScrollState()
     }
 
     override fun onDestroyView() {
@@ -129,8 +166,190 @@ class FeedFragment : Fragment() {
         Log.d(TAG, "onDestroyView: Cleaning up resources")
         fetchJob?.cancel()
         isLoading = false
-        // ОЧЕНЬ ВАЖНО: очищаем binding при уничтожении view
+
+        // При уничтожении View обязательно показываем всю навигацию
+        if (isNavigationHidden) {
+            showNavigationSmoothly()
+        }
+
         _binding = null
+    }
+
+    /**
+     * Улучшенная обработка скролла с защитой от множественных вызовов
+     */
+    private fun setupScrollListener() {
+        safeUpdateUI { binding ->
+            binding.rvNews.addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                private var lastScrollY = 0
+                private var accumulatedDy = 0
+                private val SCROLL_THRESHOLD = 150 // Увеличенный порог
+                private var isProcessingNavigation = false
+                private var lastNavigationTime = 0L
+                private val NAVIGATION_COOLDOWN = 300L // Задержка между вызовами
+
+                override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                    super.onScrolled(recyclerView, dx, dy)
+
+                    // Защита от слишком частых вызовов
+                    val now = System.currentTimeMillis()
+                    if (now - lastNavigationTime < NAVIGATION_COOLDOWN) {
+                        return
+                    }
+
+                    accumulatedDy += dy
+                    lastScrollY += dy
+
+                    // Определяем направление скролла с гистерезисом
+                    if (Math.abs(accumulatedDy) >= SCROLL_THRESHOLD && !isProcessingNavigation) {
+                        if (accumulatedDy > 0 && !isNavigationHidden) {
+                            // Скролл вниз - плавно скрываем навигацию
+                            hideNavigationSmoothly()
+                            accumulatedDy = 0
+                            lastNavigationTime = now
+                        } else if (accumulatedDy < 0 && isNavigationHidden) {
+                            // Скролл вверх - плавно показываем навигацию
+                            showNavigationSmoothly()
+                            accumulatedDy = 0
+                            lastNavigationTime = now
+                        }
+                    }
+
+                    // Скрытие FAB при скролле вниз
+                    if (dy > 10) {
+                        binding.fabAddNews.hide()
+                    } else if (dy < -10) {
+                        binding.fabAddNews.show()
+                    }
+                }
+
+                override fun onScrollStateChanged(recyclerView: RecyclerView, newState: Int) {
+                    super.onScrollStateChanged(recyclerView, newState)
+
+                    when (newState) {
+                        RecyclerView.SCROLL_STATE_IDLE -> {
+                            // При остановке скролла проверяем позицию
+                            val layoutManager = recyclerView.layoutManager as? LinearLayoutManager
+                            val firstVisiblePosition = layoutManager?.findFirstVisibleItemPosition() ?: 0
+
+                            // Если мы в самом верху списка, показываем навигацию
+                            if (firstVisiblePosition == 0 && isNavigationHidden) {
+                                val now = System.currentTimeMillis()
+                                if (now - lastNavigationTime >= NAVIGATION_COOLDOWN) {
+                                    showNavigationSmoothly()
+                                    lastNavigationTime = now
+                                }
+                            }
+
+                            accumulatedDy = 0
+                        }
+                    }
+                }
+            })
+        }
+    }
+
+    /**
+     * Плавное скрытие навигации с защитой от повторных вызовов
+     */
+    private fun hideNavigationSmoothly() {
+        if (isNavigationHidden || isProcessingNavigation) return
+
+        isProcessingNavigation = true
+        Log.d(TAG, "hideNavigationSmoothly: Плавное скрытие навигации")
+        isNavigationHidden = true
+
+        // 1. Сначала анимируем FAB
+        safeUpdateUI { binding ->
+            binding.fabAddNews.animate()
+                .translationY(binding.fabAddNews.height.toFloat() + 100f)
+                .setDuration(300)
+                .setInterpolator(AccelerateInterpolator())
+                .withLayer()
+                .withEndAction {
+                    isProcessingNavigation = false
+                }
+                .start()
+        }
+
+        // 2. С небольшой задержкой скрываем основную навигацию
+        Handler(Looper.getMainLooper()).postDelayed({
+            // Уведомляем слушателей о скрытии всей навигации
+            navigationListener?.onHideFullNavigation()
+
+            // Также скрываем через родительский Fragment
+            (parentFragment as? HomeFragment)?.hideNavigationInParent()
+
+            Log.d(TAG, "hideNavigationSmoothly: Навигация скрыта")
+        }, 50)
+    }
+
+    /**
+     * Плавное отображение навигации с защитой от повторных вызовов
+     */
+    private fun showNavigationSmoothly() {
+        if (!isNavigationHidden || isProcessingNavigation) return
+
+        isProcessingNavigation = true
+        Log.d(TAG, "showNavigationSmoothly: Плавное отображение навигации")
+        isNavigationHidden = false
+
+        // 1. Уведомляем слушателей о показе всей навигации
+        navigationListener?.onShowFullNavigation()
+
+        // 2. Показываем через родительский Fragment
+        (parentFragment as? HomeFragment)?.showNavigationInParent()
+
+        // 3. Показываем FAB с небольшой задержкой
+        Handler(Looper.getMainLooper()).postDelayed({
+            safeUpdateUI { binding ->
+                binding.fabAddNews.animate()
+                    .translationY(0f)
+                    .setDuration(300)
+                    .setInterpolator(DecelerateInterpolator())
+                    .withLayer()
+                    .withEndAction {
+                        isProcessingNavigation = false
+                    }
+                    .start()
+            }
+
+            Log.d(TAG, "showNavigationSmoothly: Навигация показана")
+        }, 100)
+    }
+
+    /**
+     * Показ навигации с задержкой при возвращении на фрагмент
+     */
+    private fun showNavigationWithDelay() {
+        // Если навигация скрыта, показываем ее с задержкой при возвращении
+        if (isNavigationHidden) {
+            Handler(Looper.getMainLooper()).postDelayed({
+                showNavigationSmoothly()
+                isNavigationHidden = false
+                resetScrollState()
+            }, 300)
+        }
+    }
+
+    /**
+     * Сброс состояния скролла
+     */
+    private fun resetScrollState() {
+        lastScrollY = 0
+        totalScrolled = 0
+        isScrollingUp = false
+        isScrollingDown = false
+        lastScrollDirection = 0
+    }
+
+    /**
+     * Сброс состояния всей навигации
+     */
+    private fun resetNavigationState() {
+        isNavigationHidden = false
+        resetScrollState()
+        showNavigationSmoothly()
     }
 
     /**
@@ -152,7 +371,6 @@ class FeedFragment : Fragment() {
             binding.progressBar.visibility = View.GONE
         }
 
-        // Если в адаптере уже есть данные, просто запускаем фоновое обновление
         if (::newsAdapter.isInitialized && newsAdapter.itemCount > 0) {
             Log.d(TAG, "loadCachedNewsWithBackgroundRefresh: Using existing ${newsAdapter.itemCount} items")
             safeUpdateUI { binding ->
@@ -162,7 +380,6 @@ class FeedFragment : Fragment() {
                 refreshNewsQuietly()
             }
         } else {
-            // Если данных нет, загружаем как обычно
             safeUpdateUI { binding ->
                 binding.progressBar.visibility = View.VISIBLE
             }
@@ -180,7 +397,6 @@ class FeedFragment : Fragment() {
             refreshNewsWithProgress()
         } else {
             Log.d(TAG, "reloadIfNeeded: Cache still fresh (${timeSinceLastLoad/1000} sec old)")
-            // Показываем сообщение, что данные актуальны
             withContext(Dispatchers.Main) {
                 showMessage("Новости актуальны")
             }
@@ -202,18 +418,6 @@ class FeedFragment : Fragment() {
                 layoutManager = LinearLayoutManager(requireContext())
                 adapter = newsAdapter
                 setHasFixedSize(true)
-
-                addOnScrollListener(object : RecyclerView.OnScrollListener() {
-                    override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
-                        super.onScrolled(recyclerView, dx, dy)
-
-                        if (dy > 10) {
-                            binding.fabAddNews.hide()
-                        } else if (dy < -10) {
-                            binding.fabAddNews.show()
-                        }
-                    }
-                })
             }
         }
     }
@@ -249,9 +453,7 @@ class FeedFragment : Fragment() {
     private suspend fun loadLocalNewsFast() {
         try {
             newsRepository.getNewsFlow().collectLatest { news ->
-                // Используем безопасный подход для обновления UI
                 safeUpdateUI { binding ->
-                    // Обновляем адаптер только если данных нет или они устарели
                     if (newsAdapter.itemCount == 0 || shouldUpdateAdapter(news)) {
                         newsAdapter.submitList(news.toMutableList()) {
                             updateUIState(news.isEmpty())
@@ -280,7 +482,6 @@ class FeedFragment : Fragment() {
     private fun shouldUpdateAdapter(newNews: List<NewsItem>): Boolean {
         if (newsAdapter.itemCount != newNews.size) return true
 
-        // Если количество совпадает, проверяем есть ли реально новые новости
         val currentIds = newsAdapter.currentList.map { it.id }.toSet()
         val newIds = newNews.map { it.id }.toSet()
 
@@ -372,6 +573,13 @@ class FeedFragment : Fragment() {
                     } else {
                         Log.d(TAG, "scrollToTopIfNeeded: Уже в начале списка")
                     }
+
+                    // При скролле к началу показываем ВСЮ навигацию
+                    showNavigationSmoothly()
+                    isNavigationHidden = false
+
+                    // Также показываем навигацию в MainActivity
+                    (activity as? MainActivity)?.showTopNavigation()
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Error in scrollToTopIfNeeded", e)
@@ -383,7 +591,6 @@ class FeedFragment : Fragment() {
      * БЕЗОПАСНЫЙ МЕТОД ОБНОВЛЕНИЯ UI
      */
     private fun updateUIState(isEmpty: Boolean) {
-        // Безопасная проверка binding и жизненного цикла
         if (_binding == null || !isAdded || isDetached || activity == null || view == null) {
             Log.w(TAG, "updateUIState: Fragment not ready, skipping UI update")
             return
@@ -506,7 +713,6 @@ class FeedFragment : Fragment() {
             }
             withContext(Dispatchers.Main) {
                 showMessage("Новость удалена")
-                // Обновляем счетчик
                 currentNewsCount = newsAdapter.itemCount
             }
         } catch (e: Exception) {
@@ -604,6 +810,8 @@ class FeedFragment : Fragment() {
 
     fun refreshNews() {
         hasFetchedExternalNewsOnThisResume = false
+        resetNavigationState() // <-- Сбрасываем состояние навигации при обновлении
+
         lifecycleScope.launch {
             refreshNewsWithProgress()
         }
@@ -670,6 +878,8 @@ class FeedFragment : Fragment() {
             Fragment visible: $isFragmentVisible
             Is first load: $isFirstLoad
             Has fetched this session: $hasFetchedExternalNewsOnThisResume
+            Navigation hidden: $isNavigationHidden
+            Last scroll position: $lastScrollY
         """.trimIndent()
     }
 
@@ -711,6 +921,8 @@ class FeedFragment : Fragment() {
             Is first load: $isFirstLoad
             Is loading: $isLoading
             Last load time: ${if (lastLoadTime == 0L) "Never" else "${(System.currentTimeMillis() - lastLoadTime) / 1000}s ago"}
+            Navigation hidden: $isNavigationHidden
+            Scroll position: $lastScrollY
         """.trimIndent()
     }
 
@@ -749,5 +961,12 @@ class FeedFragment : Fragment() {
      */
     fun scrollNewsToTop() {
         scrollToTopIfNeeded()
+    }
+
+    /**
+     * Установка слушателя для управления навигацией
+     */
+    fun setNavigationVisibilityListener(listener: OnNavigationVisibilityChangeListener) {
+        this.navigationListener = listener
     }
 }

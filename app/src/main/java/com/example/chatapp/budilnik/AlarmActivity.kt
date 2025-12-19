@@ -1,6 +1,7 @@
 package com.example.chatapp.budilnik
 
 import android.app.AlarmManager
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -9,6 +10,8 @@ import android.media.RingtoneManager
 import android.os.Build
 import android.os.Bundle
 import android.os.SystemClock
+import android.util.Log
+import android.view.Window
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -21,7 +24,6 @@ import java.util.Calendar
 
 @Suppress("DEPRECATION")
 class AlarmActivity : AppCompatActivity() {
-
     private lateinit var binding: ActivityAlarmBinding
     private lateinit var alertBinding: ActivityAlarmAlertBinding
     private lateinit var alarmManager: AlarmManager
@@ -32,17 +34,22 @@ class AlarmActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Инициализация AlarmManager
         alarmManager = getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
-        // Настройка для работы на заблокированном экране
-        window.addFlags(
+        // Настройка окна для работы на заблокированном экране
+        window.setFlags(
             WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
                     WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
                     WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
-                    WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON
+                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+            WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
         )
+
+        // Сохранение флагов для работы с уведомлениями
+        window.addFlags(WindowManager.LayoutParams.FLAG_ALLOW_LOCK_WHILE_SCREEN_ON)
 
         if (intent?.action == "ALARM_ACTION") {
             showFullscreenAlarm()
@@ -65,7 +72,6 @@ class AlarmActivity : AppCompatActivity() {
 
         alertBinding.btnDismiss.setOnClickListener {
             stopAlarmSound()
-            // Полное завершение активности и сервиса
             stopService(Intent(this, AlarmService::class.java))
             finishAndRemoveTask()
         }
@@ -73,7 +79,6 @@ class AlarmActivity : AppCompatActivity() {
         alertBinding.btnSnooze.setOnClickListener {
             snoozeAlarm()
             stopAlarmSound()
-            // Завершаем текущий экран, но оставляем сервис
             finishAndRemoveTask()
         }
     }
@@ -88,7 +93,7 @@ class AlarmActivity : AppCompatActivity() {
                 play()
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            Log.e("AlarmActivity", "Ошибка воспроизведения звука", e)
             Toast.makeText(this, "Ошибка воспроизведения звука", Toast.LENGTH_SHORT).show()
         }
     }
@@ -100,7 +105,7 @@ class AlarmActivity : AppCompatActivity() {
     }
 
     private fun snoozeAlarm() {
-        val snoozeTime = SystemClock.elapsedRealtime() + 5 * 60 * 1000
+        val snoozeTime = SystemClock.elapsedRealtime() + 5 * 60 * 1000 // 5 минут
         val snoozeIntent = Intent(this, AlarmReceiver::class.java).apply {
             action = "ALARM_ACTION"
         }
@@ -204,7 +209,8 @@ class AlarmActivity : AppCompatActivity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             val intent = Intent(android.provider.Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM)
             startActivity(intent)
-            Toast.makeText(this, "Требуется разрешение для точного будильника", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Требуется разрешение для точного будильника", Toast.LENGTH_LONG)
+                .show()
         }
     }
 
@@ -216,5 +222,49 @@ class AlarmActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         stopAlarmSound()
+    }
+
+    override fun onBackPressed() {
+        // Предотвращаем закрытие активности при срабатывании будильника
+        if (alarmIsRinging) {
+            Toast.makeText(this, "Пожалуйста, используйте кнопки на экране", Toast.LENGTH_SHORT)
+                .show()
+        } else {
+            super.onBackPressed()
+        }
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            // Сохраняем флаги при изменении фокуса окна
+            window.setFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                        WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+                        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                        WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD or
+                        WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            )
+        }
+    }
+
+    companion object {
+        private const val REQUEST_CODE = 1001
+        private const val ALARM_ACTION = "ALARM_ACTION"
+
+        private const val STOP_ALARM_ACTION = "STOP_ALARM_ACTION"
+    }
+
+    // Дополнительные методы для отладки
+    private fun logAlarmState(message: String) {
+        Log.d("AlarmActivity", message)
+    }
+
+    private fun checkPermissions() {
+        // Здесь можно добавить проверку необходимых разрешений
+        // Например, для работы с будильником
     }
 }

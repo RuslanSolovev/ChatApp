@@ -31,7 +31,7 @@
                 android:layout_width="32dp"
                 android:layout_height="32dp"
                 android:contentDescription="Аватар пользователя"
-                android:src="@drawable/ic_default_profile"/>
+                android:src="@drawable/ic_default_profile" />
 
             <!-- Имя пользователя -->
             <TextView
@@ -80,8 +80,9 @@
                 android:layout_height="48dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:contentDescription="Меню"
-                android:src="@drawable/id_bok_menu"
-                app:tint="#000000" />
+                android:src="@drawable/ic_chess_board"
+                android:layout_marginEnd="8dp" />
+
         </LinearLayout>
 
     </androidx.appcompat.widget.Toolbar>
@@ -153,7 +154,6 @@
                         android:background="?attr/selectableItemBackgroundBorderless"
                         android:src="@drawable/ic_close"
                         android:contentDescription="Закрыть"
-                        app:tint="#666666"
                         android:layout_marginStart="8dp"/>
                 </LinearLayout>
 
@@ -251,18 +251,21 @@
         </androidx.cardview.widget.CardView>
     </FrameLayout>
 
-    <!-- Полупрозрачная навигация -->
+    <!-- Полупрозрачная навигация с оригинальными иконками -->
     <com.google.android.material.bottomnavigation.BottomNavigationView
         android:id="@+id/bottomNavigation"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@drawable/transparent_nav_background"
         android:elevation="8dp"
-        android:layout_marginEnd="50dp"
-        android:layout_marginStart="50dp"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginBottom="16dp"
         app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
         app:menu="@menu/bottom_nav_menu"
-        app:itemIconTint="@drawable/bottom_nav_colors"
-        app:itemTextColor="@drawable/bottom_nav_colors"/>
+        app:itemTextColor="@drawable/bottom_nav_colors"
+        app:labelVisibilityMode="unlabeled"
+        app:itemIconTint="@null" />
 
 </androidx.constraintlayout.widget.ConstraintLayout>

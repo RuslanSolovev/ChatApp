@@ -3,24 +3,24 @@
 
     <item
         android:id="@+id/nav_gigachat"
-        android:icon="@drawable/ic_chat"
-        android:title="Чат"/>
+        android:icon="@drawable/robot"
+        android:title=""/>
     <item
         android:id="@+id/nav_steps"
-        android:icon="@drawable/ic_steps"
-        android:title="Шаги"/>
+        android:icon="@drawable/hagi2"
+        android:title=""/>
 
     <item
         android:id="@+id/nav_home"
-        android:icon="@drawable/ic_home"
-        android:title="Главная"/>
+        android:icon="@drawable/glavnii"
+        android:title=""/>
 
     <item
         android:id="@+id/nav_maps"
-        android:icon="@drawable/ic_map"
-        android:title="Карты"/>
+        android:icon="@drawable/karta"
+        android:title=""/>
     <item
         android:id="@+id/nav_games"
-        android:icon="@drawable/ic_games"
-        android:title="Игры"/>
+        android:icon="@drawable/igrii"
+        android:title=""/>
 </menu>

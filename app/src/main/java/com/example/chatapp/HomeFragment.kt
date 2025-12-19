@@ -1,14 +1,24 @@
 package com.example.chatapp.fragments
 
+import android.animation.Animator
+import android.animation.AnimatorListenerAdapter
+import android.animation.ValueAnimator
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AccelerateInterpolator
+import android.view.animation.DecelerateInterpolator
+import android.view.animation.OvershootInterpolator
+import android.widget.LinearLayout
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.viewpager2.widget.ViewPager2
 import com.example.chatapp.R
+import com.example.chatapp.activities.MainActivity
 import com.example.chatapp.adapters.HomePagerAdapter
 import com.example.chatapp.novosti.FeedFragment
 
@@ -18,7 +28,13 @@ class HomeFragment : Fragment() {
     private lateinit var btnNews: androidx.appcompat.widget.AppCompatImageView
     private lateinit var btnChats: androidx.appcompat.widget.AppCompatImageView
     private lateinit var btnGroups: androidx.appcompat.widget.AppCompatImageView
+    private lateinit var navContainer: LinearLayout
     private var homePagerAdapter: HomePagerAdapter? = null
+
+    // Переменные для управления видимостью навигации
+    private var isNavHidden = false
+    private var isInitialized = false
+    private val handler = Handler(Looper.getMainLooper())
 
     companion object {
         private const val TAG = "HomeFragment"
@@ -51,11 +67,15 @@ class HomeFragment : Fragment() {
         try {
             setupViewPager(view)
             setupCompactNavigation()
+            isInitialized = true
 
             // Проверяем, нужно ли открыть вкладку новостей
             if (arguments?.getBoolean(ARG_OPEN_NEWS_TAB, false) == true) {
                 viewPager.currentItem = 0
             }
+
+            // Устанавливаем начальное состояние навигации (видима)
+            resetNavigationState()
 
         } catch (e: Exception) {
             Log.e(TAG, "Error in onViewCreated", e)
@@ -67,6 +87,7 @@ class HomeFragment : Fragment() {
         btnNews = view.findViewById(R.id.btnNews)
         btnChats = view.findViewById(R.id.btnChats)
         btnGroups = view.findViewById(R.id.btnGroups)
+        navContainer = view.findViewById(R.id.navContainer)
 
         // Используем childFragmentManager и viewLifecycleOwner.lifecycle
         homePagerAdapter = HomePagerAdapter(childFragmentManager, viewLifecycleOwner.lifecycle)
@@ -77,6 +98,21 @@ class HomeFragment : Fragment() {
         viewPager.setPageTransformer { page, position ->
             page.alpha = 1 - kotlin.math.abs(position) * 0.3f
         }
+
+        // Слушатель изменения страниц для обновления UI
+        viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
+            override fun onPageSelected(position: Int) {
+                updateNavigationUI(position)
+                handlePageChange(position)
+            }
+
+            override fun onPageScrollStateChanged(state: Int) {
+                // При остановке скролла между страницами гарантируем показ навигации
+                if (state == ViewPager2.SCROLL_STATE_IDLE && viewPager.currentItem == 0) {
+                    showNavigationInParent()
+                }
+            }
+        })
     }
 
     private fun setupCompactNavigation() {
@@ -90,13 +126,6 @@ class HomeFragment : Fragment() {
         btnGroups.setOnClickListener {
             switchToPage(2)
         }
-
-        // Слушатель изменения страниц для обновления UI
-        viewPager.registerOnPageChangeCallback(object : ViewPager2.OnPageChangeCallback() {
-            override fun onPageSelected(position: Int) {
-                updateNavigationUI(position)
-            }
-        })
 
         // Устанавливаем начальное состояние
         updateNavigationUI(viewPager.currentItem)
@@ -114,19 +143,173 @@ class HomeFragment : Fragment() {
     }
 
     private fun updateNavigationUI(selectedPosition: Int) {
-        // Сбрасываем все цвета на неактивные
-        val inactiveColor = ContextCompat.getColor(requireContext(), R.color.bg_message_right)
-        btnNews.setColorFilter(inactiveColor)
-        btnChats.setColorFilter(inactiveColor)
-        btnGroups.setColorFilter(inactiveColor)
+        btnNews.setImageResource(
+            if (selectedPosition == 0) R.drawable.ic_external_news_active else R.drawable.ic_external_news_inactive
+        )
+        btnChats.setImageResource(
+            if (selectedPosition == 1) R.drawable.ic_chat_active else R.drawable.ic_chat_inactive
+        )
+        btnGroups.setImageResource(
+            if (selectedPosition == 2) R.drawable.ic_group_active else R.drawable.ic_group_inactive
+        )
 
-        // Устанавливаем активный цвет
-        val activeColor = ContextCompat.getColor(requireContext(), R.color.black)
-        when (selectedPosition) {
-            0 -> btnNews.setColorFilter(activeColor)
-            1 -> btnChats.setColorFilter(activeColor)
-            2 -> btnGroups.setColorFilter(activeColor)
+        if (selectedPosition == 0) {
+            setupFeedFragmentNavigationListener()
         }
+    }
+
+    /**
+     * Обновленная реализация интерфейса управления навигацией
+     */
+    private fun setupFeedFragmentNavigationListener() {
+        val feedFragment = getCurrentFeedFragment()
+        feedFragment?.setNavigationVisibilityListener(
+            object : FeedFragment.OnNavigationVisibilityChangeListener {
+                override fun onHideFullNavigation() {
+                    // Скрываем компактную навигацию
+                    hideNavigationInParent()
+                    // Уведомляем MainActivity о скрытии верхней навигации
+                    (activity as? MainActivity)?.hideTopNavigation()
+                }
+
+                override fun onShowFullNavigation() {
+                    // Показываем компактную навигацию
+                    showNavigationInParent()
+                    // Уведомляем MainActivity о показе верхней навигации
+                    (activity as? MainActivity)?.showTopNavigation()
+                }
+
+                // Реализации методов для обратной совместимости
+                override fun onHideNavigation() {
+                    onHideFullNavigation()
+                }
+
+                override fun onShowNavigation() {
+                    onShowFullNavigation()
+                }
+
+                override fun onHideTopNavigation() {
+                    onHideFullNavigation()
+                }
+
+                override fun onShowTopNavigation() {
+                    onShowFullNavigation()
+                }
+            }
+        )
+    }
+
+    /**
+     * Улучшенное скрытие компактной навигации с плавной анимацией
+     */
+    fun hideNavigationInParent() {
+        if (!isViewInitialized() || isNavHidden) return
+
+        try {
+            isNavHidden = true
+
+            // Используем ValueAnimator для более плавной анимации
+            val animator = ValueAnimator.ofFloat(1f, 0.5f).apply { // Оставляем полупрозрачной
+                duration = 350
+                interpolator = AccelerateInterpolator(1.2f)
+
+                addUpdateListener { animation ->
+                    val value = animation.animatedValue as Float
+                    navContainer.alpha = value
+                    navContainer.scaleX = 0.9f + 0.1f * value
+                    navContainer.scaleY = 0.9f + 0.1f * value
+                }
+
+                addListener(object : AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: Animator) {
+                        // Не скрываем полностью, оставляем видимой
+                        Log.d(TAG, "hideNavigationInParent: Компактная навигация стала полупрозрачной")
+                    }
+                })
+            }
+
+            animator.start()
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error hiding parent navigation", e)
+            isNavHidden = false
+        }
+    }
+
+    /**
+     * Улучшенное отображение компактной навигации с плавной анимацией
+     */
+    fun showNavigationInParent() {
+        if (!isViewInitialized() || !isNavHidden) return
+
+        try {
+            isNavHidden = false
+
+            // Используем ValueAnimator для более плавной анимации
+            val animator = ValueAnimator.ofFloat(navContainer.alpha, 1f).apply {
+                duration = 400
+                interpolator = OvershootInterpolator(0.8f)
+
+                addUpdateListener { animation ->
+                    val value = animation.animatedValue as Float
+                    navContainer.alpha = value
+                    navContainer.scaleX = 0.9f + 0.1f * value
+                    navContainer.scaleY = 0.9f + 0.1f * value
+                }
+
+                addListener(object : AnimatorListenerAdapter() {
+                    override fun onAnimationEnd(animation: Animator) {
+                        navContainer.scaleX = 1f
+                        navContainer.scaleY = 1f
+                    }
+                })
+            }
+
+            animator.start()
+            Log.d(TAG, "showNavigationInParent: Компактная навигация плавно показана")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing parent navigation", e)
+            isNavHidden = true
+        }
+    }
+
+    /**
+     * Обработка смены страниц
+     */
+    private fun handlePageChange(position: Int) {
+        if (position == 0) {
+            // На вкладке новостей - настраиваем слушатель для FeedFragment
+            setupFeedFragmentNavigationListener()
+            // Гарантируем показ навигации при переходе на вкладку новостей
+            showNavigationInParent()
+        } else {
+            // На других вкладках - всегда показываем навигацию
+            showNavigationInParent()
+        }
+    }
+
+    /**
+     * Сброс состояния навигации к видимому состоянию
+     */
+    private fun resetNavigationState() {
+        isNavHidden = false
+
+        if (isViewInitialized()) {
+            navContainer.visibility = View.VISIBLE
+            navContainer.translationY = 0f
+            navContainer.alpha = 1f
+            navContainer.scaleX = 1f
+            navContainer.scaleY = 1f
+        }
+    }
+
+    /**
+     * Сброс всей навигации (компактной и верхней)
+     */
+    fun resetAllNavigation() {
+        showNavigationInParent()
+        (activity as? MainActivity)?.showTopNavigation()
     }
 
     /**
@@ -145,9 +328,12 @@ class HomeFragment : Fragment() {
                 if (feedFragment != null && feedFragment.isAdded) {
                     Log.d(TAG, "scrollNewsToTop: FeedFragment найден, вызываем scrollToTopIfNeeded")
                     feedFragment.scrollToTopIfNeeded()
+
+                    // При скролле к началу гарантируем показ всей навигации
+                    showNavigationInParent()
+                    (activity as? MainActivity)?.showTopNavigation()
                 } else {
                     Log.d(TAG, "scrollNewsToTop: FeedFragment не найден или не добавлен")
-                    // Альтернативная попытка получить FeedFragment
                     getFeedFragmentFromAdapter()?.scrollToTopIfNeeded()
                 }
             } else {
@@ -165,10 +351,7 @@ class HomeFragment : Fragment() {
         if (!isAdded) return null
 
         return try {
-            // Для ViewPager2 используем getItemId и findFragmentByTag
             val fragmentId = homePagerAdapter?.getItemId(viewPager.currentItem) ?: return null
-
-            // Тег формируется по шаблону "f" + fragmentId
             val fragmentTag = "f$fragmentId"
 
             val fragment = childFragmentManager.findFragmentByTag(fragmentTag)
@@ -216,6 +399,9 @@ class HomeFragment : Fragment() {
     fun switchToNewsTab() {
         if (isViewInitialized() && isAdded) {
             viewPager.currentItem = 0
+            // При переключении на вкладку новостей гарантируем показ всей навигации
+            showNavigationInParent()
+            (activity as? MainActivity)?.showTopNavigation()
         }
     }
 
@@ -223,19 +409,90 @@ class HomeFragment : Fragment() {
      * Проверяет, инициализирован ли View и Fragment добавлен
      */
     private fun isViewInitialized(): Boolean {
-        return this::viewPager.isInitialized && isAdded && !isDetached
+        return isInitialized &&
+                this::viewPager.isInitialized &&
+                this::navContainer.isInitialized &&
+                isAdded &&
+                !isDetached
+    }
+
+    override fun onResume() {
+        super.onResume()
+        Log.d(TAG, "onResume: HomeFragment resumed")
+
+        // При возобновлении фрагмента гарантируем показ всей навигации
+        if (isViewInitialized() && viewPager.currentItem == 0) {
+            // Задержка для плавного появления
+            handler.postDelayed({
+                showNavigationInParent()
+                (activity as? MainActivity)?.showTopNavigation()
+                setupFeedFragmentNavigationListener()
+            }, 100)
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        Log.d(TAG, "onPause: HomeFragment paused")
+
+        // При паузе сбрасываем состояние навигации
+        isNavHidden = false
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
         Log.d(TAG, "onDestroyView: HomeFragment destroyed")
 
-        // Очищаем ссылки на View чтобы избежать утечек памяти
+        // Убираем все отложенные задачи
+        handler.removeCallbacksAndMessages(null)
+
+        // Сбрасываем флаги
+        isInitialized = false
+        isNavHidden = false
+
+        // Очищаем ссылки
         homePagerAdapter = null
     }
 
     override fun onDetach() {
         super.onDetach()
         Log.d(TAG, "onDetach: HomeFragment detached")
+    }
+
+    /**
+     * Возвращает информацию о состоянии навигации
+     */
+    fun getNavigationState(): String {
+        return """
+            HomeFragment Navigation State:
+            ----------------------------
+            Is initialized: $isInitialized
+            Is navigation hidden: $isNavHidden
+            Current page: ${viewPager.currentItem}
+            View initialized: ${isViewInitialized()}
+            Nav container visible: ${navContainer.visibility == View.VISIBLE}
+            Nav container alpha: ${navContainer.alpha}
+        """.trimIndent()
+    }
+
+    /**
+     * Принудительное скрытие навигации (для тестов)
+     */
+    fun forceHideNavigation() {
+        hideNavigationInParent()
+    }
+
+    /**
+     * Принудительное отображение навигации (для тестов)
+     */
+    fun forceShowNavigation() {
+        showNavigationInParent()
+    }
+
+    /**
+     * Получить текущее состояние навигации
+     */
+    fun isNavigationVisible(): Boolean {
+        return isViewInitialized() && !isNavHidden && navContainer.visibility == View.VISIBLE
     }
 }

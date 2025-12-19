@@ -10,20 +10,20 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.graphics.Outline
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.MenuItem
 import android.view.View
 import android.view.ViewGroup
+import android.view.ViewOutlineProvider
 import android.view.WindowManager
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.AccelerateInterpolator
@@ -78,6 +78,7 @@ import com.example.chatapp.step.StepCounterService
 import com.example.chatapp.step.StepCounterServiceWorker
 import com.example.chatapp.utils.PhilosophyQuoteWorker
 import com.example.chatapp.utils.TTSManager
+import com.example.chatapp.zametki.ui.main.NotesActivity
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import com.google.firebase.auth.FirebaseAuth
@@ -95,7 +96,6 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 import kotlin.coroutines.suspendCoroutine
-import kotlin.math.min
 
 class MainActivity : AppCompatActivity() {
     lateinit var binding: ActivityMainBinding
@@ -103,7 +103,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var bottomNav: BottomNavigationView
     private var isFirstLaunch = true
     private var currentPermissionIndex = 0
-    private var isAppInitialized = false // КРИТИЧЕСКИ ВАЖНО: флаг инициализации
+    private var isAppInitialized = false
 
     // Переменные для приветственного виджета
     lateinit var welcomeCard: CardView
@@ -159,11 +159,20 @@ class MainActivity : AppCompatActivity() {
     private var ttsInitializationAttempts = 0
     private val MAX_TTS_INIT_ATTEMPTS = 3
 
+    private var isUserNameLoaded = false
+    private var cachedUserName = "Пользователь"
+
     // Переменные для отслеживания состояния приложения
     private var isActivityResumed = false
     private var wasActivityPaused = false
     private var welcomeRetryCount = 0
     private val MAX_WELCOME_RETRIES = 3
+
+    // Переменные для управления навигацией
+    private var isTopNavigationHidden = false
+    private var isInFullscreenMode = false
+    private var systemUiFlagsBeforeFullscreen = 0
+    private var decorViewSystemUiVisibilityBefore = 0
 
     // --- БЕЗОПАСНЫЙ СПИСОК РАЗРЕШЕНИЙ ---
     private val basicPermissions = listOf(
@@ -243,13 +252,13 @@ class MainActivity : AppCompatActivity() {
 
         // Задержки для приветственной последовательности
         private const val WELCOME_STAGE_1_DELAY = 0L
-        private const val WELCOME_STAGE_2_DELAY = 1500L // Увеличено для надежности
-        private const val WELCOME_STAGE_3_DELAY = 3000L // Увеличено для надежности
+        private const val WELCOME_STAGE_2_DELAY = 1500L
+        private const val WELCOME_STAGE_3_DELAY = 3000L
 
         // TTS задержки
-        private const val TTS_INIT_DELAY = 1500L  // Увеличено для стабильности
+        private const val TTS_INIT_DELAY = 1500L
         private const val TTS_GREETING_DELAY = 500L
-        private const val TTS_CONTINUATION_DELAY = 2500L // Увеличено для правильного порядка
+        private const val TTS_CONTINUATION_DELAY = 2500L
         private const val TTS_PAUSE_BETWEEN_PHRASES = 800L
 
         // Повторные попытки
@@ -260,31 +269,62 @@ class MainActivity : AppCompatActivity() {
         try {
             super.onCreate(savedInstanceState)
 
-            // КРИТИЧЕСКИ ВАЖНО: сначала показываем UI, потом всё остальное
+            // 1. ПОКАЗЫВАЕМ UI СРАЗУ - ОСНОВНОЙ ПРИНЦИП
             binding = ActivityMainBinding.inflate(layoutInflater)
             setContentView(binding.root)
 
-            // 1. Инициализируем TTS Manager ВМЕСТО TextToSpeech (синхронно для надежности)
+            // 2. УСТАНАВЛИВАЕМ ИМЯ ПО УМОЛЧАНИЮ МГНОВЕННО
+            binding.tvUserName.text = "Пользователь"
+
+            // 3. СОХРАНЯЕМ СОСТОЯНИЕ СИСТЕМНЫХ UI ФЛАГОВ
+            systemUiFlagsBeforeFullscreen = window.decorView.systemUiVisibility
+            decorViewSystemUiVisibilityBefore = window.decorView.systemUiVisibility
+
+            // 4. НАСТРОЙКА ПОЛНОЭКРАННОГО РЕЖИМА
+            setupFullscreenSystemUI()
+
+            // 5. ЗАГРУЖАЕМ ИМЯ ПОЛЬЗОВАТЕЛЯ ПЕРВЫМ ДЕЛОМ
+            lifecycleScope.launch(uiDispatcher) {
+                loadUserNameFirst()
+            }
+
+            // 6. ИНИЦИАЛИЗИРУЕМ TTS MANAGER (синхронно)
             initTTSManagerSync()
 
-            // 2. Включаем кнопки и навигацию СРАЗУ
+            // 7. ВКЛЮЧАЕМ КНОПКИ И НАВИГАЦИЮ СРАЗУ
             enableAllButtonsImmediately()
 
-            // 3. Показываем базовый фрагмент
+            // 8. НАСТРАИВАЕМ ЭКСТРЕННУЮ НАВИГАЦИЮ (работает без сети)
+            setupEmergencyNavigation()
+
+            // 9. ПОКАЗЫВАЕМ БАЗОВЫЙ ФРАГМЕНТ
             loadInitialFragmentFast()
 
-            // 4. Быстрая инициализация UI
-            setupCriticalUI()
+            // 10. БЫСТРАЯ ИНИЦИАЛИЗАЦИЯ UI (без приветствия пока)
+            try {
+                WindowCompat.setDecorFitsSystemWindows(window, false)
+                initWelcomeWidget()
+                setupBasicClickListeners()
+                setupBottomNavigation()
+                Log.d(TAG, "Critical UI setup completed")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in critical UI setup", e)
+            }
 
-            // 5. Асинхронная проверка авторизации (в фоне)
+            // 11. АСИНХРОННАЯ ПРОВЕРКА АВТОРИЗАЦИИ (в фоне)
             lifecycleScope.launch(uiDispatcher) {
                 checkAuthAsync()
             }
 
-            // 6. Настройка прозрачных панелей (в фоне)
+            // 12. НАСТРОЙКА ПРОЗРАЧНЫХ ПАНЕЛЕЙ (в фоне)
             lifecycleScope.launch(uiDispatcher) {
                 makeSystemBarsTransparent()
                 handleSystemBarsInsets()
+            }
+
+            // 13. ОТЛАДОЧНАЯ ИНФОРМАЦИЯ
+            if (BuildConfig.DEBUG) {
+                Log.d(TAG, "onCreate completed successfully")
             }
 
         } catch (e: Exception) {
@@ -293,6 +333,397 @@ class MainActivity : AppCompatActivity() {
             showEmergencyUI()
         }
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    /**
+     * Загружаем имя пользователя В ПЕРВУЮ ОЧЕРЕДЬ
+     */
+    private suspend fun loadUserNameFirst() = withContext(uiDispatcher) {
+        try {
+            Log.d(TAG, "Loading user name FIRST...")
+
+            // Сначала пробуем получить из кэша
+            val cachedName = loadUserNameFromCache()
+            if (cachedName != null && cachedName != "Пользователь") {
+                cachedUserName = cachedName
+                binding.tvUserName.text = cachedName
+                isUserNameLoaded = true
+                Log.d(TAG, "Using cached user name: $cachedName")
+                return@withContext
+            }
+
+            // Проверяем авторизацию
+            val currentUser = auth.currentUser ?: Firebase.auth.currentUser
+            if (currentUser != null) {
+                // Пробуем разные источники
+                val userName = when {
+                    // 1. Имя из Firebase Database (самое надежное)
+                    currentUser.uid.isNotEmpty() -> {
+                        loadUserNameFromDatabase(currentUser.uid)
+                    }
+
+                    // 2. Имя из Auth displayName
+                    currentUser.displayName?.isNotEmpty() == true -> {
+                        extractFirstName(currentUser.displayName!!)
+                    }
+
+                    // 3. Имя из email
+                    currentUser.email?.isNotEmpty() == true -> {
+                        currentUser.email!!.split("@").first()
+                    }
+
+                    else -> "Пользователь"
+                }
+
+                cachedUserName = userName
+                binding.tvUserName.text = userName
+
+                // Кэшируем для следующего запуска
+                saveUserNameToCache(userName)
+
+                isUserNameLoaded = true
+                Log.d(TAG, "User name loaded: $userName")
+            } else {
+                // Пользователь не авторизован
+                cachedUserName = "Гость"
+                binding.tvUserName.text = "Гость"
+                isUserNameLoaded = true
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading user name first", e)
+            // Устанавливаем fallback
+            cachedUserName = "Пользователь"
+            binding.tvUserName.text = "Пользователь"
+            isUserNameLoaded = true
+        }
+    }
+
+    /**
+     * Загружает имя пользователя из базы данных
+     */
+    private suspend fun loadUserNameFromDatabase(userId: String): String = withContext(ioDispatcher) {
+        return@withContext try {
+            // Пытаемся получить из Firebase Database
+            val snapshot = withTimeoutOrNull(2000L) {
+                Firebase.database.reference
+                    .child("users")
+                    .child(userId)
+                    .get()
+                    .await()
+            }
+
+            if (snapshot != null && snapshot.exists()) {
+                val user = snapshot.getValue(User::class.java)
+                when {
+                    user?.name?.isNotEmpty() == true -> {
+                        val firstName = extractFirstName(user.name!!)
+                        if (firstName != "Пользователь") {
+                            return@withContext firstName
+                        }
+                    }
+                    user?.getFullName()?.isNotEmpty() == true -> {
+                        val firstName = extractFirstName(user.getFullName())
+                        if (firstName != "Пользователь") {
+                            return@withContext firstName
+                        }
+                    }
+                }
+            }
+
+            // Fallback
+            "Пользователь"
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading name from database", e)
+            "Пользователь"
+        }
+    }
+
+    /**
+     * Загружает имя из кэша
+     */
+    private fun loadUserNameFromCache(): String? {
+        return try {
+            val sharedPref = getSharedPreferences("user_prefs", MODE_PRIVATE)
+
+            // 1. Пробуем имя пользователя (полное)
+            val userName = sharedPref.getString("user_name", null)
+            if (!userName.isNullOrEmpty() && userName != "NOT_SET") {
+                val firstName = extractFirstName(userName)
+                if (firstName != "Пользователь") {
+                    return firstName
+                }
+            }
+
+            // 2. Пробуем отдельно сохраненное имя
+            val firstName = sharedPref.getString("first_name", null)
+            if (!firstName.isNullOrEmpty() && firstName != "Пользователь" && firstName != "NOT_SET") {
+                return firstName
+            }
+
+            null
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading name from cache", e)
+            null
+        }
+    }
+
+    /**
+     * Сохраняет имя в кэш
+     */
+    private fun saveUserNameToCache(userName: String) {
+        try {
+            val sharedPref = getSharedPreferences("user_prefs", MODE_PRIVATE)
+            val firstName = extractFirstName(userName)
+
+            sharedPref.edit()
+                .putString("user_name", userName)
+                .putString("first_name", firstName)
+                .apply()
+
+            Log.d(TAG, "User name saved to cache: $userName (first name: $firstName)")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error saving user name to cache", e)
+        }
+    }
+
+    /**
+     * Обновленный метод получения имени для приветствия
+     * Теперь использует кэшированное имя
+     */
+    private fun getUserNameForGreeting(): String {
+        return if (isUserNameLoaded) {
+            cachedUserName
+        } else {
+            // Если еще не загрузилось, используем fallback
+            val fallback = loadUserNameFromCache() ?: "Пользователь"
+            fallback
+        }
+    }
+
+    /**
+     * Обновляем показ мгновенного приветствия
+     * ТЕПЕРЬ ОНО ЖДЕТ ЗАГРУЗКИ ИМЕНИ
+     */
+    private fun showInstantBasicGreeting() {
+        try {
+            // Ждем загрузки имени (но с таймаутом)
+            if (!isUserNameLoaded) {
+                Log.d(TAG, "User name not loaded yet, delaying greeting...")
+
+                // Показываем общее приветствие без имени
+                tvWelcomeTitle.text = "Добро пожаловать!"
+
+                // Запускаем отложенную загрузку приветствия с именем
+                handler.postDelayed({
+                    if (isUserNameLoaded) {
+                        showGreetingWithName()
+                    } else {
+                        // Все равно показываем с fallback именем
+                        showGreetingWithName()
+                    }
+                }, 500)
+
+                return
+            }
+
+            // Если имя уже загружено, показываем сразу
+            showGreetingWithName()
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing instant greeting", e)
+            showGreetingWithName()
+        }
+    }
+
+    /**
+     * Показывает приветствие с именем
+     */
+    private fun showGreetingWithName() {
+        try {
+            val userName = getUserNameForGreeting()
+            val greeting = getTimeBasedGreeting()
+            val greetingText = "$greeting, $userName!"
+
+            // Сразу устанавливаем текст приветствия
+            tvWelcomeTitle.text = greetingText
+
+            // Сбрасываем состояния
+            resetWelcomeCardState()
+
+            // Запускаем анимацию появления
+            startWelcomeCardEntranceAnimation()
+
+            Log.d(TAG, "Greeting shown with name: $userName")
+
+            // ОЗВУЧИВАЕМ базовое приветствие
+            handler.postDelayed({
+                if (isTTSInitialized && isActivityResumed) {
+                    speakGreeting(greetingText)
+                }
+            }, TTS_GREETING_DELAY)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing greeting with name", e)
+            // Fallback на приветствие без имени
+            tvWelcomeTitle.text = "Добро пожаловать!"
+        }
+    }
+
+    /**
+     * Обновляем базовое приветственное сообщение
+     */
+    private fun showBasicWelcomeMessage() {
+        try {
+            val userName = getUserNameForGreeting()
+            val greeting = getTimeBasedGreeting()
+            val greetingText = "$greeting, $userName!"
+
+            // Обновляем UI
+            tvWelcomeTitle.text = greetingText
+            tvWelcomeQuestion.text = "Чем увлекаетесь в последнее время?"
+
+            // Генерируем осмысленную фразу
+            val meaningfulContinuation = generateNaturalContinuationPhrase()
+            tvWelcomeContext.text = meaningfulContinuation
+
+            // 1. Сначала озвучиваем основное приветствие
+            speakGreeting(greetingText)
+
+            // 2. Через паузу озвучиваем продолжение
+            handler.postDelayed({
+                speakAIContinuation(meaningfulContinuation)
+            }, TTS_CONTINUATION_DELAY)
+
+            // Сохраняем эту фразу для чата
+            saveCompleteWelcomePhraseForChatAsync(meaningfulContinuation)
+
+            // Сбрасываем состояния и показываем без анимации
+            resetWelcomeCardState()
+            welcomeCard.visibility = View.VISIBLE
+            welcomeCard.alpha = 1f
+            welcomeCard.scaleX = 1f
+            welcomeCard.scaleY = 1f
+            welcomeCard.translationY = 0f
+
+            welcomeContent.visibility = View.VISIBLE
+            welcomeContent.alpha = 1f
+            progressWelcome.visibility = View.GONE
+
+            Log.d(TAG, "Basic welcome message shown for: $userName")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing basic welcome message", e)
+            // Fallback
+            tvWelcomeTitle.text = "Добро пожаловать!"
+        }
+    }
+
+    /**
+     * Обновляем проверку авторизации
+     */
+    private suspend fun checkAuthAsync() = withContext(ioDispatcher) {
+        try {
+            // Сначала загружаем имя (уже делается в loadUserNameFirst())
+            // Затем проверяем авторизацию
+
+            val currentUser = withTimeoutOrNull(3000L) {
+                try {
+                    Firebase.auth.currentUser
+                } catch (e: Exception) {
+                    Log.w(TAG, "Firebase auth check failed", e)
+                    null
+                }
+            }
+
+            if (currentUser == null) {
+                val cachedAuth = getSharedPreferences("auth_cache", MODE_PRIVATE)
+                    .getBoolean("is_authenticated", false)
+
+                if (!cachedAuth) {
+                    withContext(uiDispatcher) {
+                        redirectToAuth()
+                    }
+                } else {
+                    withContext(uiDispatcher) {
+                        startOfflineMode()
+                    }
+                }
+            } else {
+                withContext(uiDispatcher) {
+                    auth = Firebase.auth
+                    // Имя уже загружено, продолжаем инициализацию
+                    initializeAppAsync()
+                }
+            }
+
+        } catch (e: TimeoutCancellationException) {
+            Log.w(TAG, "Auth check timeout")
+            withContext(uiDispatcher) {
+                // Показываем приветствие даже без полной авторизации
+                if (!isUserNameLoaded) {
+                    cachedUserName = "Гость"
+                    binding.tvUserName.text = "Гость"
+                    isUserNameLoaded = true
+                }
+                startOfflineMode()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking auth", e)
+            withContext(uiDispatcher) {
+                startOfflineMode()
+            }
+        }
+    }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
     /**
      * Синхронная инициализация TTS Manager для надежности
@@ -550,66 +981,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Асинхронная проверка авторизации
-     */
-    private suspend fun checkAuthAsync() = withContext(ioDispatcher) {
-        try {
-            // Быстрая проверка с таймаутом
-            val currentUser = withTimeoutOrNull(3000L) {
-                try {
-                    Firebase.auth.currentUser
-                } catch (e: Exception) {
-                    Log.w(TAG, "Firebase auth check failed, using cache", e)
-                    null
-                }
-            }
 
-            if (currentUser == null) {
-                // Проверяем кэшированную авторизацию
-                val cachedAuth = getSharedPreferences("auth_cache", MODE_PRIVATE)
-                    .getBoolean("is_authenticated", false)
-
-                if (!cachedAuth) {
-                    withContext(uiDispatcher) {
-                        redirectToAuth()
-                    }
-                } else {
-                    // Работаем в оффлайн режиме
-                    withContext(uiDispatcher) {
-                        startOfflineMode()
-                    }
-                }
-            } else {
-                // Пользователь авторизован, продолжаем инициализацию
-                withContext(uiDispatcher) {
-                    auth = Firebase.auth
-                    initializeAppAsync()
-                }
-            }
-
-        } catch (e: TimeoutCancellationException) {
-            Log.w(TAG, "Auth check timeout - возможно нет интернета")
-            withContext(uiDispatcher) {
-                startOfflineMode()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error checking auth", e)
-            withContext(uiDispatcher) {
-                startOfflineMode()
-            }
-        }
-    }
-
-    override fun onWindowFocusChanged(hasFocus: Boolean) {
-        super.onWindowFocusChanged(hasFocus)
-        if (hasFocus) {
-            // Если активный фрагмент - чат, скрываем системные панели
-            if (currentFragmentTag == CHAT_FRAGMENT_TAG) {
-                hideSystemUIForChat()
-            }
-        }
-    }
 
     /**
      * Запуск оффлайн режима
@@ -634,6 +1006,9 @@ class MainActivity : AppCompatActivity() {
             Log.e(TAG, "Error starting offline mode", e)
         }
     }
+
+
+
 
     /**
      * Загружает кэшированные данные пользователя
@@ -694,25 +1069,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Быстрая инициализация только критически важных элементов
-     */
-    private fun setupCriticalUI() {
-        try {
-            WindowCompat.setDecorFitsSystemWindows(window, false)
-
-            // Инициализация welcome widget
-            initWelcomeWidget()
-
-            // Настройка базовых слушателей
-            setupBasicClickListeners()
-
-            Log.d(TAG, "Critical UI setup completed")
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error in critical UI setup", e)
-        }
-    }
 
     /**
      * Инициализация welcome widget
@@ -739,6 +1095,399 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
+
+
+    fun showSystemUIForVoiceSettings() {
+        try {
+            // 1. Показываем системные панели
+            window?.decorView?.systemUiVisibility = (
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    )
+
+            // 2. Полупрозрачные цвета для панелей
+            window?.navigationBarColor = Color.parseColor("#80000000")
+            window?.statusBarColor = Color.parseColor("#80000000")
+
+            // 3. Показываем навигацию приложения
+            binding.bottomNavigation.visibility = View.VISIBLE
+            binding.toolbar.visibility = View.VISIBLE
+
+            // 4. Для Android 10+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                window?.isNavigationBarContrastEnforced = false
+                window?.navigationBarDividerColor = Color.TRANSPARENT
+            }
+
+            // 5. WindowCompat
+            WindowCompat.setDecorFitsSystemWindows(window!!, false)
+
+            Log.d(TAG, "System UI shown for voice settings (translucent)")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing system UI for voice settings", e)
+        }
+    }
+
+    /**
+     * Вызывается при открытии настроек голоса из чата
+     */
+    fun onVoiceSettingsOpenedFromChat() {
+        // Показываем навигацию для настроек голоса
+        showSystemUIForVoiceSettings()
+    }
+
+
+
+
+
+
+
+    /**
+     * Вызывается при нажатии кнопки назад
+     */
+    override fun onBackPressed() {
+        // Если открыты настройки голоса и мы находимся в чате
+        val currentFragment = supportFragmentManager.findFragmentById(R.id.fragment_container)
+
+        if (currentFragment is VoiceSettingsFragment) {
+            // Возвращаемся в чат
+            supportFragmentManager.popBackStack()
+
+            // ВАЖНО: Восстанавливаем полноэкранный режим чата
+            handler.postDelayed({
+                restoreChatFullscreenMode()
+            }, 100)
+            return
+        }
+
+        // Стандартная обработка
+        if (supportFragmentManager.backStackEntryCount > 0) {
+            supportFragmentManager.popBackStack()
+        } else {
+            super.onBackPressed()
+        }
+    }
+
+
+    /**
+     * Восстанавливает полноэкранный режим чата
+     */
+    fun restoreChatFullscreenMode() {
+        try {
+            // Проверяем, какой фрагмент сейчас активен
+            val currentFragment = supportFragmentManager.findFragmentById(R.id.fragment_container)
+
+            if (currentFragment is ChatWithGigaFragment) {
+                // 1. Скрываем системные панели
+                hideSystemUIForChat()
+
+                // 2. НЕМЕДЛЕННО скрываем навигацию приложения
+                binding.bottomNavigation.visibility = View.GONE
+                binding.toolbar.visibility = View.GONE
+
+                // 3. Сбрасываем все анимации и состояния
+                binding.bottomNavigation.alpha = 0f
+                binding.bottomNavigation.translationY = 0f
+                binding.toolbar.alpha = 0f
+                binding.toolbar.translationY = 0f
+                isTopNavigationHidden = true
+
+                // 4. Скрываем приветственную карточку
+                if (::welcomeCard.isInitialized && welcomeCard.visibility == View.VISIBLE) {
+                    welcomeCard.visibility = View.GONE
+                }
+
+                // 5. Устанавливаем полноэкранный режим для window
+                window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN)
+                window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+
+                Log.d(TAG, "Chat fullscreen mode fully restored (navigation forced hidden)")
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error restoring chat fullscreen mode", e)
+        }
+    }
+
+    /**
+     * 1Скрывает системные панели для чата (полноэкранный режим)
+     */
+    fun hideSystemUIForChat() {
+        try {
+            // 1. Скрываем системные панели
+            window?.decorView?.systemUiVisibility = (
+                    View.SYSTEM_UI_FLAG_FULLSCREEN or
+                            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
+                            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    )
+
+            // 2. Делаем панели прозрачными
+            window?.navigationBarColor = Color.TRANSPARENT
+            window?.statusBarColor = Color.TRANSPARENT
+
+            // 3. Убираем любые ограничения
+            window?.clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN)
+            window?.addFlags(
+                WindowManager.LayoutParams.FLAG_FULLSCREEN or
+                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
+            )
+
+            // 4. Скрываем нижнюю навигацию приложения НЕМЕДЛЕННО
+            binding.bottomNavigation.visibility = View.GONE
+            binding.toolbar.visibility = View.GONE
+
+            // Сбрасываем анимации
+            binding.bottomNavigation.alpha = 0f
+            binding.bottomNavigation.translationY = 0f
+            binding.toolbar.alpha = 0f
+            binding.toolbar.translationY = 0f
+            isTopNavigationHidden = true
+
+            // 5. Скрываем приветственную карточку если она видна
+            if (::welcomeCard.isInitialized && welcomeCard.visibility == View.VISIBLE) {
+                welcomeCard.visibility = View.GONE
+            }
+
+            Log.d(TAG, "System UI hidden for chat (FULLSCREEN MODE, navigation forced)")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error hiding system UI for chat", e)
+        }
+    }
+
+
+
+
+
+    /**
+     * Улучшенное скрытие верхней навигации с плавной анимацией
+     */
+    fun hideTopNavigation() {
+        try {
+            if (isTopNavigationHidden) return
+
+            Log.d(TAG, "hideTopNavigation: Плавное скрытие верхней навигации")
+            isTopNavigationHidden = true
+
+            // Плавная анимация для Toolbar
+            binding.toolbar.animate()
+                .translationY(-binding.toolbar.height.toFloat())
+                .alpha(0f)
+                .setDuration(400)
+                .setInterpolator(AccelerateInterpolator(1.2f))
+                .withLayer()
+                .withEndAction {
+                    binding.toolbar.visibility = View.GONE
+                }
+                .start()
+
+            // Плавная анимация для BottomNavigation с небольшой задержкой
+            Handler(Looper.getMainLooper()).postDelayed({
+                binding.bottomNavigation.animate()
+                    .translationY(binding.bottomNavigation.height.toFloat())
+                    .alpha(0f)
+                    .setDuration(400)
+                    .setInterpolator(AccelerateInterpolator(1.2f))
+                    .withLayer()
+                    .withEndAction {
+                        binding.bottomNavigation.visibility = View.GONE
+                    }
+                    .start()
+            }, 50)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error hiding top navigation", e)
+        }
+    }
+
+    /**
+     * Улучшенное отображение верхней навигации с плавной анимацией
+     */
+    fun showTopNavigation() {
+        try {
+            if (!isTopNavigationHidden) return
+
+            Log.d(TAG, "showTopNavigation: Плавное отображение верхней навигации")
+            isTopNavigationHidden = false
+
+            // Сначала показываем элементы
+            binding.toolbar.visibility = View.VISIBLE
+            binding.bottomNavigation.visibility = View.VISIBLE
+
+            // Начальные состояния для анимации
+            binding.toolbar.translationY = -binding.toolbar.height.toFloat()
+            binding.toolbar.alpha = 0f
+            binding.bottomNavigation.translationY = binding.bottomNavigation.height.toFloat()
+            binding.bottomNavigation.alpha = 0f
+
+            // Плавная анимация для Toolbar
+            binding.toolbar.animate()
+                .translationY(0f)
+                .alpha(1f)
+                .setDuration(500)
+                .setInterpolator(OvershootInterpolator(0.8f))
+                .withLayer()
+                .start()
+
+            // Плавная анимация для BottomNavigation с небольшой задержкой
+            Handler(Looper.getMainLooper()).postDelayed({
+                binding.bottomNavigation.animate()
+                    .translationY(0f)
+                    .alpha(1f)
+                    .setDuration(500)
+                    .setInterpolator(OvershootInterpolator(0.8f))
+                    .withLayer()
+                    .start()
+            }, 100)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing top navigation", e)
+        }
+    }
+
+
+
+
+
+
+
+
+
+    /**
+     * Настройка системы для полноэкранного режима с оптимизацией
+     */
+    private fun setupFullscreenSystemUI() {
+        try {
+            // Устанавливаем флаги для работы с системными панелями
+            window.addFlags(WindowManager.LayoutParams.FLAG_DRAWS_SYSTEM_BAR_BACKGROUNDS)
+            window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_STATUS)
+            window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION)
+
+            // ОЧЕНЬ ВАЖНО: Отключаем переходные анимации для системы
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                window.attributes.windowAnimations = android.R.style.Animation_Translucent
+            }
+
+            // Для Android 10+ устанавливаем прозрачную навигационную панель
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                window.isNavigationBarContrastEnforced = false
+                window.navigationBarDividerColor = Color.TRANSPARENT
+            }
+
+            // Изначально делаем панели прозрачными
+            window.statusBarColor = Color.TRANSPARENT
+            window.navigationBarColor = Color.TRANSPARENT
+
+            // Устанавливаем первоначальный режим
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+
+            Log.d(TAG, "Optimized fullscreen system UI setup completed")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting up optimized fullscreen system UI", e)
+        }
+    }
+
+    /**
+     * Переопределяем onWindowFocusChanged для предотвращения мерцания
+     */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+
+        // Используем postDelayed чтобы избежать конфликтов с системными анимациями
+        handler.postDelayed({
+            if (hasFocus) {
+                // Если активный фрагмент - чат, скрываем системные панели
+                if (currentFragmentTag == CHAT_FRAGMENT_TAG) {
+                    hideSystemUIForChat()
+                } else if (isTopNavigationHidden) {
+                    // Если навигация скрыта, включаем полноэкранный режим
+                    enableFullscreenMode()
+                } else {
+                    // Иначе показываем нормальный режим
+                    disableFullscreenMode()
+                }
+            }
+        }, 100) // Небольшая задержка для стабильности
+    }
+
+
+
+
+    /**
+     * Включает полноэкранный режим (скрывает ВСЕ системные панели) с оптимизацией
+     */
+    private fun enableFullscreenMode() {
+        try {
+            if (isInFullscreenMode) return
+
+            Log.d(TAG, "Enabling fullscreen mode with optimization")
+
+            // КРИТИЧЕСКИ ВАЖНО: сначала меняем системные UI флаги БЕЗ анимации
+            window.decorView.systemUiVisibility = (
+                    View.SYSTEM_UI_FLAG_FULLSCREEN
+                            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                            or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    )
+
+            // Сразу скрываем элементы навигации (без анимации)
+            binding.toolbar.visibility = View.GONE
+            binding.bottomNavigation.visibility = View.GONE
+
+            // Для немедленного эффекта - скрываем элементы через альфа
+            binding.toolbar.alpha = 0f
+            binding.bottomNavigation.alpha = 0f
+            binding.toolbar.translationY = 0f
+            binding.bottomNavigation.translationY = 0f
+
+            isInFullscreenMode = true
+            Log.d(TAG, "Fullscreen mode enabled instantly")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error enabling fullscreen mode", e)
+        }
+    }
+
+    /**
+     * Выключает полноэкранный режим (показывает системные панели) с оптимизацией
+     */
+    private fun disableFullscreenMode() {
+        try {
+            if (!isInFullscreenMode) return
+
+            Log.d(TAG, "Disabling fullscreen mode with optimization")
+
+            // КРИТИЧЕСКИ ВАЖНО: сначала показываем элементы навигации (без анимации)
+            binding.toolbar.visibility = View.VISIBLE
+            binding.bottomNavigation.visibility = View.VISIBLE
+            binding.toolbar.alpha = 1f
+            binding.bottomNavigation.alpha = 1f
+
+            // Затем восстанавливаем системные UI флаги
+            window.decorView.systemUiVisibility = (
+                    View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                            or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    )
+
+            isInFullscreenMode = false
+            Log.d(TAG, "Fullscreen mode disabled instantly")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error disabling fullscreen mode", e)
+        }
+    }
+
+
     /**
      * Настройка внешнего вида приветственной карточки
      */
@@ -760,6 +1509,7 @@ class MainActivity : AppCompatActivity() {
                 animateButtonClick(btnStartChat)
                 switchToChatAsync()
             }
+
         }
 
         btnMaybeLater.setOnClickListener {
@@ -776,6 +1526,13 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+
+
+
+
+
+
 
     /**
      * Анимация нажатия кнопки
@@ -1037,37 +1794,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Показывает мгновенное базовое приветствие (1-я часть) - СИНХРОННАЯ версия
-     */
-    private fun showInstantBasicGreeting() {
-        try {
-            val userName = getUserName()
-            val greeting = getTimeBasedGreeting()
-            val greetingText = "$greeting, $userName!"
 
-            // Сразу устанавливаем текст приветствия
-            tvWelcomeTitle.text = greetingText
-
-            // Сбрасываем состояния
-            resetWelcomeCardState()
-
-            // Запускаем анимацию появления
-            startWelcomeCardEntranceAnimation()
-
-            Log.d(TAG, "Instant basic greeting shown")
-
-            // ОЗВУЧИВАЕМ базовое приветствие СРАЗУ после показа
-            handler.postDelayed({
-                if (isTTSInitialized && isActivityResumed) {
-                    speakGreeting(greetingText)
-                }
-            }, TTS_GREETING_DELAY)
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error showing instant greeting", e)
-        }
-    }
 
     /**
      * Переключается на фрагмент лотереи
@@ -1184,6 +1911,15 @@ class MainActivity : AppCompatActivity() {
         }
 
         contentAnimator.start()
+    }
+
+
+
+    /**
+     * Проверяет, скрыта ли верхняя навигация
+     */
+    fun isTopNavigationHidden(): Boolean {
+        return isTopNavigationHidden
     }
 
     /**
@@ -1534,7 +2270,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-
     /**
      * Анализирует основные темы для генерации стратегий
      */
@@ -1751,7 +2486,6 @@ class MainActivity : AppCompatActivity() {
                 model = "GigaChat",
                 messages = listOf(Message(role = "user", content = prompt)),
                 max_tokens = 100
-                // temperature параметр удален, так как его нет в вашей модели
             )
 
             val call = RetrofitInstance.api.sendMessage("Bearer $token", request)
@@ -1769,8 +2503,6 @@ class MainActivity : AppCompatActivity() {
             null
         }
     }
-
-
 
     fun restoreUIAfterChat() {
         try {
@@ -1793,7 +2525,6 @@ class MainActivity : AppCompatActivity() {
             // 5. Переключаемся на HomeFragment
             safeSwitchToFragment(HOME_FRAGMENT_TAG) { HomeFragment() }
 
-
             Log.d(TAG, "UI restored after chat exit, welcome card hidden")
 
         } catch (e: Exception) {
@@ -1801,11 +2532,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-
-
-
-
-    // В классе MainActivity добавьте или обновите метод:
     private suspend fun switchToChatAsync() = withContext(uiDispatcher) {
         Log.d(TAG, "Start chat clicked")
 
@@ -1882,47 +2608,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Скрывает системные панели для чата (полноэкранный режим)
-     */
-    fun hideSystemUIForChat() {
-        try {
-            // 1. Скрываем системные панели
-            window?.decorView?.systemUiVisibility = (
-                    View.SYSTEM_UI_FLAG_FULLSCREEN or
-                            View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                            View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
-                            View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
-                            View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
-                            View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                    )
 
-            // 2. Делаем панели прозрачными
-            window?.navigationBarColor = Color.TRANSPARENT
-            window?.statusBarColor = Color.TRANSPARENT
-
-            // 3. Убираем любые ограничения
-            window?.clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN)
-            window?.addFlags(
-                WindowManager.LayoutParams.FLAG_FULLSCREEN or
-                        WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-            )
-
-            // 4. Скрываем нижнюю навигацию приложения ВСЕГДА
-            binding.bottomNavigation.visibility = View.GONE
-            binding.toolbar.visibility = View.GONE
-
-            // 5. Скрываем приветственную карточку если она видна
-            if (::welcomeCard.isInitialized && welcomeCard.visibility == View.VISIBLE) {
-                welcomeCard.visibility = View.GONE
-            }
-
-            Log.d(TAG, "System UI hidden for chat (FULLSCREEN MODE)")
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error hiding system UI for chat", e)
-        }
-    }
 
     // Метод для открытия настроек голоса
     fun openVoiceSettings() {
@@ -1932,9 +2618,6 @@ class MainActivity : AppCompatActivity() {
             .addToBackStack("voice_settings")
             .commitAllowingStateLoss()
     }
-
-
-
 
     /**
      * Генерирует конкретное продолжение на основе реального сообщения
@@ -1972,8 +2655,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-
-    // В MainActivity.kt добавьте:
     fun getTTSManager(): TTSManager {
         return ttsManager
     }
@@ -2574,6 +3255,42 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
+    // Добавьте публичные методы для управления состоянием навигации
+
+    /**
+     * Полностью скрывает навигацию (публичный метод для фрагментов)
+     */
+    fun hideNavigationForChat() {
+        try {
+            binding.bottomNavigation.visibility = View.GONE
+            binding.toolbar.visibility = View.GONE
+
+            // Сбрасываем анимации
+            binding.bottomNavigation.alpha = 0f
+            binding.bottomNavigation.translationY = 0f
+            binding.toolbar.alpha = 0f
+            binding.toolbar.translationY = 0f
+
+            // Устанавливаем флаг
+            isTopNavigationHidden = true
+
+            Log.d(TAG, "Navigation hidden for chat (called from fragment)")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error hiding navigation from fragment", e)
+        }
+    }
+
+    /**
+     * Проверяет скрыта ли навигация (публичный метод для фрагментов)
+     */
+    fun isNavigationHidden(): Boolean {
+        return isTopNavigationHidden
+    }
+
+
+
     /**
      * Генерирует продолжение на основе контекста
      */
@@ -2697,7 +3414,7 @@ class MainActivity : AppCompatActivity() {
     private fun saveCompleteWelcomePhraseForChatAsync() {
         lifecycleScope.launch(initDispatcher) {
             try {
-                // Берем ТОЛЬКО третью фразу (контекст продолжения)
+                // Берем ТОЛЬКО третья фраза (контекст продолжения)
                 val contextPhrase = tvWelcomeContext.text.toString()
 
                 // Очищаем предыдущие сохраненные фразы
@@ -2734,52 +3451,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Показывает базовое приветствие (fallback) с ПРАВИЛЬНЫМ порядком TTS
-     */
-    private fun showBasicWelcomeMessage() {
-        try {
-            val userName = getUserName()
-            val greeting = getTimeBasedGreeting()
-            val greetingText = "$greeting, $userName!"
-
-            // Обновляем UI
-            tvWelcomeTitle.text = greetingText
-            tvWelcomeQuestion.text = "Чем увлекаетесь в последнее время?"
-
-            // Генерируем осмысленную фразу вместо заглушки
-            val meaningfulContinuation = generateNaturalContinuationPhrase()
-            tvWelcomeContext.text = meaningfulContinuation
-
-            // 1. Сначала озвучиваем основное приветствие
-            speakGreeting(greetingText)
-
-            // 2. Через большую паузу озвучиваем продолжение
-            handler.postDelayed({
-                speakAIContinuation(meaningfulContinuation)
-            }, TTS_CONTINUATION_DELAY)
-
-            // Сохраняем эту фразу для чата
-            saveCompleteWelcomePhraseForChatAsync(meaningfulContinuation)
-
-            // Сбрасываем состояния и показываем без анимации
-            resetWelcomeCardState()
-            welcomeCard.visibility = View.VISIBLE
-            welcomeCard.alpha = 1f
-            welcomeCard.scaleX = 1f
-            welcomeCard.scaleY = 1f
-            welcomeCard.translationY = 0f
-
-            welcomeContent.visibility = View.VISIBLE
-            welcomeContent.alpha = 1f
-            progressWelcome.visibility = View.GONE
-
-            Log.d(TAG, "Basic welcome message shown with proper TTS order")
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error showing basic welcome message", e)
-        }
-    }
 
     /**
      * Асинхронная загрузка профиля пользователя
@@ -3556,16 +4227,7 @@ class MainActivity : AppCompatActivity() {
             .commit()
     }
 
-    /**
-     * Обработка кнопки назад
-     */
-    override fun onBackPressed() {
-        if (supportFragmentManager.backStackEntryCount > 0) {
-            supportFragmentManager.popBackStack()
-        } else {
-            super.onBackPressed()
-        }
-    }
+
 
     private suspend fun initializeServicesSafely() {
         Log.d(TAG, "initializeServicesSafely: Начало")
@@ -3794,6 +4456,222 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+
+
+
+
+
+
+
+
+    private fun setupCriticalUI() {
+        try {
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+
+            // Инициализация welcome widget
+            initWelcomeWidget()
+
+            // Настройка базовых слушателей
+            setupBasicClickListeners()
+
+            // ДОБАВЬТЕ ЭТУ СТРОКУ:
+            setupBottomNavigation() // <-- ВАЖНО
+
+            Log.d(TAG, "Critical UI setup completed")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in critical UI setup", e)
+        }
+    }
+
+    private fun setupBottomNavigation() {
+        lifecycleScope.launch(uiDispatcher) {
+            try {
+                bottomNav = binding.bottomNavigation
+                Log.d(TAG, "Setting up bottom navigation...")
+
+                // 1. Отключаем ВСЕ системные окрашивания
+                bottomNav.itemIconTintList = null
+                bottomNav.itemTextColor = null
+
+                // 2. Устанавливаем высоту навигации
+                bottomNav.layoutParams.height = 130.dpToPx() // Увеличиваем высоту
+
+                // 3. Прозрачный фон
+                bottomNav.background = ContextCompat.getDrawable(
+                    this@MainActivity,
+                    R.drawable.transparent_nav_background
+                )
+                bottomNav.elevation = 8f
+
+                // 4. Используем labelVisibilityMode вместо очистки текста
+                bottomNav.labelVisibilityMode = BottomNavigationView.LABEL_VISIBILITY_UNLABELED
+
+                // 5. ОБНОВЛЕННЫЙ слушатель с обработкой навигации
+                bottomNav.setOnItemSelectedListener { item ->
+                    val itemSelected = when (item.itemId) {
+                        R.id.nav_home -> {
+                            safeSwitchToFragment(HOME_FRAGMENT_TAG) { HomeFragment() }
+                            true
+                        }
+                        R.id.nav_gigachat -> {
+                            safeSwitchToFragment(CHAT_FRAGMENT_TAG) { ChatWithGigaFragment() }
+                            true
+                        }
+                        R.id.nav_steps -> {
+                            safeSwitchToFragment(STEPS_FRAGMENT_TAG) { StepCounterFragment() }
+                            true
+                        }
+                        R.id.nav_maps -> {
+                            safeSwitchToFragment(MAPS_FRAGMENT_TAG) { LocationPagerFragment() }
+                            true
+                        }
+                        R.id.nav_games -> {
+                            safeSwitchToFragment(GAMES_FRAGMENT_TAG) { GamesFragment() }
+                            true
+                        }
+                        else -> false
+                    }
+
+                    if (itemSelected) {
+                        // Обновляем внешний вид после успешного выбора
+                        updateBottomNavAppearance(item.itemId)
+                    }
+
+                    itemSelected
+                }
+
+                // 6. Инициализируем внешний вид с активным элементом "Главная"
+                updateBottomNavAppearance(R.id.nav_home)
+
+                // 7. Устанавливаем активный элемент
+                binding.bottomNavigation.selectedItemId = R.id.nav_home
+
+                Log.d(TAG, "Bottom navigation setup completed successfully")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error setting up bottom navigation", e)
+            }
+        }
+    }
+
+
+    private fun updateBottomNavAppearance(selectedItemId: Int) {
+        try {
+            // Проходим по всем элементам меню
+            val menu = bottomNav.menu
+            for (i in 0 until menu.size()) {
+                val item = menu.getItem(i)
+                val itemView = bottomNav.findViewById<View>(item.itemId)
+
+                // Альтернативный способ найти iconView
+                val iconView = findIconView(itemView)
+
+                iconView?.let { imageView ->
+                    if (item.itemId == selectedItemId) {
+                        // Активный элемент
+                        imageView.alpha = 1.0f
+
+                        // Увеличиваем размер активной иконки
+                        val layoutParams = imageView.layoutParams
+                        layoutParams.width = 75.dpToPx()
+                        layoutParams.height = 75.dpToPx()
+                        imageView.layoutParams = layoutParams
+
+                        // Закругление
+                        imageView.clipToOutline = true
+                        imageView.outlineProvider = object : ViewOutlineProvider() {
+                            override fun getOutline(view: View, outline: Outline) {
+                                // Сделаем идеальный круг
+                                val radius = (view.width / 2).toFloat()
+                                outline.setRoundRect(0, 0, view.width, view.height, radius)
+                            }
+                        }
+
+                        // Добавляем легкую тень для акцента
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                            imageView.elevation = 4f
+                        }
+
+                        // Анимация увеличения
+                        imageView.animate()
+                            .scaleX(1.1f)
+                            .scaleY(1.1f)
+                            .setDuration(200)
+                            .start()
+
+                        // Анимация "подпрыгивания"
+                        imageView.animate()
+                            .translationY(-8.dpToPx().toFloat())
+                            .setDuration(200)
+                            .start()
+
+                    } else {
+                        // Неактивный элемент
+                        imageView.alpha = 0.7f
+
+                        // Стандартный размер
+                        val layoutParams = imageView.layoutParams
+                        layoutParams.width = 48.dpToPx()
+                        layoutParams.height = 48.dpToPx()
+                        imageView.layoutParams = layoutParams
+
+                        // Убираем закругление и тень
+                        imageView.clipToOutline = false
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+                            imageView.elevation = 0f
+                        }
+
+                        // Возвращаем к обычному размеру
+                        imageView.animate()
+                            .scaleX(1f)
+                            .scaleY(1f)
+                            .translationY(0f)
+                            .setDuration(200)
+                            .start()
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error updating bottom nav appearance", e)
+        }
+    }
+
+    /**
+     * Вспомогательный метод для поиска ImageView в BottomNavigationView
+     */
+    private fun findIconView(view: View?): ImageView? {
+        if (view == null) return null
+
+        return if (view is ImageView) {
+            view
+        } else if (view is ViewGroup) {
+            // Ищем ImageView среди дочерних элементов
+            for (i in 0 until view.childCount) {
+                val child = view.getChildAt(i)
+                val result = findIconView(child)
+                if (result != null) return result
+            }
+            null
+        } else {
+            null
+        }
+    }
+
+
+
+
+
+    // Добавьте этот extension
+    private fun Int.dpToPx(): Int {
+        return (this * resources.displayMetrics.density).toInt()
+    }
+
+
+
+
+
+
     /**
      * УНИВЕРСАЛЬНЫЙ перезапуск сервисов после краша
      */
@@ -3859,11 +4737,10 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        Log.d(TAG, "onResume: Activity становится активной")
 
         isActivityResumed = true
         wasActivityPaused = false
-
-        Log.d(TAG, "onResume: Activity становится активной")
 
         // Переинициализируем TTS если было паузирование
         if (wasActivityPaused && !isTTSInitialized) {
@@ -3875,6 +4752,22 @@ class MainActivity : AppCompatActivity() {
         // Сбрасываем флаги TTS для повторного озвучивания
         hasGreetingBeenSpoken = false
         hasAIContinuationBeenSpoken = false
+
+        // КРИТИЧЕСКИ ВАЖНО: При возвращении в Activity всегда показываем навигацию
+        // Это должно быть сделано СРАЗУ, без задержки
+        handler.post {
+            showTopNavigation()
+
+            // Также показываем навигацию в HomeFragment если он активен
+            if (currentFragmentTag == HOME_FRAGMENT_TAG) {
+                // Ищем HomeFragment и показываем его навигацию
+                supportFragmentManager.fragments.forEach { fragment ->
+                    if (fragment is HomeFragment && fragment.isAdded) {
+                        fragment.resetAllNavigation()
+                    }
+                }
+            }
+        }
 
         // Если приветствие видно - обновляем и повторно озвучиваем
         if (::welcomeCard.isInitialized && welcomeCard.visibility == View.VISIBLE) {
@@ -4231,7 +5124,7 @@ class MainActivity : AppCompatActivity() {
     private fun showCustomPopupMenu(anchorView: View) {
         try {
             val inflater = getSystemService(Context.LAYOUT_INFLATER_SERVICE) as LayoutInflater
-            val popupView = inflater.inflate(R.layout.popup_menu_layout, null)
+            val popupView = inflater.inflate(R.layout.popup_menu_grid, null)
 
             // Загружаем данные пользователя в меню
             loadUserDataToMenu(popupView)
@@ -4352,6 +5245,21 @@ class MainActivity : AppCompatActivity() {
         popupView.findViewById<View>(R.id.questionnaire_item).setOnClickListener {
             animateMenuItemClick(it)
             startUserQuestionnaireActivity()
+            popupWindow.dismiss()
+        }
+
+        // ЗАМЕТКИ - ДОБАВЬТЕ ЭТОТ ОБРАБОТЧИК
+        popupView.findViewById<View>(R.id.notes_item).setOnClickListener {
+            animateMenuItemClick(it)
+            try {
+                val intent = Intent(this, NotesActivity::class.java)
+                startActivity(intent)
+                // Опционально: добавьте анимацию перехода
+                overridePendingTransition(R.anim.fade_in, R.anim.fade_out)
+            } catch (e: Exception) {
+                Log.e(TAG, "Error starting NotesActivity", e)
+                Toast.makeText(this, "Ошибка открытия заметок", Toast.LENGTH_SHORT).show()
+            }
             popupWindow.dismiss()
         }
 
@@ -4499,8 +5407,6 @@ class MainActivity : AppCompatActivity() {
             .show()
     }
 
-
-
     /**
      * Настраивает внешний вид PopupWindow
      */
@@ -4532,12 +5438,7 @@ class MainActivity : AppCompatActivity() {
         popupWindow.width = preferredWidth.coerceIn(minWidth, maxWidth)
     }
 
-    /**
-     * Конвертация dp в px
-     */
-    private fun Int.dpToPx(): Int {
-        return (this * resources.displayMetrics.density).toInt()
-    }
+
 
     /**
      * Обрабатывает клики по пунктам стандартного меню
@@ -4561,6 +5462,17 @@ class MainActivity : AppCompatActivity() {
                     Log.e(TAG, "Error starting CategoriesActivity", e)
                 }
             }
+
+            // ДОБАВЛЯЕМ ОБРАБОТКУ ЗАМЕТОК
+            R.id.menu_notes -> {
+                try {
+                    startActivity(Intent(this, NotesActivity::class.java))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error starting NotesActivity", e)
+                    Toast.makeText(this, "Ошибка открытия заметок", Toast.LENGTH_SHORT).show()
+                }
+            }
+
             R.id.menu_alarm -> {
                 try {
                     startActivity(Intent(this, AlarmActivity::class.java))
@@ -4601,69 +5513,28 @@ class MainActivity : AppCompatActivity() {
     // Сохраняем ссылку на popupView для анимации
     private var popupView: View? = null
 
-    /**
-     * Обновленный setupBottomNavigation с безопасной навигацией
-     */
-    private fun setupBottomNavigation() {
-        lifecycleScope.launch(uiDispatcher) {
-            try {
-                bottomNav = binding.bottomNavigation
 
-                bottomNav.background = ContextCompat.getDrawable(this@MainActivity, R.drawable.transparent_nav_background)
-                bottomNav.elevation = 8f
-                bottomNav.itemIconTintList = ContextCompat.getColorStateList(this@MainActivity, R.color.bg_message_right)
-                bottomNav.itemTextColor = ContextCompat.getColorStateList(this@MainActivity, R.color.bg_message_right)
-
-                bottomNav.setOnItemSelectedListener { item ->
-                    when (item.itemId) {
-                        R.id.nav_home -> {
-                            safeSwitchToFragment(HOME_FRAGMENT_TAG) { HomeFragment() }
-                            true
-                        }
-                        R.id.nav_gigachat -> {
-                            safeSwitchToFragment(CHAT_FRAGMENT_TAG) { ChatWithGigaFragment() }
-                            true
-                        }
-                        R.id.nav_steps -> {
-                            safeSwitchToFragment(STEPS_FRAGMENT_TAG) { StepCounterFragment() }
-                            true
-                        }
-                        R.id.nav_maps -> {
-                            safeSwitchToFragment(MAPS_FRAGMENT_TAG) { LocationPagerFragment() }
-                            true
-                        }
-                        R.id.nav_games -> {
-                            safeSwitchToFragment(GAMES_FRAGMENT_TAG) { GamesFragment() }
-                            true
-                        }
-                        else -> false
-                    }
-                }
-
-                bottomNav.setOnItemReselectedListener { item ->
-                    when (item.itemId) {
-                        R.id.nav_home -> scrollNewsToTop()
-                    }
-                }
-
-                Log.d(TAG, "Bottom navigation setup completed")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error setting up bottom navigation", e)
-            }
-        }
-    }
 
     /**
-     * Сверхбезопасное переключение фрагментов с задержкой
+     * Безопасное переключение фрагментов с учетом полноэкранного режима
      */
     private fun safeSwitchToFragment(tag: String, fragmentFactory: () -> Fragment) {
         handler.postDelayed({
             lifecycleScope.launch(uiDispatcher) {
                 try {
+                    // При переключении на домашний фрагмент гарантируем показ всей навигации
+                    if (tag == HOME_FRAGMENT_TAG) {
+                        showTopNavigation()
+                    }
+
+                    // При переключении на чат - скрываем всю навигацию
+                    if (tag == CHAT_FRAGMENT_TAG) {
+                        hideTopNavigation()
+                    }
+
                     switchToFragment(tag, fragmentFactory)
                 } catch (e: Exception) {
                     Log.e(TAG, "Safe fragment switch failed for: $tag", e)
-                    // Последняя попытка
                     try {
                         clearAllFragments()
                         loadFragment(fragmentFactory(), tag)
@@ -4672,7 +5543,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }
-        }, 50) // Небольшая задержка для стабильности
+        }, 50)
     }
 
     /**

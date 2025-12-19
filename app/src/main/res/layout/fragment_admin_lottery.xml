@@ -1,143 +1,182 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:padding="16dp"
-    android:background="#2c3e50">
+    android:background="@drawable/background_main"
+    android:padding="16dp">
+
+
+<androidx.cardview.widget.CardView
+        android:id="@+id/cv_lottery_info"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_margin="8dp"
+        app:cardCornerRadius="8dp"
+        app:cardElevation="4dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toTopOf="parent">
+
+        <TextView
+            android:id="@+id/tv_lottery_info"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_margin="16dp"
+            android:textAppearance="?attr/textAppearanceHeadlineSmall"
+            android:textColor="@color/text_primary"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            tools:text="🎰 Информация о лотерее" />
+
+    </androidx.cardview.widget.CardView>
+
+    <androidx.cardview.widget.CardView
+        android:id="@+id/cv_admin_info"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_margin="8dp"
+        app:cardCornerRadius="8dp"
+        app:cardElevation="4dp"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/cv_lottery_info">
+
+        <TextView
+            android:id="@+id/tv_admin_info"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_margin="16dp"
+            android:textAppearance="?attr/textAppearanceHeadlineSmall"
+            android:textColor="@color/text_primary"
+            android:textSize="16sp"
+            android:textStyle="bold"
+            tools:text="👑 Панель администратора" />
+
+    </androidx.cardview.widget.CardView>
+
+    <androidx.recyclerview.widget.RecyclerView
+        android:id="@+id/rv_pending_payments"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:layout_margin="8dp"
+        app:layout_constraintBottom_toTopOf="@id/btn_container"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/cv_admin_info">
+
+    </androidx.recyclerview.widget.RecyclerView>
+
+    <TextView
+        android:id="@+id/tv_empty_payments"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:text="Нет ожидающих платежей"
+        android:textColor="@color/text_secondary"
+        android:textSize="14sp"
+        android:visibility="gone"
+        app:layout_constraintBottom_toTopOf="@id/btn_container"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/cv_admin_info" />
+
+    <TextView
+        android:id="@+id/tv_pending_count"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_margin="8dp"
+        android:text="Ожидающих платежей: 0"
+        android:textColor="@color/text_primary"
+        android:textSize="14sp"
+        android:textStyle="bold"
+        app:layout_constraintEnd_toEndOf="@id/rv_pending_payments"
+        app:layout_constraintTop_toBottomOf="@id/cv_admin_info" />
+
+    <ProgressBar
+        android:id="@+id/progressBar"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:indeterminate="true"
+        android:visibility="gone"
+        app:layout_constraintBottom_toBottomOf="@id/rv_pending_payments"
+        app:layout_constraintEnd_toEndOf="@id/rv_pending_payments"
+        app:layout_constraintStart_toStartOf="@id/rv_pending_payments"
+        app:layout_constraintTop_toTopOf="@id/rv_pending_payments" />
+
+    <TextView
+        android:id="@+id/tv_admin_status"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_margin="16dp"
+        android:background="@drawable/bg_status_message"
+        android:padding="8dp"
+        android:textColor="@color/white"
+        android:textSize="14sp"
+        android:visibility="gone"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintTop_toBottomOf="@id/rv_pending_payments" />
+
 
     <LinearLayout
-        android:layout_width="match_parent"
+        android:id="@+id/btn_container"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:orientation="vertical">
+        android:layout_margin="16dp"
+        android:orientation="vertical"
+        android:gravity="center_horizontal"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        app:layout_constraintStart_toStartOf="parent">
 
-        <!-- Заголовок -->
-        <TextView
-            android:id="@+id/tvAdminInfo"
+        <Button
+            android:id="@+id/btn_draw_winner"
+            style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="👑 Панель администратора лотереи"
-            android:textColor="@color/white"
-            android:textSize="20sp"
-            android:textStyle="bold"
-            android:gravity="center"
-            android:padding="16dp" />
+            android:layout_margin="8dp"
+            android:text="🎰 Провести розыгрыш"
+            android:textSize="16sp" />
 
-        <!-- Кнопка назад -->
         <Button
-            android:id="@+id/btnBack"
+            android:id="@+id/btn_force_new_lottery"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_margin="8dp"
+            android:text="🔄 Принудительно новая лотерея"
+            android:textSize="16sp" />
+
+        <Button
+            android:id="@+id/btn_refresh_payments"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_margin="8dp"
+            android:text="🔄 Обновить платежи"
+            android:textSize="16sp" />
+
+        <Button
+            android:id="@+id/btn_send_test_notification"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_margin="8dp"
+            android:text="📣 Отправить тестовое уведомление"
+            android:textSize="16sp" />
+
+        <Button
+            android:id="@+id/btn_back"
+            style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="⬅ Назад"
-            android:layout_marginBottom="16dp" />
-
-        <!-- Информация о лотерее -->
-        <TextView
-            android:id="@+id/tvLotteryInfo"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Загрузка..."
-            android:textColor="@color/white"
-            android:background="#3498db"
-            android:padding="12dp"
-            android:layout_marginBottom="16dp"
-            android:textSize="14sp" />
-
-        <!-- Статус -->
-        <TextView
-            android:id="@+id/tvAdminStatus"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text=""
-            android:textColor="#27ae60"
-            android:gravity="center"
-            android:visibility="gone"
-            android:padding="8dp"
-            android:layout_marginBottom="16dp" />
-
-        <!-- Прогресс бар -->
-        <ProgressBar
-            android:id="@+id/progressBar"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:visibility="gone"
-            android:layout_marginBottom="16dp" />
-
-        <!-- Основные действия -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="16dp">
-
-            <Button
-                android:id="@+id/btnDrawWinner"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="🎰 Розыгрыш"
-                android:layout_marginEnd="8dp"
-                 />
-
-            <Button
-                android:id="@+id/btnForceNewLottery"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:text="🔄 Новая"
-                android:layout_marginStart="8dp"
-                 />
-
-        </LinearLayout>
-
-        <!-- Тестовые уведомления -->
-        <Button
-            android:id="@+id/btnSendTestNotification"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="📢 Тест уведомления"
-            android:layout_marginBottom="16dp"
-             />
-
-        <!-- Раздел платежей -->
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="💳 Ожидающие платежи"
-            android:textColor="@color/white"
-            android:textSize="18sp"
-            android:textStyle="bold"
-            android:layout_marginBottom="8dp" />
-
-        <TextView
-            android:id="@+id/tvPendingCount"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Ожидающих платежей: 0"
-            android:textColor="@color/white"
-            android:layout_marginBottom="8dp" />
-
-        <Button
-            android:id="@+id/btnRefreshPayments"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="🔄 Обновить платежи"
-            android:layout_marginBottom="8dp" />
-
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/rvPendingPayments"
-            android:layout_width="match_parent"
-            android:layout_height="400dp"
-            android:layout_marginBottom="16dp" />
-
-        <TextView
-            android:id="@+id/tvEmptyPayments"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="✅ Нет ожидающих платежей"
-            android:textColor="@color/white"
-            android:gravity="center"
-            android:padding="32dp"
-            android:visibility="gone" />
+            android:layout_margin="8dp"
+            android:text="← Назад"
+            android:textSize="16sp" />
 
     </LinearLayout>
-</ScrollView>
+
+</androidx.constraintlayout.widget.ConstraintLayout>

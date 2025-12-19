@@ -1,6 +1,8 @@
 package com.example.chatapp.privetstvie_giga
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -36,7 +38,8 @@ class VoiceSettingsFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        ttsManager = (activity as MainActivity).getTTSManager() // Нужно добавить метод в MainActivity
+        ttsManager =
+            (activity as MainActivity).getTTSManager() // Нужно добавить метод в MainActivity
         voiceSettings = VoiceSettings(requireContext())
 
         setupUI()
@@ -96,6 +99,7 @@ class VoiceSettingsFragment : Fragment() {
                     ttsManager.updateVoiceSettings(speechRate = rate)
                 }
             }
+
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
@@ -110,6 +114,7 @@ class VoiceSettingsFragment : Fragment() {
                     ttsManager.updateVoiceSettings(pitch = pitch)
                 }
             }
+
             override fun onStartTrackingTouch(seekBar: SeekBar?) {}
             override fun onStopTrackingTouch(seekBar: SeekBar?) {}
         })
@@ -156,6 +161,8 @@ class VoiceSettingsFragment : Fragment() {
     private fun testVoiceSettings() {
         if (isTestingVoice) {
             ttsManager.stop()
+            isTestingVoice = false
+            binding.btnTestVoice.text = "🎤 Тест голоса"
             return
         }
 
@@ -193,8 +200,17 @@ class VoiceSettingsFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+
         ttsManager.stop()
-        // Восстанавливаем UI
-        (activity as? MainActivity)?.showSystemUI()
+
+        // Уведомляем MainActivity, что нужно восстановить полноэкранный режим чата
+        val mainActivity = activity as? MainActivity
+        mainActivity?.let {
+            // Даем время на анимацию перехода
+            Handler(Looper.getMainLooper()).postDelayed({
+                it.restoreChatFullscreenMode()
+            }, 50)
+        }
     }
+
 }

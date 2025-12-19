@@ -31,7 +31,7 @@ class SimpleLotteryFragment : Fragment() {
     private val viewModel: LotteryViewModel by viewModels()
     private val auth = FirebaseAuth.getInstance()
 
-    private val yourCardNumber = "5536914012345678"
+    private val yourCardNumber = "89015989426"
     private val yourName = "Руслан Соловьев"
 
     // Список всех популярных банковских приложений
@@ -590,7 +590,7 @@ class SimpleLotteryFragment : Fragment() {
         val instructions = """
             $bankName
             
-            💳 Карта: ${formatCardNumber(yourCardNumber)}
+            💳 Номер телефона: ${formatCardNumber(yourCardNumber)}
             👤 Получатель: $yourName  
             💵 Сумма: $amount ₽
             📝 Комментарий: Лотерея $ticketCount билетов
@@ -650,7 +650,7 @@ class SimpleLotteryFragment : Fragment() {
         val bankDetails = """
             💰 Перевод для лотереи
             
-            💳 Карта: ${formatCardNumber(yourCardNumber)}
+            💳 Номер телефона: ${formatCardNumber(yourCardNumber)}
             👤 Получатель: $yourName
             💵 Сумма: $amount ₽
             📝 Комментарий: Лотерея $ticketCount билетов
@@ -680,7 +680,7 @@ class SimpleLotteryFragment : Fragment() {
         val shareText = """
             💰 Перевод для лотереи
             
-            💳 Карта: ${formatCardNumber(yourCardNumber)}
+            💳 Номер телефона: ${formatCardNumber(yourCardNumber)}
             👤 Получатель: $yourName
             💵 Сумма: $amount ₽
             📝 Комментарий: Лотерея $ticketCount билетов

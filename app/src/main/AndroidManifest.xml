@@ -158,6 +158,29 @@
         android:exported="false" />
 
 
+
+        <!-- Notes Activities -->
+        <activity
+            android:name=".zametki.ui.main.NotesActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar"
+            android:label="Заметки" />
+
+        <activity
+            android:name=".zametki.ui.add.AddNoteActivity"
+            android:exported="false"
+            android:theme="@style/Theme.AppCompat.Light.NoActionBar"
+            android:label="Новая заметка"
+            android:parentActivityName=".zametki.ui.main.NotesActivity">
+
+            <meta-data
+                android:name="android.support.PARENT_ACTIVITY"
+                android:value="com.example.chatapp.zametki.ui.main.NotesActivity" />
+        </activity>
+
+
+
+
         <!-- ИЗМЕНЕНО: было landscape -->
         <activity
             android:name=".igra_strotegiy.StrategyGameActivity"
@@ -271,6 +294,15 @@
             android:name=".GuessNumberMenuActivity"
             android:screenOrientation="portrait"
             android:exported="false" />
+
+        <activity
+            android:name=".zametki.ui.main.AddNoteActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ChatApp"
+            android:windowSoftInputMode="adjustResize" />
+
+
+
         <activity
             android:name=".GuessNumberGameActivity"
             android:screenOrientation="portrait"

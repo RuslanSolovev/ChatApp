@@ -5,6 +5,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
 import android.media.MediaPlayer
 import android.os.Build
 import android.os.Bundle
@@ -14,12 +15,14 @@ import android.text.Editable
 import android.text.TextWatcher
 import android.util.Log
 import android.view.*
+import android.view.animation.AnimationUtils
 import android.view.inputmethod.InputMethodManager
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
+import androidx.core.content.ContextCompat
 import androidx.core.view.GravityCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -27,6 +30,7 @@ import androidx.drawerlayout.widget.DrawerLayout
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.lifecycleScope
+import androidx.recyclerview.widget.DividerItemDecoration
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.example.chatapp.R
@@ -116,6 +120,7 @@ class ChatWithGigaFragment : Fragment() {
     private val computationScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
 
 
+
     // Флаг инициализации
     private var isInitialized = false
     private var greetingJob: Job? = null
@@ -174,12 +179,21 @@ class ChatWithGigaFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        // ВАЖНО: При возобновлении фрагмента чата снова скрываем системные панели
+
+        // ВАЖНО: При возобновлении всегда включаем полноэкранный режим
+        hideSystemUI()
+
         activity?.let {
             if (it is MainActivity) {
+                // Уведомляем MainActivity, что мы в чате
                 it.hideSystemUIForChat()
             }
         }
+
+        // Если вернулись из настроек голоса, убедимся что все скрыто
+        handler.postDelayed({
+            hideSystemUI()
+        }, 100)
     }
 
     /**
@@ -240,19 +254,26 @@ class ChatWithGigaFragment : Fragment() {
     }
 
 
-    // Метод для открытия настроек голоса:
     private fun openVoiceSettings() {
         try {
+            // Сохраняем текущее состояние чата
+            saveChatSessionDuration()
+
             val fragment = VoiceSettingsFragment.newInstance()
             requireActivity().supportFragmentManager.beginTransaction()
                 .replace(R.id.fragment_container, fragment)
                 .addToBackStack("voice_settings")
                 .commitAllowingStateLoss()
+
+            // Уведомляем MainActivity о переходе
+            (activity as? MainActivity)?.onVoiceSettingsOpenedFromChat()
         } catch (e: Exception) {
             Log.e(TAG, "Error opening voice settings", e)
             Toast.makeText(requireContext(), "Ошибка открытия настроек", Toast.LENGTH_SHORT).show()
         }
     }
+
+
 
 
     /**
@@ -295,6 +316,12 @@ class ChatWithGigaFragment : Fragment() {
             menuClearDialog = view.findViewById(R.id.menuClearDialog)
             menuSettings = view.findViewById(R.id.menuSettings)
 
+            // === КНОПКА НАСТРОЕК ГОЛОСА ===
+            val btnVoiceSettings = view.findViewById<ImageButton>(R.id.btnVoiceSettings)
+            btnVoiceSettings?.setOnClickListener {
+                openVoiceSettings()
+            }
+
             // TTS элементы меню
             menuTTSControl = view.findViewById(R.id.menuTTSControl)
             switchTTS = view.findViewById(R.id.switchTTS)
@@ -315,16 +342,22 @@ class ChatWithGigaFragment : Fragment() {
         }
     }
 
-    /**
-     * Базовая настройка адаптеров
-     */
+
     private fun setupBasicAdapters() {
         try {
-            messageAdapter = GigaMessageAdapter { message ->
-                // Обработчик клика по сообщению для повторной озвучки
-                onMessageClicked(message)
-            }
+            // Создаем адаптер сообщений с обработчиками двойного и долгого нажатия
+            messageAdapter = GigaMessageAdapter(
+                onMessageClickListener = { message ->
+                    // Двойной клик - повторная озвучка сообщения
+                    repeatMessageSpeech(message)
+                },
+                onMessageLongClickListener = { message ->
+                    // Долгое нажатие - показ контекстного меню
+                    showMessageContextMenu(message)
+                }
+            )
 
+            // Настраиваем RecyclerView для сообщений
             recyclerView.apply {
                 layoutManager = LinearLayoutManager(requireContext()).apply {
                     stackFromEnd = true
@@ -332,82 +365,170 @@ class ChatWithGigaFragment : Fragment() {
                 adapter = messageAdapter
                 itemAnimator = null
 
-                // Создаем и добавляем обработчик касаний для двойного клика
-                val touchListener = object : RecyclerView.OnItemTouchListener {
-                    private var lastClickTime = 0L
-
-                    override fun onInterceptTouchEvent(rv: RecyclerView, e: MotionEvent): Boolean {
-                        if (e.action == MotionEvent.ACTION_DOWN) {
-                            val view = rv.findChildViewUnder(e.x, e.y)
-                            if (view != null) {
-                                val position = rv.getChildAdapterPosition(view)
-                                if (position != RecyclerView.NO_POSITION) {
-                                    val message = messageAdapter.getMessage(position)
-                                    message?.let {
-                                        val currentTime = System.currentTimeMillis()
-                                        if (currentTime - lastClickTime < DOUBLE_CLICK_DELAY) {
-                                            // Двойной клик - повторная озвучка
-                                            repeatMessageSpeech(it)
-                                            lastClickTime = 0
-                                        } else {
-                                            lastClickTime = currentTime
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        return false
+                // Добавляем слушатель прокрутки для автоматической прокрутки к новым сообщениям
+                addOnScrollListener(object : RecyclerView.OnScrollListener() {
+                    override fun onScrolled(recyclerView: RecyclerView, dx: Int, dy: Int) {
+                        super.onScrolled(recyclerView, dx, dy)
+                        // Можно добавить логику для скрытия/показа кнопки прокрутки вниз
                     }
+                })
 
-                    override fun onTouchEvent(rv: RecyclerView, e: MotionEvent) {
-                        // Не используется
-                    }
-
-                    override fun onRequestDisallowInterceptTouchEvent(disallowIntercept: Boolean) {
-                        // Не используется
-                    }
-                }
-
-                addOnItemTouchListener(touchListener)
+                // Добавляем аниматор для плавной прокрутки
+                val layoutAnimation = AnimationUtils.loadLayoutAnimation(
+                    requireContext(),
+                    R.anim.layout_animation_fall_down
+                )
+                this.layoutAnimation = layoutAnimation
             }
 
+            // Настраиваем адаптер для сохраненных диалогов
             savedDialogsAdapter = SavedDialogsAdapter(
-                onDialogSelected = { loadSavedDialogAsync(it) },
-                onDialogDeleted = { deleteDialogAsync(it.id) }
+                onDialogSelected = { savedDialog ->
+                    // Загрузка выбранного диалога
+                    loadSavedDialogAsync(savedDialog)
+                },
+                onDialogDeleted = { dialogId ->
+                    // Удаление диалога
+                    deleteDialogAsync(dialogId.toString())
+                }
             )
+
+            // Настраиваем RecyclerView для сохраненных диалогов
             savedDialogsRecyclerView.apply {
                 layoutManager = LinearLayoutManager(requireContext())
                 adapter = savedDialogsAdapter
+
+                // Добавляем разделитель между элементами
+                addItemDecoration(
+                    DividerItemDecoration(
+                        requireContext(),
+                        LinearLayoutManager.VERTICAL
+                    ).apply {
+                        setDrawable(
+                            ContextCompat.getDrawable(
+                                requireContext(),
+                                R.drawable.divider_horizontal
+                            ) ?: ColorDrawable(Color.parseColor("#E0E0E0"))
+                        )
+                    }
+                )
             }
+
+            // Настройка состояния пустого списка диалогов
+            tvEmptyDialogs.apply {
+                text = "Нет сохраненных диалогов"
+                setTextColor(Color.parseColor("#757575"))
+                textSize = 14f
+                gravity = Gravity.CENTER
+                visibility = View.GONE
+            }
+
+            // Инициализация слушателя данных для автоматической прокрутки
+            messageAdapter.registerAdapterDataObserver(object : RecyclerView.AdapterDataObserver() {
+                override fun onItemRangeInserted(positionStart: Int, itemCount: Int) {
+                    super.onItemRangeInserted(positionStart, itemCount)
+
+                    // Автоматическая прокрутка при добавлении новых сообщений
+                    if (positionStart == messageAdapter.itemCount - 1) {
+                        recyclerView.postDelayed({
+                            try {
+                                val layoutManager = recyclerView.layoutManager as LinearLayoutManager
+                                val lastVisiblePosition = layoutManager.findLastCompletelyVisibleItemPosition()
+                                val totalItemCount = layoutManager.itemCount
+
+                                // Прокручиваем если последнее сообщение не видно или видно не полностью
+                                if (lastVisiblePosition == RecyclerView.NO_POSITION ||
+                                    lastVisiblePosition < totalItemCount - 2) {
+                                    recyclerView.smoothScrollToPosition(messageAdapter.itemCount - 1)
+                                }
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Error in auto-scroll", e)
+                            }
+                        }, 100)
+                    }
+                }
+
+                override fun onItemRangeChanged(positionStart: Int, itemCount: Int) {
+                    super.onItemRangeChanged(positionStart, itemCount)
+                    // Можно добавить обработку изменений сообщений
+                }
+
+                override fun onItemRangeRemoved(positionStart: Int, itemCount: Int) {
+                    super.onItemRangeRemoved(positionStart, itemCount)
+                    // Можно добавить обработку удаления сообщений
+                }
+            })
 
             Log.d(TAG, "Basic adapters setup completed")
+
         } catch (e: Exception) {
             Log.e(TAG, "Error setting up basic adapters", e)
+            showToast("Ошибка инициализации чата")
+
+            // Fallback: минимальная настройка адаптеров
+            try {
+                messageAdapter = GigaMessageAdapter(
+                    onMessageClickListener = { message ->
+                        repeatMessageSpeech(message)
+                    },
+                    onMessageLongClickListener = { message ->
+                        showMessageContextMenu(message)
+                    }
+                )
+
+                recyclerView.layoutManager = LinearLayoutManager(requireContext()).apply {
+                    stackFromEnd = true
+                }
+                recyclerView.adapter = messageAdapter
+
+                savedDialogsAdapter = SavedDialogsAdapter(
+                    onDialogSelected = { loadSavedDialogAsync(it) },
+                    onDialogDeleted = { deleteDialogAsync(it.toString()) }
+                )
+
+                savedDialogsRecyclerView.layoutManager = LinearLayoutManager(requireContext())
+                savedDialogsRecyclerView.adapter = savedDialogsAdapter
+
+            } catch (e2: Exception) {
+                Log.e(TAG, "Fallback adapter setup also failed", e2)
+            }
         }
     }
 
     /**
-     * Обработчик клика по сообщению
+     * Вспомогательный метод для повтора озвучки сообщения
      */
-    private fun onMessageClicked(message: GigaMessage) {
-        try {
-            // Проверяем состояние TTS
-            if (!ttsManager.isInitialized && isTTSEnabled) {
-                showToast("Озвучка ещё инициализируется...")
+    private fun repeatMessageSpeech(message: GigaMessage) {
+        if (!isTTSEnabled) {
+            showToast("Озвучка отключена")
+            return
+        }
+
+        if (!ttsManager.isInitialized) {
+            showToast("Озвучка ещё не готова, подождите...")
+
+            // Добавляем в очередь ожидания только если его там еще нет
+            val isAlreadyInQueue = pendingTTSQueue.any { it.first == message.text }
+            if (!isAlreadyInQueue) {
                 pendingTTSQueue.add(Pair(message.text,
                     if (message.isUser) TTSManager.TYPE_CHAT_USER else TTSManager.TYPE_CHAT_BOT))
-                return
             }
-
-            // Показываем контекстное меню для сообщения
-            showMessageContextMenu(message)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error handling message click", e)
+            return
         }
+
+        // Останавливаем текущую озвучку и говорим новое сообщение
+        ttsManager.stop()
+        ttsManager.speak(message.text,
+            if (message.isUser) TTSManager.TYPE_CHAT_USER else TTSManager.TYPE_CHAT_BOT,
+            true
+        )
+
+        // Показывает анимацию повторной озвучки
+        showSpeechRepeatAnimation()
     }
 
     /**
-     * Показывает контекстное меню для сообщения
+     * Вспомогательный метод для показа контекстного меню сообщения
      */
     private fun showMessageContextMenu(message: GigaMessage) {
         try {
@@ -450,37 +571,9 @@ class ChatWithGigaFragment : Fragment() {
         }
     }
 
-    /**
-     * Повторяет озвучку сообщения
-     */
-    private fun repeatMessageSpeech(message: GigaMessage) {
-        if (!isTTSEnabled) {
-            showToast("Озвучка отключена")
-            return
-        }
 
-        if (!ttsManager.isInitialized) {
-            showToast("Озвучка ещё не готова, подождите...")
 
-            // Добавляем в очередь ожидания только если его там еще нет
-            val isAlreadyInQueue = pendingTTSQueue.any { it.first == message.text }
-            if (!isAlreadyInQueue) {
-                pendingTTSQueue.add(Pair(message.text,
-                    if (message.isUser) TTSManager.TYPE_CHAT_USER else TTSManager.TYPE_CHAT_BOT))
-            }
-            return
-        }
 
-        // Останавливаем текущую озвучку и говорим новое сообщение
-        ttsManager.stop()
-        ttsManager.speak(message.text,
-            if (message.isUser) TTSManager.TYPE_CHAT_USER else TTSManager.TYPE_CHAT_BOT,
-            true
-        )
-
-        // Показывает анимацию повторной озвучки
-        showSpeechRepeatAnimation()
-    }
 
     /**
      * Показывает анимацию повторной озвучки
@@ -547,13 +640,62 @@ class ChatWithGigaFragment : Fragment() {
                     viewModel.removeMessage(message)
                     messageAdapter.updateMessages(viewModel.messages.toList())
 
+                    // Показываем уведомление об удалении
                     Toast.makeText(requireContext(), "Сообщение удалено", Toast.LENGTH_SHORT).show()
+
+                    // Если удалили последнее сообщение, показываем приветствие
+                    if (viewModel.messages.isEmpty()) {
+                        isFirstLaunch = true
+                        handler.postDelayed({
+                            showSmartChatGreeting()
+                        }, 500)
+                    }
                 }
                 .setNegativeButton("Отмена", null)
                 .show()
         } catch (e: Exception) {
             Log.e(TAG, "Error deleting message", e)
             Toast.makeText(requireContext(), "Ошибка удаления сообщения", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    /**
+     * Показ умного приветствия в чате
+     */
+    private fun showSmartChatGreeting() {
+        if (!shouldShowGreeting()) return
+        uiScope.launch {
+            try {
+                // Загружаем фразу в фоновом потоке
+                val continuationPhrase = withContext(Dispatchers.IO) {
+                    try {
+                        loadContinuationPhraseForChat()
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error loading continuation phrase", e)
+                        "Рад нашей беседе! Чем могу помочь?"
+                    }
+                }
+
+                // Синхронно добавляем сообщение
+                withContext(Dispatchers.Main) {
+                    val message = GigaMessage(continuationPhrase, false, System.currentTimeMillis())
+
+                    // Добавляем в ViewModel (синхронно)
+                    viewModel.addMessage(continuationPhrase, false)
+
+                    // Добавляем в адаптер
+                    messageAdapter.addMessage(message)
+                    scrollToLastMessage()
+
+                    // ОЗВУЧКА приветствия
+                    speakText(continuationPhrase, TTSManager.TYPE_GREETING)
+
+                    Log.d(TAG, "Contextual greeting displayed: $continuationPhrase")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error showing smart chat greeting", e)
+                showFallbackGreeting()
+            }
         }
     }
 
@@ -1208,30 +1350,7 @@ class ChatWithGigaFragment : Fragment() {
         }
     }
 
-    /**
-     * Показ умного приветствия в чате
-     */
-    private fun showSmartChatGreeting() {
-        if (!shouldShowGreeting()) return
-        uiScope.launch {
-            try {
-                Log.d(TAG, "Showing smart chat greeting...")
-                val continuationPhrase = withContext(Dispatchers.IO) {
-                    try {
-                        loadContinuationPhraseForChat()
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error loading continuation phrase", e)
-                        "Рад нашей беседе! Чем могу помочь?"
-                    }
-                }
-                addWelcomeMessage(continuationPhrase)
-                Log.d(TAG, "Contextual greeting displayed: $continuationPhrase")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error showing smart chat greeting", e)
-                showFallbackGreeting()
-            }
-        }
-    }
+
 
     /**
      * Загружает фразу продолжения для чата
@@ -2057,10 +2176,12 @@ class ChatWithGigaFragment : Fragment() {
         }
     }
 
-    // Жизненный цикл
     override fun onPause() {
         super.onPause()
-        showSystemUI()
+
+        // НЕ показываем системные панели при паузе
+        // showSystemUI() - УБРАТЬ ЭТУ СТРОКУ!
+
         saveChatSessionDuration()
 
         // Останавливаем TTS при уходе с экрана
@@ -2125,25 +2246,42 @@ class ChatWithGigaFragment : Fragment() {
     }
 
     /**
-     * Полное скрытие системных панелей
+     * Универсальный метод скрытия системных панелей (должен вызываться всегда при показе чата)
      */
-    private fun hideSystemUI() {
-        activity?.window?.decorView?.systemUiVisibility = (
-                View.SYSTEM_UI_FLAG_FULLSCREEN or
-                        View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
-                        View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
-                        View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
-                        View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
-                        View.SYSTEM_UI_FLAG_LAYOUT_STABLE
-                )
-        activity?.window?.navigationBarColor = Color.TRANSPARENT
-        activity?.window?.statusBarColor = Color.TRANSPARENT
-        activity?.window?.clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN)
-        activity?.window?.addFlags(
-            WindowManager.LayoutParams.FLAG_FULLSCREEN or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
-        )
+    fun hideSystemUI() {
+        try {
+            // 1. Скрываем системные панели Android
+            activity?.window?.decorView?.systemUiVisibility = (
+                    View.SYSTEM_UI_FLAG_FULLSCREEN
+                            or View.SYSTEM_UI_FLAG_HIDE_NAVIGATION
+                            or View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+                            or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+                            or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
+                            or View.SYSTEM_UI_FLAG_LAYOUT_STABLE
+                    )
+
+            activity?.window?.navigationBarColor = Color.TRANSPARENT
+            activity?.window?.statusBarColor = Color.TRANSPARENT
+
+            // 2. Сразу скрываем навигацию MainActivity используя публичный метод
+            (activity as? MainActivity)?.let { mainActivity ->
+                mainActivity.hideNavigationForChat()
+            }
+
+            // 3. Скрываем приветственную карточку если она есть
+            (activity as? MainActivity)?.welcomeCard?.let { card ->
+                if (card.visibility == View.VISIBLE) {
+                    card.visibility = View.GONE
+                }
+            }
+
+            Log.d(TAG, "System UI hidden for chat (bottom navigation forced hidden)")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error hiding system UI", e)
+        }
     }
+
 
     /**
      * Восстановление системных панелей

@@ -3,7 +3,15 @@
     android:height="24dp"
     android:viewportWidth="24"
     android:viewportHeight="24">
+
+    <!-- Фон/контуры — тёмные -->
     <path
-        android:fillColor="#FF000000"
-        android:pathData="M14,4H6v16h12V8h-4V4H6z M4,20V4c0,-1.1 0.9,-2 2,-2h6l4,4h4c1.1,0 2,0.9 2,2v12c0,1.1 -0.9,2 -2,2H6C4.9,22 4,21.1 4,20z M8,12h8v1H8v-1z M8,14h8v1H8v-1z M8,16h5v1H8v-1z"/>
+        android:fillColor="#000000"
+        android:pathData="M20,2H4c-1.1,0 -2,0.9 -2,2v16l4,-4h14c1.1,0 2,-0.9 2,-2V4c0,-1.1 -0.9,-2 -2,-2z"/>
+
+    <!-- Внутренняя часть — светлая -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M20,3H4c-0.55,0 -1,0.45 -1,1v14.5l3,-3h13c0.55,0 1,-0.45 1,-1V4c0,-0.55 -0.45,-1 -1,-1z"/>
+
 </vector>

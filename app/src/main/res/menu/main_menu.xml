@@ -25,6 +25,11 @@
         android:checkableBehavior="none">
 
         <item
+            android:id="@+id/menu_notes"
+            android:title="📝 Заметки"
+            app:showAsAction="never" />
+
+        <item
             android:id="@+id/menu_mozgi"
             android:title="Мозг Тест"
             android:icon="@drawable/ic_brain"
@@ -59,6 +64,7 @@
             android:title="🎰 Лотерея"
             android:icon="@drawable/ic_army_enemy"
             app:showAsAction="never" />
+
 
     </group>
 

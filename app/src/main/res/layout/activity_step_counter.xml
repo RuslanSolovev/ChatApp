@@ -65,6 +65,33 @@
                 android:textSize="14sp" />
         </LinearLayout>
 
+
+
+        <!-- 🔹 ГРАФИК АКТИВНОСТИ (последние 7 дней) -->
+        <com.github.mikephil.charting.charts.BarChart
+            android:id="@+id/chart_activity"
+            android:layout_width="match_parent"
+            android:layout_height="300dp"
+            android:layout_marginTop="16dp"
+            android:layout_marginBottom="24dp"
+            android:padding="8dp" />
+
+
+        <!-- Кнопка показать топ -->
+        <Button
+            android:id="@+id/btn_show_top"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Топ пользователей"
+            android:textSize="18sp"
+            android:textColor="@color/white"
+            android:drawableStart="@drawable/ic_leaderboard"
+            android:drawableTint="@color/white"
+            android:backgroundTint="@color/gradientStart"
+            android:paddingVertical="18dp"
+            android:layout_marginBottom="30dp" />
+
+
         <!-- Карточка сегодняшних шагов -->
         <androidx.cardview.widget.CardView
             android:id="@+id/card_today"
@@ -269,27 +296,6 @@
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 
-        <!-- 🔹 ГРАФИК АКТИВНОСТИ (последние 7 дней) -->
-        <com.github.mikephil.charting.charts.BarChart
-            android:id="@+id/chart_activity"
-            android:layout_width="match_parent"
-            android:layout_height="200dp"
-            android:layout_marginTop="16dp"
-            android:layout_marginBottom="24dp" />
-
-        <!-- Кнопка показать топ -->
-        <Button
-            android:id="@+id/btn_show_top"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="Топ пользователей"
-            android:textSize="18sp"
-            android:textColor="@color/white"
-            android:drawableStart="@drawable/ic_leaderboard"
-            android:drawableTint="@color/white"
-            android:backgroundTint="@color/gradientStart"
-            android:paddingVertical="18dp"
-            android:layout_marginBottom="30dp" />
-
     </LinearLayout>
+
 </ScrollView>

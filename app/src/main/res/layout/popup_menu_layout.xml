@@ -152,6 +152,50 @@
         android:paddingEnd="24dp"
         android:paddingBottom="12dp" />
 
+    <!-- Заметки -->
+    <LinearLayout
+        android:id="@+id/notes_item"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:orientation="horizontal"
+        android:paddingStart="24dp"
+        android:paddingEnd="24dp"
+        android:background="?attr/selectableItemBackground"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical">
+
+        <ImageView
+            android:layout_width="28dp"
+            android:layout_height="28dp"
+            android:layout_marginEnd="16dp"
+            android:src="@drawable/ic_game"
+            app:tint="@color/colorPrimary" />
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="📝 Заметки"
+            android:textSize="16sp"
+            android:textColor="@color/on_surface" />
+
+        <!-- Бейдж для непрочитанных заметок -->
+        <TextView
+            android:id="@+id/badge_notes"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="3"
+            android:textSize="11sp"
+            android:textColor="@color/on_primary"
+            android:fontFamily="sans-serif-medium"
+            android:background="@drawable/badge_background"
+            android:paddingHorizontal="6dp"
+            android:paddingVertical="2dp"
+            android:visibility="gone" />
+
+    </LinearLayout>
+
     <!-- Лотерея -->
     <LinearLayout
         android:id="@+id/games_item"

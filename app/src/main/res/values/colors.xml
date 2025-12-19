@@ -22,6 +22,10 @@
     <color name="text_secondary2">#757575</color>
     <color name="divider">#E0E0E0</color>
 
+    <!-- Цвета для статуса -->
+    <color name="status_background">#03DAC6</color>
+    <color name="status_border">#00C7B4</color>
+
 
     <color name="surface">#FFFFFF</color>
     <color name="on_surface">#1C1B1F</color>

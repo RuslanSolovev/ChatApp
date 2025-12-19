@@ -30,7 +30,7 @@ class TTSManager(
         const val TYPE_SYSTEM = "system"
         const val TYPE_ERROR = "error"
 
-        // Голоса Яндекс SpeechKit
+        // Голоса Яндекс SpeechKit (для отображения в UI)
         val YANDEX_VOICES = mapOf(
             "oksana" to "Оксана (женский, нейтральный)",
             "jane" to "Джейн (женский, эмоциональный)",
@@ -45,6 +45,13 @@ class TTSManager(
         const val GENDER_FEMALE = "female"
         const val GENDER_MALE = "male"
         const val GENDER_NEUTRAL = "neutral"
+
+        // Стандартные системные голоса Android
+        val SYSTEM_VOICES = mapOf(
+            "ru-RU" to "Русский (системный)",
+            "en-US" to "Английский (США)",
+            "default" to "Системный по умолчанию"
+        )
     }
 
     private lateinit var textToSpeech: TextToSpeech
@@ -205,18 +212,19 @@ class TTSManager(
             // Скорость речи (0.5 - 2.0)
             val rate = voiceSettings.getFloat(KEY_SPEECH_RATE, 1.0f).coerceIn(0.5f, 2.0f)
             textToSpeech.setSpeechRate(rate)
+            Log.d(TAG, "Speech rate set to: $rate")
 
             // Тон голоса (0.5 - 2.0)
             val pitch = voiceSettings.getFloat(KEY_PITCH, 1.0f).coerceIn(0.5f, 2.0f)
             textToSpeech.setPitch(pitch)
+            Log.d(TAG, "Pitch set to: $pitch")
 
-            // Попытка установить голос по полу (для Android API 21+)
+            // Попытка установить голос (для Android API 21+)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-                val gender = voiceSettings.getString(KEY_VOICE_GENDER, GENDER_FEMALE) ?: GENDER_FEMALE
-                setSystemVoiceByGender(gender)
+                setSystemVoice()
             }
 
-            Log.d(TAG, "Voice settings applied: rate=$rate, pitch=$pitch")
+            Log.d(TAG, "Voice settings applied successfully")
 
         } catch (e: Exception) {
             Log.e(TAG, "Error applying voice settings", e)
@@ -224,47 +232,291 @@ class TTSManager(
     }
 
     /**
-     * Устанавливает системный голос по полу
+     * Устанавливает системный голос на основе настроек
      */
     @androidx.annotation.RequiresApi(Build.VERSION_CODES.LOLLIPOP)
-    private fun setSystemVoiceByGender(gender: String) {
+    private fun setSystemVoice() {
         try {
-            val voices = textToSpeech.voices
-            if (voices == null || voices.isEmpty()) return
+            val gender = voiceSettings.getString(KEY_VOICE_GENDER, GENDER_FEMALE) ?: GENDER_FEMALE
+            val voiceName = voiceSettings.getString(KEY_VOICE_NAME, "default") ?: "default"
 
-            // Ищем русский голос по полу
-            val targetVoice = voices.find { voice ->
-                voice.locale.language == "ru" &&
-                        when (gender) {
-                            GENDER_MALE -> voice.name.contains("male", true) ||
-                                    voice.name.contains("мужск", true) ||
-                                    voice.name.contains("zahar", true) ||
-                                    voice.name.contains("ermil", true) ||
-                                    voice.name.contains("filipp", true)
-                            GENDER_FEMALE -> voice.name.contains("female", true) ||
-                                    voice.name.contains("женск", true) ||
-                                    voice.name.contains("oksana", true) ||
-                                    voice.name.contains("jane", true) ||
-                                    voice.name.contains("alena", true) ||
-                                    voice.name.contains("omazh", true)
-                            else -> true // нейтральный - любой голос
-                        }
+            Log.d(TAG, "Setting voice - Name: $voiceName, Gender: $gender")
+
+            // Получаем все доступные голоса
+            val availableVoices = textToSpeech.voices
+            if (availableVoices == null || availableVoices.isEmpty()) {
+                Log.w(TAG, "No voices available in system")
+                return
             }
 
-            targetVoice?.let {
-                textToSpeech.voice = it
-                Log.d(TAG, "Voice set to: ${it.name}")
+            // Логируем все доступные голоса для отладки
+            Log.d(TAG, "Available voices (${availableVoices.size}):")
+            availableVoices.forEachIndexed { index, voice ->
+                Log.d(TAG, "  $index: ${voice.name} - Locale: ${voice.locale}, Features: ${voice.features}")
+            }
+
+            // Ищем подходящий голос
+            var targetVoice: android.speech.tts.Voice? = null
+
+            // Стратегия 1: Попробовать найти по имени из настроек
+            if (voiceName != "default") {
+                targetVoice = availableVoices.find { voice ->
+                    voice.name.contains(voiceName, true) ||
+                            voice.name.lowercase().contains(voiceName.lowercase())
+                }
+                if (targetVoice != null) {
+                    Log.d(TAG, "Found voice by name: ${targetVoice.name}")
+                }
+            }
+
+            // Стратегия 2: Искать по полу и русской локали
+            if (targetVoice == null) {
+                targetVoice = availableVoices.find { voice ->
+                    val isRussian = voice.locale.language == "ru" ||
+                            voice.locale.toString().startsWith("ru")
+
+                    if (!isRussian) return@find false
+
+                    when (gender) {
+                        GENDER_MALE -> {
+                            voice.name.contains("male", true) ||
+                                    voice.name.contains("мужск", true) ||
+                                    voice.name.lowercase().contains("male") ||
+                                    voice.name.lowercase().contains("мужск")
+                        }
+                        GENDER_FEMALE -> {
+                            voice.name.contains("female", true) ||
+                                    voice.name.contains("женск", true) ||
+                                    voice.name.lowercase().contains("female") ||
+                                    voice.name.lowercase().contains("женск")
+                        }
+                        else -> true // Для neutral берем любой голос
+                    }
+                }
+
+                if (targetVoice != null) {
+                    Log.d(TAG, "Found voice by gender and locale: ${targetVoice.name}")
+                }
+            }
+
+            // Стратегия 3: Искать любой русский голос
+            if (targetVoice == null) {
+                targetVoice = availableVoices.find { voice ->
+                    voice.locale.language == "ru" ||
+                            voice.locale.toString().startsWith("ru")
+                }
+
+                if (targetVoice != null) {
+                    Log.d(TAG, "Found Russian voice: ${targetVoice.name}")
+                }
+            }
+
+            // Стратегия 4: Использовать голос по умолчанию системы
+            if (targetVoice == null) {
+                targetVoice = textToSpeech.defaultVoice
+                if (targetVoice != null) {
+                    Log.d(TAG, "Using default system voice: ${targetVoice.name}")
+                }
+            }
+
+            // Стратегия 5: Использовать первый доступный голос
+            if (targetVoice == null && availableVoices.isNotEmpty()) {
+                targetVoice = availableVoices.first()
+                Log.d(TAG, "Using first available voice: ${targetVoice.name}")
+            }
+
+            // Устанавливаем найденный голос
+            targetVoice?.let { voice ->
+                textToSpeech.voice = voice
+                Log.d(TAG, "Voice successfully set to: ${voice.name}, Locale: ${voice.locale}")
             } ?: run {
-                // Используем первый доступный русский голос
-                val russianVoice = voices.find { it.locale.language == "ru" }
-                russianVoice?.let { textToSpeech.voice = it }
+                Log.w(TAG, "Could not find any suitable voice")
             }
 
         } catch (e: Exception) {
-            Log.e(TAG, "Error setting system voice by gender", e)
+            Log.e(TAG, "Error setting system voice", e)
         }
     }
 
+    /**
+     * ОБНОВЛЕНИЕ НАСТРОЕК ГОЛОСА
+     */
+    fun updateVoiceSettings(
+        voiceName: String? = null,
+        speechRate: Float? = null,
+        pitch: Float? = null,
+        gender: String? = null
+    ) {
+        Log.d(TAG, "Updating voice settings - Voice: $voiceName, Rate: $speechRate, Pitch: $pitch, Gender: $gender")
+
+        val editor = voiceSettings.edit()
+
+        voiceName?.let {
+            editor.putString(KEY_VOICE_NAME, it)
+        }
+        speechRate?.let {
+            editor.putFloat(KEY_SPEECH_RATE, it.coerceIn(0.5f, 2.0f))
+        }
+        pitch?.let {
+            editor.putFloat(KEY_PITCH, it.coerceIn(0.5f, 2.0f))
+        }
+        gender?.let {
+            editor.putString(KEY_VOICE_GENDER, it)
+        }
+
+        editor.apply()
+
+        // Немедленно применяем обновленные настройки
+        if (_isInitialized) {
+            applyVoiceSettings()
+            Log.d(TAG, "Voice settings updated and applied")
+        } else {
+            Log.w(TAG, "Cannot apply settings - TTS not initialized")
+        }
+    }
+
+    /**
+     * ПОЛУЧЕНИЕ ИМЕНИ ГОЛОСА ДЛЯ ОТОБРАЖЕНИЯ
+     */
+    fun getVoiceDisplayName(): String {
+        val voiceName = voiceSettings.getString(KEY_VOICE_NAME, "default") ?: "default"
+        return YANDEX_VOICES[voiceName] ?: SYSTEM_VOICES[voiceName] ?: voiceName
+    }
+
+    /**
+     * СБРОС НАСТРОЕК ГОЛОСА К ЗНАЧЕНИЯМ ПО УМОЛЧАНИЮ
+     */
+    fun resetVoiceSettings() {
+        Log.d(TAG, "Resetting voice settings to defaults")
+
+        voiceSettings.edit()
+            .putString(KEY_VOICE_NAME, "default")
+            .putFloat(KEY_SPEECH_RATE, 1.0f)
+            .putFloat(KEY_PITCH, 1.0f)
+            .putString(KEY_VOICE_GENDER, GENDER_FEMALE)
+            .apply()
+
+        applyVoiceSettings()
+        Log.d(TAG, "Voice settings reset to defaults")
+    }
+
+    /**
+     * ТЕСТИРОВАНИЕ ГОЛОСА С ТЕКУЩИМИ НАСТРОЙКАМИ
+     */
+    fun testVoice(text: String = "Привет! Это тестовая озвучка с текущими настройками голоса.", onComplete: (() -> Unit)? = null) {
+        if (!isTTSEnabled()) {
+            Log.d(TAG, "TTS is disabled, cannot test voice")
+            onComplete?.invoke()
+            return
+        }
+
+        if (!_isInitialized) {
+            Log.d(TAG, "TTS not initialized, cannot test voice")
+            onComplete?.invoke()
+            return
+        }
+
+        Log.d(TAG, "Testing voice with text: ${text.take(50)}...")
+        speak(text, TYPE_SYSTEM, interrupt = true, onComplete)
+    }
+
+    /**
+     * ВКЛЮЧЕНИЕ/ВЫКЛЮЧЕНИЕ TTS
+     */
+    fun setTTSEnabled(enabled: Boolean) {
+        Log.d(TAG, "Setting TTS enabled: $enabled")
+
+        voiceSettings.edit()
+            .putBoolean(KEY_IS_TTS_ENABLED, enabled)
+            .apply()
+
+        if (!enabled) {
+            stop()
+            clearQueue()
+        }
+
+        Log.d(TAG, "TTS enabled: $enabled")
+    }
+
+    /**
+     * ПРОВЕРКА ВКЛЮЧЕН ЛИ TTS
+     */
+    fun isTTSEnabled(): Boolean {
+        return voiceSettings.getBoolean(KEY_IS_TTS_ENABLED, true)
+    }
+
+    /**
+     * ПОЛУЧЕНИЕ СТАТУСА TTS
+     */
+    fun getTTSStatus(): String {
+        return when {
+            !_isInitialized -> "Не инициализирован"
+            !isTTSEnabled() -> "Отключен"
+            isSpeaking -> "Говорит"
+            else -> "Готов"
+        }
+    }
+
+    /**
+     * Проверяет доступность TTS
+     */
+    fun checkTTSAvailability(): Boolean {
+        return try {
+            if (!::textToSpeech.isInitialized) return false
+            val engineInfo = textToSpeech.engines
+            engineInfo?.isNotEmpty() ?: false
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking TTS availability", e)
+            false
+        }
+    }
+
+    /**
+     * ПОЛУЧЕНИЕ СПИСКА ДОСТУПНЫХ ГОЛОСОВ
+     */
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.LOLLIPOP)
+    fun getAvailableVoices(): List<String> {
+        return try {
+            textToSpeech.voices?.map { voice ->
+                "${voice.name} (${voice.locale.displayName})"
+            } ?: emptyList()
+        } catch (e: Exception) {
+            Log.e(TAG, "Error getting available voices", e)
+            emptyList()
+        }
+    }
+
+    /**
+     * СОХРАНЕНИЕ КАСТОМНЫХ НАСТРОЕК ГОЛОСА
+     */
+    fun saveCustomVoicePreset(name: String, settings: Map<String, Any>) {
+        val editor = voiceSettings.edit()
+
+        settings["voiceName"]?.let { editor.putString("${name}_voiceName", it.toString()) }
+        settings["speechRate"]?.let { editor.putFloat("${name}_speechRate", (it as? Number)?.toFloat() ?: 1.0f) }
+        settings["pitch"]?.let { editor.putFloat("${name}_pitch", (it as? Number)?.toFloat() ?: 1.0f) }
+        settings["voiceGender"]?.let { editor.putString("${name}_voiceGender", it.toString()) }
+
+        editor.apply()
+        Log.d(TAG, "Voice preset '$name' saved")
+    }
+
+    /**
+     * ЗАГРУЗКА КАСТОМНЫХ НАСТРОЕК ГОЛОСА
+     */
+    fun loadCustomVoicePreset(name: String) {
+        val voiceName = voiceSettings.getString("${name}_voiceName", null)
+        val speechRate = voiceSettings.getFloat("${name}_speechRate", 1.0f)
+        val pitch = voiceSettings.getFloat("${name}_pitch", 1.0f)
+        val gender = voiceSettings.getString("${name}_voiceGender", null)
+
+        updateVoiceSettings(voiceName, speechRate, pitch, gender)
+        Log.d(TAG, "Voice preset '$name' loaded")
+    }
+
+    /**
+     * ОЗВУЧИВАНИЕ ТЕКСТА
+     */
     fun speak(text: String, type: String = TYPE_SYSTEM, interrupt: Boolean = true, onComplete: (() -> Unit)? = null) {
         // Проверяем включен ли TTS
         if (!isTTSEnabled()) {
@@ -345,7 +597,7 @@ class TTSManager(
         try {
             val utteranceId = "${type}_${System.currentTimeMillis()}"
 
-            // Устанавливаем параметры для разных типов
+            // Настраиваем параметры для разных типов сообщений
             when (type) {
                 TYPE_GREETING -> {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
@@ -447,158 +699,76 @@ class TTSManager(
     }
 
     /**
-     * ОБНОВЛЕНИЕ НАСТРОЕК ГОЛОСА
+     * ПОЛУЧЕНИЕ ТЕКУЩИХ НАСТРОЕК
+     *
      */
-    fun updateVoiceSettings(
-        voiceName: String? = null,
-        speechRate: Float? = null,
-        pitch: Float? = null,
-        gender: String? = null
-    ) {
-        val editor = voiceSettings.edit()
-
-        voiceName?.let {
-            editor.putString(KEY_VOICE_NAME, it)
-        }
-        speechRate?.let {
-            editor.putFloat(KEY_SPEECH_RATE, it.coerceIn(0.5f, 2.0f))
-        }
-        pitch?.let {
-            editor.putFloat(KEY_PITCH, it.coerceIn(0.5f, 2.0f))
-        }
-        gender?.let {
-            editor.putString(KEY_VOICE_GENDER, it)
-        }
-
-        editor.apply()
-        applyVoiceSettings()
-    }
-
-
     /**
-     * ПОЛУЧЕНИЕ ИМЕНИ ГОЛОСА ДЛЯ ОТОБРАЖЕНИЯ
+     * ПОЛУЧЕНИЕ ТЕКУЩИХ НАСТРОЕК
      */
-    fun getVoiceDisplayName(): String {
-        val voiceName = voiceSettings.getString(KEY_VOICE_NAME, "oksana") ?: "oksana"
-        return YANDEX_VOICES[voiceName] ?: voiceName
+    fun getCurrentSettings(): Map<String, Any> {
+        val settings = mutableMapOf<String, Any>()
+
+        settings["voiceName"] = voiceSettings.getString(KEY_VOICE_NAME, "default") ?: "default"
+        settings["speechRate"] = voiceSettings.getFloat(KEY_SPEECH_RATE, 1.0f)
+        settings["pitch"] = voiceSettings.getFloat(KEY_PITCH, 1.0f)
+        settings["voiceGender"] = voiceSettings.getString(KEY_VOICE_GENDER, GENDER_FEMALE) ?: GENDER_FEMALE
+        settings["ttsEnabled"] = voiceSettings.getBoolean(KEY_IS_TTS_ENABLED, true)
+
+        return settings
     }
 
     /**
-     * СБРОС НАСТРОЕК ГОЛОСА К ЗНАЧЕНИЯМ ПО УМОЛЧАНИЮ
+     * ОТЛАДОЧНАЯ ИНФОРМАЦИЯ
      */
-    fun resetVoiceSettings() {
-        voiceSettings.edit()
-            .putString(KEY_VOICE_NAME, "oksana")
-            .putFloat(KEY_SPEECH_RATE, 1.0f)
-            .putFloat(KEY_PITCH, 1.0f)
-            .putString(KEY_VOICE_GENDER, GENDER_FEMALE)
-            .apply()
-        applyVoiceSettings()
-        Log.d(TAG, "Voice settings reset to defaults")
+    fun getDebugInfo(): String {
+        return """
+            TTS Status: ${getTTSStatus()}
+            Initialized: $_isInitialized
+            Speaking: $isSpeaking
+            Queue Size: ${speechQueue.size}
+            Voice Name: ${getVoiceDisplayName()}
+            Speech Rate: ${voiceSettings.getFloat(KEY_SPEECH_RATE, 1.0f)}
+            Pitch: ${voiceSettings.getFloat(KEY_PITCH, 1.0f)}
+            Gender: ${voiceSettings.getString(KEY_VOICE_GENDER, GENDER_FEMALE)}
+            TTS Enabled: ${isTTSEnabled()}
+        """.trimIndent()
     }
 
     /**
-     * ТЕСТИРОВАНИЕ ГОЛОСА С ТЕКУЩИМИ НАСТРОЙКАМИ
+     * ПРОВЕРКА НАЛИЧИЯ РУССКИХ ГОЛОСОВ
      */
-    fun testVoice(text: String = "Привет! Это тестовая озвучка с текущими настройками голоса.", onComplete: (() -> Unit)? = null) {
-        if (!isTTSEnabled()) {
-            Log.d(TAG, "TTS is disabled, cannot test voice")
-            onComplete?.invoke()
-            return
-        }
-
-        speak(text, TYPE_SYSTEM, interrupt = true, onComplete)
-    }
-
-    /**
-     * ВКЛЮЧЕНИЕ/ВЫКЛЮЧЕНИЕ TTS
-     */
-    fun setTTSEnabled(enabled: Boolean) {
-        voiceSettings.edit()
-            .putBoolean(KEY_IS_TTS_ENABLED, enabled)
-            .apply()
-
-        if (!enabled) {
-            stop()
-            clearQueue()
-        }
-
-        Log.d(TAG, "TTS enabled: $enabled")
-    }
-
-    /**
-     * ПРОВЕРКА ВКЛЮЧЕН ЛИ TTS
-     */
-    fun isTTSEnabled(): Boolean {
-        return voiceSettings.getBoolean(KEY_IS_TTS_ENABLED, true)
-    }
-
-    /**
-     * ПОЛУЧЕНИЕ СТАТУСА TTS
-     */
-    fun getTTSStatus(): String {
-        return when {
-            !_isInitialized -> "Не инициализирован"
-            !isTTSEnabled() -> "Отключен"
-            isSpeaking -> "Говорит"
-            else -> "Готов"
-        }
-    }
-
-    /**
-     * Проверяет доступность TTS
-     */
-    fun checkTTSAvailability(): Boolean {
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.LOLLIPOP)
+    fun hasRussianVoice(): Boolean {
         return try {
-            if (!::textToSpeech.isInitialized) return false
-            val engineInfo = textToSpeech.engines
-            engineInfo?.isNotEmpty() ?: false
+            val voices = textToSpeech.voices ?: return false
+            voices.any { voice ->
+                voice.locale.language == "ru" ||
+                        voice.locale.toString().startsWith("ru")
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Error checking TTS availability", e)
+            Log.e(TAG, "Error checking Russian voices", e)
             false
         }
     }
 
     /**
-     * ПОЛУЧЕНИЕ СПИСКА ДОСТУПНЫХ ГОЛОСОВ
+     * ПОЛУЧЕНИЕ ИНФОРМАЦИИ О ГОЛОСАХ ДЛЯ ОТЛАДКИ
      */
     @androidx.annotation.RequiresApi(Build.VERSION_CODES.LOLLIPOP)
-    fun getAvailableVoices(): List<String> {
+    fun getVoicesDebugInfo(): String {
         return try {
-            textToSpeech.voices?.map { voice ->
-                "${voice.name} (${voice.locale.displayName})"
-            } ?: emptyList()
+            val voices = textToSpeech.voices ?: return "No voices available"
+
+            val debugInfo = StringBuilder("Available Voices (${voices.size}):\n")
+            voices.forEachIndexed { index, voice ->
+                debugInfo.append("$index: ${voice.name} (${voice.locale.displayName})\n")
+                debugInfo.append("     Features: ${voice.features}\n")
+                debugInfo.append("     Quality: ${voice.quality}\n")
+                debugInfo.append("     Latency: ${voice.latency}\n")
+            }
+            debugInfo.toString()
         } catch (e: Exception) {
-            Log.e(TAG, "Error getting available voices", e)
-            emptyList()
+            "Error getting voices: ${e.message}"
         }
-    }
-
-    /**
-     * СОХРАНЕНИЕ КАСТОМНЫХ НАСТРОЕК ГОЛОСА
-     */
-    fun saveCustomVoicePreset(name: String, settings: Map<String, Any>) {
-        val editor = voiceSettings.edit()
-
-        settings["voiceName"]?.let { editor.putString("${name}_voiceName", it.toString()) }
-        settings["speechRate"]?.let { editor.putFloat("${name}_speechRate", (it as? Number)?.toFloat() ?: 1.0f) }
-        settings["pitch"]?.let { editor.putFloat("${name}_pitch", (it as? Number)?.toFloat() ?: 1.0f) }
-        settings["voiceGender"]?.let { editor.putString("${name}_voiceGender", it.toString()) }
-
-        editor.apply()
-        Log.d(TAG, "Voice preset '$name' saved")
-    }
-
-    /**
-     * ЗАГРУЗКА КАСТОМНЫХ НАСТРОЕК ГОЛОСА
-     */
-    fun loadCustomVoicePreset(name: String) {
-        val voiceName = voiceSettings.getString("${name}_voiceName", null)
-        val speechRate = voiceSettings.getFloat("${name}_speechRate", 1.0f)
-        val pitch = voiceSettings.getFloat("${name}_pitch", 1.0f)
-        val gender = voiceSettings.getString("${name}_voiceGender", null)
-
-        updateVoiceSettings(voiceName, speechRate, pitch, gender)
-        Log.d(TAG, "Voice preset '$name' loaded")
     }
 }

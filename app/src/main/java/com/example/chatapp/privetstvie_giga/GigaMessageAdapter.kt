@@ -1,5 +1,7 @@
 package com.example.chatapp.privetstvie_giga
 
+import android.os.Handler
+import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -8,12 +10,14 @@ import com.example.chatapp.databinding.ItemUserMessageBinding
 import com.example.chatapp.databinding.ItemBotMessageBinding
 
 class GigaMessageAdapter(
-    private val onMessageClickListener: (GigaMessage) -> Unit = {}
+    private val onMessageClickListener: (GigaMessage) -> Unit = {},
+    private val onMessageLongClickListener: (GigaMessage) -> Unit = {}
 ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
 
     companion object {
         private const val VIEW_TYPE_USER = 1
         private const val VIEW_TYPE_BOT = 0
+        private const val DOUBLE_CLICK_DELAY = 300L
     }
 
     // Используем изменяемый список для хранения сообщений
@@ -31,7 +35,8 @@ class GigaMessageAdapter(
                     parent,
                     false
                 ),
-                onMessageClickListener
+                onMessageClickListener,
+                onMessageLongClickListener
             )
             else -> BotViewHolder(
                 ItemBotMessageBinding.inflate(
@@ -39,7 +44,8 @@ class GigaMessageAdapter(
                     parent,
                     false
                 ),
-                onMessageClickListener
+                onMessageClickListener,
+                onMessageLongClickListener
             )
         }
     }
@@ -82,63 +88,156 @@ class GigaMessageAdapter(
         return messages.lastOrNull()
     }
 
+    // Метод для удаления сообщения
+    fun removeMessage(message: GigaMessage) {
+        val position = messages.indexOf(message)
+        if (position != -1) {
+            messages.removeAt(position)
+            notifyItemRemoved(position)
+        }
+    }
+
     class UserViewHolder(
         private val binding: ItemUserMessageBinding,
-        private val onMessageClickListener: (GigaMessage) -> Unit
+        private val onMessageClickListener: (GigaMessage) -> Unit,
+        private val onMessageLongClickListener: (GigaMessage) -> Unit = {}
     ) : RecyclerView.ViewHolder(binding.root) {
 
         private var lastClickTime = 0L
+        private var isWaitingForDoubleClick = false
+        private val doubleClickHandler = Handler(Looper.getMainLooper())
+        private var doubleClickRunnable: Runnable? = null
 
         fun bind(message: GigaMessage) {
             binding.textViewMessage.text = message.text
 
-            // Устанавливаем обработчик двойного клика
+            // Обработчик одинарного/двойного клика
             binding.root.setOnClickListener {
                 val currentTime = System.currentTimeMillis()
-                if (currentTime - lastClickTime < 300) {
-                    // Двойной клик - повторная озвучка
+
+                if (currentTime - lastClickTime < DOUBLE_CLICK_DELAY) {
+                    // Двойной клик - отменяем ожидание одинарного клика
+                    doubleClickRunnable?.let { doubleClickHandler.removeCallbacks(it) }
+                    doubleClickRunnable = null
+                    isWaitingForDoubleClick = false
+
+                    // Вызываем обработчик двойного клика (повторная озвучка)
                     onMessageClickListener(message)
-                    lastClickTime = 0
                 } else {
+                    // Одинарный клик - начинаем ожидание двойного
                     lastClickTime = currentTime
+                    isWaitingForDoubleClick = true
+
+                    doubleClickRunnable = Runnable {
+                        // Если прошло время ожидания - это был одинарный клик
+                        if (isWaitingForDoubleClick) {
+                            // Ничего не делаем для одинарного клика
+                            // Или можно вызвать другую функцию, если нужно
+                            isWaitingForDoubleClick = false
+                        }
+                    }
+
+                    doubleClickHandler.postDelayed(doubleClickRunnable!!, DOUBLE_CLICK_DELAY)
                 }
             }
 
-            // Устанавливаем обработчик долгого нажатия
+            // Обработчик долгого нажатия (только для контекстного меню)
             binding.root.setOnLongClickListener {
-                onMessageClickListener(message)
+                // Отменяем ожидание двойного клика
+                doubleClickRunnable?.let { doubleClickHandler.removeCallbacks(it) }
+                doubleClickRunnable = null
+                isWaitingForDoubleClick = false
+
+                // Вызываем обработчик долгого нажатия
+                onMessageLongClickListener(message)
                 true
             }
+        }
+
+        // Очистка ресурсов
+        fun clear() {
+            doubleClickRunnable?.let { doubleClickHandler.removeCallbacks(it) }
+            doubleClickRunnable = null
+            isWaitingForDoubleClick = false
         }
     }
 
     class BotViewHolder(
         private val binding: ItemBotMessageBinding,
-        private val onMessageClickListener: (GigaMessage) -> Unit
+        private val onMessageClickListener: (GigaMessage) -> Unit,
+        private val onMessageLongClickListener: (GigaMessage) -> Unit = {}
     ) : RecyclerView.ViewHolder(binding.root) {
 
         private var lastClickTime = 0L
+        private var isWaitingForDoubleClick = false
+        private val doubleClickHandler = Handler(Looper.getMainLooper())
+        private var doubleClickRunnable: Runnable? = null
 
         fun bind(message: GigaMessage) {
             binding.textViewMessage.text = message.text
 
-            // Устанавливаем обработчик двойного клика
+            // Обработчик одинарного/двойного клика
             binding.root.setOnClickListener {
                 val currentTime = System.currentTimeMillis()
-                if (currentTime - lastClickTime < 300) {
-                    // Двойной клик - повторная озвучка
+
+                if (currentTime - lastClickTime < DOUBLE_CLICK_DELAY) {
+                    // Двойной клик - отменяем ожидание одинарного клика
+                    doubleClickRunnable?.let { doubleClickHandler.removeCallbacks(it) }
+                    doubleClickRunnable = null
+                    isWaitingForDoubleClick = false
+
+                    // Вызываем обработчик двойного клика (повторная озвучка)
                     onMessageClickListener(message)
-                    lastClickTime = 0
                 } else {
+                    // Одинарный клик - начинаем ожидание двойного
                     lastClickTime = currentTime
+                    isWaitingForDoubleClick = true
+
+                    doubleClickRunnable = Runnable {
+                        // Если прошло время ожидания - это был одинарный клик
+                        if (isWaitingForDoubleClick) {
+                            // Ничего не делаем для одинарного клика
+                            isWaitingForDoubleClick = false
+                        }
+                    }
+
+                    doubleClickHandler.postDelayed(doubleClickRunnable!!, DOUBLE_CLICK_DELAY)
                 }
             }
 
-            // Устанавливаем обработчик долгого нажатия
+            // Обработчик долгого нажатия (только для контекстного меню)
             binding.root.setOnLongClickListener {
-                onMessageClickListener(message)
+                // Отменяем ожидание двойного клика
+                doubleClickRunnable?.let { doubleClickHandler.removeCallbacks(it) }
+                doubleClickRunnable = null
+                isWaitingForDoubleClick = false
+
+                // Вызываем обработчик долгого нажатия
+                onMessageLongClickListener(message)
                 true
             }
         }
+
+        // Очистка ресурсов
+        fun clear() {
+            doubleClickRunnable?.let { doubleClickHandler.removeCallbacks(it) }
+            doubleClickRunnable = null
+            isWaitingForDoubleClick = false
+        }
+    }
+
+    // Очистка всех ресурсов холдеров при уничтожении адаптера
+    override fun onViewRecycled(holder: RecyclerView.ViewHolder) {
+        super.onViewRecycled(holder)
+        when (holder) {
+            is UserViewHolder -> holder.clear()
+            is BotViewHolder -> holder.clear()
+        }
+    }
+
+    // Очистка при уничтожении адаптера
+    fun release() {
+        messages.clear()
+        notifyDataSetChanged()
     }
 }

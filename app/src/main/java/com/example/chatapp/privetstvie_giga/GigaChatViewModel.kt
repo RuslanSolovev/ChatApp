@@ -1,6 +1,5 @@
 package com.example.chatapp.privetstvie_giga
 
-
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -29,13 +28,46 @@ class GigaChatViewModel(private val context: Context) : ViewModel() {
         }
     }
 
-    // В GigaChatViewModel добавьте:
-
+    // Метод для удаления сообщения с сохранением в хранилище
     fun removeMessage(message: GigaMessage) {
-        _messages.remove(message)
+        val index = _messages.indexOfFirst {
+            it.text == message.text &&
+                    it.isUser == message.isUser &&
+                    it.timestamp == message.timestamp
+        }
+
+        if (index != -1) {
+            _messages.removeAt(index)
+            viewModelScope.launch {
+                MessageStorage.saveMessages(context, _messages)
+            }
+        }
     }
 
+    // Метод для удаления сообщения по индексу
+    fun removeMessageAt(position: Int) {
+        if (position in 0 until _messages.size) {
+            _messages.removeAt(position)
+            viewModelScope.launch {
+                MessageStorage.saveMessages(context, _messages)
+            }
+        }
+    }
 
+    // Метод для удаления сообщения по тексту и типу
+    fun removeMessage(text: String, isUser: Boolean) {
+        val iterator = _messages.iterator()
+        while (iterator.hasNext()) {
+            val message = iterator.next()
+            if (message.text == text && message.isUser == isUser) {
+                iterator.remove()
+                viewModelScope.launch {
+                    MessageStorage.saveMessages(context, _messages)
+                }
+                break
+            }
+        }
+    }
 
     // Метод для очистки всех сообщений
     fun clearAllMessages() {

@@ -5,8 +5,8 @@ pluginManagement {
         mavenCentral()
     }
     plugins {
-        kotlin("jvm") version "1.9.23"
-        id("com.android.application") version "8.6.1"
+        id("org.jetbrains.kotlin.android") version "1.9.22"
+        id("com.android.application") version "8.6.0-beta02"
     }
 }
 
@@ -20,7 +20,7 @@ dependencyResolutionManagement {
         google()
         mavenCentral()
         maven { url = uri("https://maven.pkg.jetbrains.space/public/p/yandex-cloud/maven") }
-        maven { url = uri("https://jitpack.io") } // Добавленный репозиторий
+        maven { url = uri("https://jitpack.io") }
     }
 }
 

@@ -42,6 +42,11 @@ import androidx.work.Constraints
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.github.mikephil.charting.animation.Easing
+import com.github.mikephil.charting.components.MarkerView
+import com.github.mikephil.charting.formatter.LargeValueFormatter
+import com.github.mikephil.charting.highlight.Highlight
+import java.security.KeyStore
 import java.util.concurrent.TimeUnit
 
 class StepCounterFragment : Fragment() {
@@ -151,18 +156,27 @@ class StepCounterFragment : Fragment() {
         barChart = view.findViewById(R.id.chart_activity)
     }
 
+
+
+
+
+
+
     // 🔹 Настройка графика
     private fun setupBarChart() {
         with(barChart) {
             description = Description().apply { text = "Шаги за последние 7 дней" }
-            setTouchEnabled(false)
-            isDragEnabled = false
-            setScaleEnabled(false)
-            setPinchZoom(false)
+            setTouchEnabled(true) // Разрешаем взаимодействие
+            isDragEnabled = true
+            setScaleEnabled(true)
+            setPinchZoom(true)
             setDrawBarShadow(false)
             setDrawValueAboveBar(true)
-            isHighlightFullBarEnabled = false
-            legend.isEnabled = false
+            isHighlightFullBarEnabled = true
+
+            // Добавляем подсказки
+            setDrawMarkers(true)
+            marker = CustomMarkerView(requireContext(), R.layout.custom_marker)
 
             xAxis.apply {
                 position = XAxis.XAxisPosition.BOTTOM
@@ -170,12 +184,48 @@ class StepCounterFragment : Fragment() {
                 granularity = 1f
                 val days = listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
                 valueFormatter = IndexAxisValueFormatter(days)
+                textColor = ContextCompat.getColor(requireContext(), R.color.black)
             }
 
             axisRight.isEnabled = false
-            axisLeft.setDrawGridLines(false)
+            axisLeft.apply {
+                setDrawGridLines(false)
+                textColor = ContextCompat.getColor(requireContext(), R.color.black)
+            }
+
+            // Анимация при загрузке
+            animateY(2000)
         }
     }
+
+    // 🔹 Обновление данных графика
+    private fun updateBarChart(stepsByDay: List<Int>) {
+        val entries = stepsByDay.mapIndexed { index, value ->
+            BarEntry(index.toFloat(), value.toFloat())
+        }
+
+        val dataSet = BarDataSet(entries, "Шаги").apply {
+            colors = listOf(
+                ContextCompat.getColor(requireContext(), R.color.colorPrimary),
+                ContextCompat.getColor(requireContext(), R.color.colorAccent)
+            )
+            valueTextColor = Color.WHITE
+            setDrawValues(true)
+            valueTextSize = 12f
+            valueFormatter = LargeValueFormatter() // Форматируем большие числа
+        }
+
+        val barData = BarData(dataSet).apply {
+            barWidth = 0.6f
+            setValueTextSize(10f)
+        }
+
+        barChart.data = barData
+        barChart.invalidate()
+        barChart.animateY(2000, Easing.EaseInOutQuad) // Добавляем плавную анимацию
+    }
+
+
 
     private fun setupCardAnimations() {
         val cards = listOf(cardViewToday, cardViewWeek, cardViewMonth, cardViewYear, cardViewAverage, cardViewMax)
@@ -228,27 +278,6 @@ class StepCounterFragment : Fragment() {
                 updateBarChart(stepsList)
             }
         }
-    }
-
-    // 🔹 Обновление данных графика
-    private fun updateBarChart(stepsByDay: List<Int>) {
-        val entries = stepsByDay.mapIndexed { index, value ->
-            BarEntry(index.toFloat(), value.toFloat())
-        }
-
-        val dataSet = BarDataSet(entries, "Шаги").apply {
-            color = ContextCompat.getColor(requireContext(), R.color.colorPrimary)
-            valueTextColor = Color.WHITE
-            setDrawValues(true)
-        }
-
-        val barData = BarData(dataSet).apply {
-            barWidth = 0.6f
-            setValueTextSize(10f)
-        }
-
-        barChart.data = barData
-        barChart.invalidate()
     }
 
     private fun checkRequiredPermissions() {

@@ -1,17 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- ViewPager2 на весь экран -->
-
-    <!-- Компактная навигация поверх контента - узкая и прижатая к верху -->
+    <!-- Основной ViewPager2 -->
     <androidx.viewpager2.widget.ViewPager2
         android:id="@+id/viewPager"
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <!-- Компактная навигация поверх контента -->
     <LinearLayout
         android:id="@+id/navContainer"
         android:layout_width="wrap_content"
@@ -20,42 +18,38 @@
         android:layout_marginTop="14dp"
         android:layout_marginEnd="25dp"
         android:background="@drawable/edit_text_rounded"
-
-
-        android:elevation="4dp">
+        android:elevation="4dp"
+        android:padding="4dp">
 
         <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/btnNews"
             android:layout_width="36dp"
             android:layout_height="36dp"
-            android:src="@drawable/ic_external_news"
-            android:background="@drawable/nav_button_background"
-            android:padding="6dp"
             android:layout_marginHorizontal="2dp"
+            android:background="@drawable/nav_button_background"
             android:contentDescription="Новости"
-            app:tint="#000000" />
+            android:padding="6dp"
+            android:src="@drawable/ic_external_news" />
 
         <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/btnChats"
             android:layout_width="36dp"
             android:layout_height="36dp"
-            android:src="@drawable/ic_chat"
-            android:background="@drawable/nav_button_background"
-            android:padding="6dp"
             android:layout_marginHorizontal="2dp"
+            android:background="@drawable/nav_button_background"
             android:contentDescription="Чаты"
-            app:tint="#666666" />
+            android:padding="6dp"
+            android:src="@drawable/ic_chat" />
 
         <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/btnGroups"
             android:layout_width="36dp"
             android:layout_height="36dp"
-            android:src="@drawable/ic_group"
-            android:background="@drawable/nav_button_background"
-            android:padding="6dp"
             android:layout_marginHorizontal="2dp"
+            android:background="@drawable/nav_button_background"
             android:contentDescription="Беседы"
-            app:tint="#666666" />
+            android:padding="6dp"
+            android:src="@drawable/ic_group" />
 
     </LinearLayout>
 

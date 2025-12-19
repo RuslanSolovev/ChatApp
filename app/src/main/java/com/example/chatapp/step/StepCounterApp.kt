@@ -14,13 +14,14 @@ import com.example.chatapp.LocationWorker
 import com.example.chatapp.StepCounterWorker
 import com.onesignal.OneSignal
 import com.yandex.mapkit.MapKitFactory
+import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.*
-import java.util.*
 import java.util.concurrent.TimeUnit
 
 // ⚠️ ОБНОВЛЕННЫЙ ПРАВИЛЬНЫЙ APP ID
 const val ONESIGNAL_APP_ID = "0083de8f-7ca0-4824-ac88-9c037278237e"
 
+@HiltAndroidApp
 class StepCounterApp : Application() {
 
     companion object {
