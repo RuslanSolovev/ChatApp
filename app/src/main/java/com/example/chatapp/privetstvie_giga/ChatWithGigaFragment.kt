@@ -793,6 +793,14 @@ class ChatWithGigaFragment : Fragment() {
         }
     }
 
+
+
+
+
+
+
+
+
     /**
      * Загрузка настроек TTS
      */

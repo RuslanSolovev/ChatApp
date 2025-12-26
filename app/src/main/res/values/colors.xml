@@ -142,4 +142,15 @@
     <color name="silver">#C0C0C0</color>
     <color name="bronze">#CD7F32</color>
 
+    <!-- Основные цвета для навигации -->
+
+    <color name="button_selected">#2196F3</color>
+    <color name="button_unselected">#FFFFFF</color>
+    <color name="icon_selected">#FFFFFF</color>
+    <color name="icon_unselected">#757575</color>
+
+    <!-- Градиент для фона -->
+    <color name="primary_light">#E3F2FD</color>
+
+
 </resources>

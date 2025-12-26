@@ -1,304 +1,376 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@drawable/bg_gradient_game"
-    android:orientation="vertical">
+    android:layout_height="match_parent">
 
-    <!-- Заголовок -->
-    <TextView
+    <!-- Фоновое изображение -->
+    <ImageView
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Выберите игру"
-        android:textSize="30sp"
-        android:textColor="@color/alarm_emergency"
-        android:gravity="center"
-        android:textStyle="bold"
-        android:layout_marginBottom="4dp"
-        android:shadowColor="@color/black"
-        android:shadowDx="2"
-        android:shadowDy="2"
-        android:shadowRadius="4" />
+        android:layout_height="match_parent"
+        app:cardBackgroundColor="@color/alarm_primary"
+        android:scaleType="centerCrop"
+        android:contentDescription="Background" />
 
-    <!-- Вертикальный ScrollView для карточек игр -->
-    <ScrollView
+    <!-- Контейнер с закругленными углами сверху -->
+    <androidx.cardview.widget.CardView
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:scrollbars="vertical"
-        android:fadeScrollbars="false">
+        android:layout_height="match_parent"
+        app:cardCornerRadius="45dp"
+        app:cardPreventCornerOverlap="false"
+        app:cardElevation="0dp">
 
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:paddingBottom="16dp">
+            android:layout_height="match_parent"
+            android:orientation="vertical">
 
-            <!-- Карточка "Угадай число" -->
-            <androidx.cardview.widget.CardView
-                android:id="@+id/card_guess_number"
+            <!-- Сетка игр -->
+            <androidx.core.widget.NestedScrollView
                 android:layout_width="match_parent"
-                android:layout_height="160dp"
-                android:layout_marginBottom="16dp"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="8dp"
-                app:cardBackgroundColor="@color/white">
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:scrollbars="vertical"
+                android:fadeScrollbars="false"
+                android:fillViewport="true"
+                android:layout_marginBottom="110dp"
+                android:padding="8dp">
 
-                <RelativeLayout
+                <GridLayout
+                    android:id="@+id/grid_games"
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent">
+                    android:layout_height="wrap_content"
+                    android:columnCount="2"
+                    android:rowCount="4"
+                    android:alignmentMode="alignMargins"
+                    android:columnOrderPreserved="false"
+                    android:rowOrderPreserved="false"
+                    android:padding="4dp">
 
-                    <ImageView
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:src="@drawable/ygadai"
-                        android:scaleType="centerCrop"
-                        android:contentDescription="Угадай число" />
+                    <!-- Карточка 1: "Угадай число" -->
+                    <androidx.cardview.widget.CardView
+                        android:id="@+id/card_guess_number"
+                        android:layout_width="0dp"
+                        android:layout_height="160dp"
+                        android:layout_margin="6dp"
+                        android:layout_columnWeight="1"
+                        android:layout_rowWeight="1"
+                        android:layout_gravity="fill"
+                        android:clickable="true"
+                        android:focusable="true"
+                        app:cardCornerRadius="16dp"
+                        app:cardElevation="6dp"
+                        app:cardBackgroundColor="@color/alarm_primary">
 
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_alignParentBottom="true"
-                        android:background="#80000000"
-                        android:padding="8dp"
-                        android:text="Угадай число"
-                        android:textColor="@color/white"
-                        android:textSize="16sp"
-                        android:textStyle="bold"
-                        android:gravity="center" />
+                        <RelativeLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent">
 
-                </RelativeLayout>
+                            <ImageView
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:src="@drawable/ygadai"
+                                android:scaleType="centerCrop"
+                                android:contentDescription="Угадай число" />
 
-            </androidx.cardview.widget.CardView>
+                            <View
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:background="@drawable/gradient_overlay" />
 
-            <!-- Карточка "Сложение чисел" -->
-            <androidx.cardview.widget.CardView
-                android:id="@+id/card_addition_game"
-                android:layout_width="match_parent"
-                android:layout_height="160dp"
-                android:layout_marginBottom="16dp"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="8dp"
-                app:cardBackgroundColor="@color/white">
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_alignParentBottom="true"
+                                android:background="@drawable/bottom_gradient"
+                                android:padding="12dp"
+                                android:text="Угадай число"
+                                android:textColor="@color/white"
+                                android:textSize="14sp"
+                                android:textStyle="bold"
+                                android:gravity="center" />
+                        </RelativeLayout>
+                    </androidx.cardview.widget.CardView>
 
-                <RelativeLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent">
+                    <!-- Карточка 2: "Сложение чисел" -->
+                    <androidx.cardview.widget.CardView
+                        android:id="@+id/card_addition_game"
+                        android:layout_width="0dp"
+                        android:layout_height="160dp"
+                        android:layout_margin="6dp"
+                        android:layout_columnWeight="1"
+                        android:layout_rowWeight="1"
+                        android:layout_gravity="fill"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:foreground="?android:attr/selectableItemBackground"
+                        app:cardCornerRadius="16dp"
+                        app:cardElevation="6dp"
+                        app:cardBackgroundColor="@color/white">
 
-                    <ImageView
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:src="@drawable/sum"
-                        android:scaleType="centerCrop"
-                        android:contentDescription="Сложение чисел" />
+                        <RelativeLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent">
 
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_alignParentBottom="true"
-                        android:background="#80000000"
-                        android:padding="8dp"
-                        android:text="Сложение чисел"
-                        android:textColor="@color/white"
-                        android:textSize="16sp"
-                        android:textStyle="bold"
-                        android:gravity="center" />
+                            <ImageView
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:src="@drawable/sum"
+                                android:scaleType="centerCrop"
+                                android:contentDescription="Сложение чисел" />
 
-                </RelativeLayout>
+                            <View
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:background="@drawable/gradient_overlay" />
 
-            </androidx.cardview.widget.CardView>
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_alignParentBottom="true"
+                                android:background="@drawable/bottom_gradient"
+                                android:padding="12dp"
+                                android:text="Сложение чисел"
+                                android:textColor="@color/white"
+                                android:textSize="14sp"
+                                android:textStyle="bold"
+                                android:gravity="center" />
+                        </RelativeLayout>
+                    </androidx.cardview.widget.CardView>
 
-            <!-- Карточка "Шахматы" -->
-            <androidx.cardview.widget.CardView
-                android:id="@+id/card_chess"
-                android:layout_width="match_parent"
-                android:layout_height="160dp"
-                android:layout_marginBottom="16dp"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="8dp"
-                app:cardBackgroundColor="@color/white">
+                    <!-- Карточка 3: "Шахматы" -->
+                    <androidx.cardview.widget.CardView
+                        android:id="@+id/card_chess"
+                        android:layout_width="0dp"
+                        android:layout_height="160dp"
+                        android:layout_margin="6dp"
+                        android:layout_columnWeight="1"
+                        android:layout_rowWeight="1"
+                        android:layout_gravity="fill"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:foreground="?android:attr/selectableItemBackground"
+                        app:cardCornerRadius="16dp"
+                        app:cardElevation="6dp"
+                        app:cardBackgroundColor="@color/white">
 
-                <RelativeLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent">
+                        <RelativeLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent">
 
-                    <ImageView
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:src="@drawable/chess"
-                        android:scaleType="centerCrop"
-                        android:contentDescription="Шахматы" />
+                            <ImageView
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:src="@drawable/chess"
+                                android:scaleType="centerCrop"
+                                android:contentDescription="Шахматы" />
 
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_alignParentBottom="true"
-                        android:background="#80000000"
-                        android:gravity="center"
-                        android:padding="8dp"
-                        android:text="Шахматы"
-                        android:textColor="@color/white"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
+                            <View
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:background="@drawable/gradient_overlay" />
 
-                </RelativeLayout>
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_alignParentBottom="true"
+                                android:background="@drawable/bottom_gradient"
+                                android:padding="12dp"
+                                android:text="Шахматы"
+                                android:textColor="@color/white"
+                                android:textSize="14sp"
+                                android:textStyle="bold"
+                                android:gravity="center" />
+                        </RelativeLayout>
+                    </androidx.cardview.widget.CardView>
 
-            </androidx.cardview.widget.CardView>
+                    <!-- Карточка 4: "На память" -->
+                    <androidx.cardview.widget.CardView
+                        android:id="@+id/card_memory_game"
+                        android:layout_width="0dp"
+                        android:layout_height="160dp"
+                        android:layout_margin="6dp"
+                        android:layout_columnWeight="1"
+                        android:layout_rowWeight="1"
+                        android:layout_gravity="fill"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:foreground="?android:attr/selectableItemBackground"
+                        app:cardCornerRadius="16dp"
+                        app:cardElevation="6dp"
+                        app:cardBackgroundColor="@color/white">
 
-            <!-- Карточка "На память" -->
-            <androidx.cardview.widget.CardView
-                android:id="@+id/card_memory_game"
-                android:layout_width="match_parent"
-                android:layout_height="160dp"
-                android:layout_marginBottom="16dp"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="8dp"
-                app:cardBackgroundColor="@color/white">
+                        <RelativeLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent">
 
-                <RelativeLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent">
+                            <ImageView
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:src="@drawable/mozgi"
+                                android:scaleType="centerCrop"
+                                android:contentDescription="На память" />
 
-                    <ImageView
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:src="@drawable/mozgi"
-                        android:scaleType="centerCrop"
-                        android:contentDescription="На память" />
+                            <View
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:background="@drawable/gradient_overlay" />
 
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_alignParentBottom="true"
-                        android:background="#80000000"
-                        android:gravity="center"
-                        android:padding="8dp"
-                        android:text="На память"
-                        android:textColor="@color/white"
-                        android:textSize="16sp"
-                        android:textStyle="bold" />
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_alignParentBottom="true"
+                                android:background="@drawable/bottom_gradient"
+                                android:padding="12dp"
+                                android:text="На память"
+                                android:textColor="@color/white"
+                                android:textSize="14sp"
+                                android:textStyle="bold"
+                                android:gravity="center" />
+                        </RelativeLayout>
+                    </androidx.cardview.widget.CardView>
 
-                </RelativeLayout>
+                    <!-- Карточка 5: "Стратегия" -->
+                    <androidx.cardview.widget.CardView
+                        android:id="@+id/card_strategy_game"
+                        android:layout_width="0dp"
+                        android:layout_height="160dp"
+                        android:layout_margin="6dp"
+                        android:layout_columnWeight="1"
+                        android:layout_rowWeight="1"
+                        android:layout_gravity="fill"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:foreground="?android:attr/selectableItemBackground"
+                        app:cardCornerRadius="16dp"
+                        app:cardElevation="6dp"
+                        app:cardBackgroundColor="@color/white">
 
-            </androidx.cardview.widget.CardView>
+                        <RelativeLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent">
 
-            <!-- Карточка "Стратегия" -->
-            <androidx.cardview.widget.CardView
-                android:id="@+id/card_strategy_game"
-                android:layout_width="match_parent"
-                android:layout_height="160dp"
-                android:layout_marginBottom="16dp"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="8dp"
-                app:cardBackgroundColor="@color/white">
+                            <ImageView
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:src="@drawable/zastavka_igra_strategiy"
+                                android:scaleType="centerCrop"
+                                android:contentDescription="Стратегия" />
 
-                <RelativeLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent">
+                            <View
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:background="@drawable/gradient_overlay" />
 
-                    <ImageView
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:src="@drawable/zastavka_igra_strategiy"
-                        android:scaleType="centerCrop"
-                        android:contentDescription="Стратегия" />
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_alignParentBottom="true"
+                                android:background="@drawable/bottom_gradient"
+                                android:padding="12dp"
+                                android:text="Стратегия"
+                                android:textColor="@color/white"
+                                android:textSize="14sp"
+                                android:textStyle="bold"
+                                android:gravity="center" />
+                        </RelativeLayout>
+                    </androidx.cardview.widget.CardView>
 
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_alignParentBottom="true"
-                        android:background="#80000000"
-                        android:padding="8dp"
-                        android:text="Стратегия"
-                        android:textColor="@color/white"
-                        android:textSize="16sp"
-                        android:textStyle="bold"
-                        android:gravity="center" />
+                    <!-- Карточка 6: "ПВО" -->
+                    <androidx.cardview.widget.CardView
+                        android:id="@+id/card_pvo_game"
+                        android:layout_width="0dp"
+                        android:layout_height="160dp"
+                        android:layout_margin="6dp"
+                        android:layout_columnWeight="1"
+                        android:layout_rowWeight="1"
+                        android:layout_gravity="fill"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:foreground="?android:attr/selectableItemBackground"
+                        app:cardCornerRadius="16dp"
+                        app:cardElevation="6dp"
+                        app:cardBackgroundColor="@color/white">
 
-                </RelativeLayout>
+                        <RelativeLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent">
 
-            </androidx.cardview.widget.CardView>
+                            <ImageView
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:src="@drawable/pvo2"
+                                android:scaleType="centerCrop"
+                                android:contentDescription="ПВО - Уклонение от ракет" />
 
-            <!-- Карточка "ПВО" -->
-            <androidx.cardview.widget.CardView
-                android:id="@+id/card_pvo_game"
-                android:layout_width="match_parent"
-                android:layout_height="160dp"
-                android:layout_marginBottom="16dp"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="8dp"
-                app:cardBackgroundColor="@color/white">
+                            <View
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:background="@drawable/gradient_overlay" />
 
-                <RelativeLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent">
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_alignParentBottom="true"
+                                android:background="@drawable/bottom_gradient"
+                                android:padding="12dp"
+                                android:text="ПВО"
+                                android:textColor="@color/white"
+                                android:textSize="14sp"
+                                android:textStyle="bold"
+                                android:gravity="center" />
+                        </RelativeLayout>
+                    </androidx.cardview.widget.CardView>
 
-                    <ImageView
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:src="@drawable/pvo2"
-                        android:scaleType="centerCrop"
-                        android:contentDescription="ПВО - Уклонение от ракет" />
+                    <!-- Карточка 7: "Арканоид" - растянута на 2 колонки -->
+                    <androidx.cardview.widget.CardView
+                        android:id="@+id/card_block_game"
+                        android:layout_width="0dp"
+                        android:layout_height="160dp"
+                        android:layout_margin="6dp"
+                        android:layout_columnWeight="2"
+                        android:layout_rowWeight="1"
+                        android:layout_gravity="fill"
+                        android:layout_columnSpan="2"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:foreground="?android:attr/selectableItemBackground"
+                        app:cardCornerRadius="16dp"
+                        app:cardElevation="6dp"
+                        app:cardBackgroundColor="@color/white">
 
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_alignParentBottom="true"
-                        android:background="#80000000"
-                        android:padding="8dp"
-                        android:text="ПВО"
-                        android:textColor="@color/white"
-                        android:textSize="16sp"
-                        android:textStyle="bold"
-                        android:gravity="center" />
+                        <RelativeLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent">
 
-                </RelativeLayout>
+                            <ImageView
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:contentDescription="Арканоид - Разбей все блоки"
+                                android:scaleType="centerCrop"
+                                android:src="@drawable/igra_kirpiz" />
 
-            </androidx.cardview.widget.CardView>
+                            <View
+                                android:layout_width="match_parent"
+                                android:layout_height="match_parent"
+                                android:background="@drawable/gradient_overlay" />
 
-            <!-- Карточка "Арканоид" -->
-            <androidx.cardview.widget.CardView
-                android:id="@+id/card_block_game"
-                android:layout_width="match_parent"
-                android:layout_height="160dp"
-                android:layout_marginBottom="100dp"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="8dp"
-                app:cardBackgroundColor="@color/white">
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_alignParentBottom="true"
+                                android:background="@drawable/bottom_gradient"
+                                android:padding="16dp"
+                                android:text="Кирпичики - Разбей все блоки"
+                                android:textColor="@color/white"
+                                android:textSize="16sp"
+                                android:textStyle="bold"
+                                android:gravity="center" />
+                        </RelativeLayout>
+                    </androidx.cardview.widget.CardView>
 
-                <RelativeLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent">
-
-                    <ImageView
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:src="@drawable/igra_kirpiz"
-                        android:scaleType="centerCrop"
-                        android:contentDescription="Арканоид - Разбей все блоки" />
-
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_alignParentBottom="true"
-                        android:background="#80000000"
-                        android:padding="8dp"
-                        android:text="Кирпичики"
-                        android:textColor="@color/white"
-                        android:textSize="16sp"
-                        android:textStyle="bold"
-                        android:gravity="center" />
-
-                </RelativeLayout>
-
-            </androidx.cardview.widget.CardView>
-
+                </GridLayout>
+            </androidx.core.widget.NestedScrollView>
         </LinearLayout>
-
-    </ScrollView>
-
-    <!-- Подсказка прокрутки (можно убрать или оставить) -->
-    <!-- Убрал, так как теперь прокрутка вертикальная и очевидна -->
-
-</LinearLayout>
+    </androidx.cardview.widget.CardView>
+</FrameLayout>

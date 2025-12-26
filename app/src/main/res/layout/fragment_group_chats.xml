@@ -3,7 +3,7 @@
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@drawable/bg_gradient"
+    android:background="@drawable/battle_result_background"
     android:gravity="center"
     android:orientation="vertical"
     android:padding="32dp">
@@ -12,14 +12,14 @@
         android:layout_width="120dp"
         android:layout_height="120dp"
         android:src="@drawable/ic_add_chat"
-        app:tint="#B3FFFFFF"/>
+        app:tint="#B3E91313"/>
 
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="24dp"
         android:text="Раздел бесед"
-        android:textColor="@color/white"
+        android:textColor="#B31B1B"
         android:textSize="20sp"
         android:textStyle="bold"/>
 
@@ -28,6 +28,6 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="16dp"
         android:text="Здесь будут ваши групповые беседы"
-        android:textColor="#B3FFFFFF"
+        android:textColor="#B3950909"
         android:textSize="16sp"/>
 </LinearLayout>

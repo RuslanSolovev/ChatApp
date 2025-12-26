@@ -5,4 +5,8 @@
     <dimen name="bottom_navigation_padding">16dp</dimen>
     <dimen name="event_marker_width">48dp</dimen>
     <dimen name="event_marker_height">48dp</dimen>
+
+    <dimen name="button_padding">16dp</dimen>
+    <dimen name="card_corner_radius">16dp</dimen>
+
 </resources>

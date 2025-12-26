@@ -1,38 +1,8 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
-    android:viewportWidth="100"
-    android:viewportHeight="100">
-
-    <!-- Зеленая околовка -->
-    <path
-        android:fillColor="#000000"
-        android:pathData="M50,10a40,40 0 1,1 0,80a40,40 0 1,1 0,-80z"/>
-
-    <!-- Белый внутренний круг -->
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M50,15a35,35 0 1,1 0,70a35,35 0 1,1 0,-70z"/>
-
-    <!-- Первый след (левый) -->
-    <path
-        android:fillColor="#050505"
-        android:pathData="M35,45 Q35,35 45,35 Q55,35 55,45 L55,60 Q55,70 45,70 Q35,70 35,60 Z"/>
-
-    <!-- Второй след (правый) -->
-    <path
-        android:fillColor="#16a34a"
-        android:pathData="M45,40 Q45,30 55,30 Q65,30 65,40 L65,55 Q65,65 55,65 Q45,65 45,55 Z"/>
-
-    <!-- Линия прогресса -->
-    <path
-        android:strokeColor="#090909"
-        android:strokeWidth="2"
-        android:pathData="M40 78 L60 78"/>
-
-    <!-- Деления на линии прогресса -->
-    <path
-        android:strokeColor="#FF0000"
-        android:strokeWidth="1.5"
-        android:pathData="M45 75 L45 78 M50 75 L50 78 M55 75 L55 78"/>
-</vector>
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android">
+    <solid android:color="#99FFFDFD" />
+    <corners android:topLeftRadius="60dp"
+        android:topRightRadius="60dp"
+        android:bottomLeftRadius="60dp"
+        android:bottomRightRadius="60dp"/>
+</shape>

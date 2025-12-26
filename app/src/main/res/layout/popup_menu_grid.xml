@@ -91,55 +91,56 @@
             android:layout_marginBottom="8dp">
 
             <!-- Анкета - НА ВСЮ ЯЧЕЙКУ -->
+
+            <!-- Заметки - ТАКЖЕ НА ВСЮ ЯЧЕЙКУ -->
             <LinearLayout
                 android:id="@+id/questionnaire_item"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
+                android:layout_marginEnd="4dp"
                 android:layout_weight="1"
-                android:orientation="vertical"
                 android:background="?attr/selectableItemBackground"
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
-                android:padding="0dp"
-                android:layout_marginEnd="4dp">
+                android:orientation="vertical"
+                android:padding="0dp">
 
                 <!-- Изображение на всю ширину -->
                 <ImageView
                     android:layout_width="match_parent"
-                    android:layout_height="100dp"
+                    android:layout_height="110dp"
+                    android:background="@color/surface_variant"
                     android:scaleType="centerCrop"
-                    android:src="@drawable/anketa"
-                    android:background="@color/surface_variant" />
+                    android:src="@drawable/anketa2" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Анкета"
-                    android:textSize="14sp"
-                    android:textColor="@color/on_surface"
                     android:layout_marginTop="8dp"
                     android:layout_marginBottom="8dp"
+                    android:ellipsize="end"
                     android:maxLines="1"
-                    android:ellipsize="end" />
+                    android:text="Анкета"
+                    android:textColor="@color/on_surface"
+                    android:textSize="14sp" />
 
                 <TextView
                     android:id="@+id/badge_questionnaire"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="NEW"
-                    android:textSize="11sp"
-                    android:textColor="@color/on_primary"
-                    android:fontFamily="sans-serif-medium"
+                    android:layout_marginBottom="8dp"
                     android:background="@drawable/badge_background"
+                    android:fontFamily="sans-serif-medium"
                     android:paddingHorizontal="8dp"
                     android:paddingVertical="4dp"
-                    android:layout_marginBottom="8dp"
+                    android:text="NEW"
+                    android:textColor="@color/on_primary"
+                    android:textSize="11sp"
                     android:visibility="gone" />
 
             </LinearLayout>
 
-            <!-- Заметки - ТАКЖЕ НА ВСЮ ЯЧЕЙКУ -->
             <LinearLayout
                 android:id="@+id/notes_item"
                 android:layout_width="0dp"
@@ -158,7 +159,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="100dp"
                     android:scaleType="centerCrop"
-                    android:src="@drawable/ic_game"
+                    android:src="@drawable/zametki"
                     android:background="@color/surface_variant"
                     android:padding="16dp" />
 
@@ -216,7 +217,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="100dp"
                     android:scaleType="centerCrop"
-                    android:src="@drawable/ic_forge"
+                    android:src="@drawable/loterei"
                     android:background="@color/surface_variant"
                     android:padding="16dp" />
 
@@ -251,7 +252,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="100dp"
                     android:scaleType="centerCrop"
-                    android:src="@drawable/ic_brain"
+                    android:src="@drawable/test_mozg"
                     android:background="@color/surface_variant"
                     android:padding="16dp" />
 
@@ -295,14 +296,14 @@
                     android:layout_width="match_parent"
                     android:layout_height="100dp"
                     android:scaleType="centerCrop"
-                    android:src="@drawable/ic_game"
+                    android:src="@drawable/igra_kirpiz"
                     android:background="@color/surface_variant"
                     android:padding="16dp" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Игра Блоки"
+                    android:text="Кирпичики"
                     android:textSize="14sp"
                     android:textColor="@color/on_surface"
                     android:layout_marginTop="8dp"
@@ -330,7 +331,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="100dp"
                     android:scaleType="centerCrop"
-                    android:src="@drawable/ic_alarm"
+                    android:src="@drawable/budilnik"
                     android:background="@color/surface_variant"
                     android:padding="16dp" />
 
@@ -373,14 +374,14 @@
                     android:layout_width="match_parent"
                     android:layout_height="100dp"
                     android:scaleType="centerCrop"
-                    android:src="@drawable/ic_timer"
+                    android:src="@drawable/gruha_box"
                     android:background="@color/surface_variant"
                     android:padding="16dp" />
 
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Таймер"
+                    android:text="Груша"
                     android:textSize="14sp"
                     android:textColor="@color/on_surface"
                     android:layout_marginTop="8dp"

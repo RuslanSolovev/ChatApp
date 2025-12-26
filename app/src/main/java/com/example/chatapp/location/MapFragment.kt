@@ -1,21 +1,22 @@
 package com.example.chatapp.location
 
 import android.Manifest
-import android.graphics.*
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Rect
 import android.graphics.drawable.Drawable
+import android.location.Geocoder
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.view.LayoutInflater
-import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Button
-import android.content.Intent
-import android.content.pm.PackageManager
-import android.graphics.Rect
-import android.location.Geocoder
-import android.os.Build
 import android.widget.ProgressBar
 import android.widget.TextView
 import android.widget.Toast
@@ -32,15 +33,30 @@ import com.example.chatapp.models.User
 import com.example.chatapp.models.UserLocation
 import com.example.chatapp.utils.Constants
 import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.database.*
+import com.google.firebase.database.DataSnapshot
+import com.google.firebase.database.DatabaseError
+import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ValueEventListener
 import com.yandex.mapkit.Animation
 import com.yandex.mapkit.MapKitFactory
 import com.yandex.mapkit.geometry.Point
-import com.yandex.mapkit.map.*
+import com.yandex.mapkit.map.CameraListener
+import com.yandex.mapkit.map.CameraPosition
+import com.yandex.mapkit.map.CameraUpdateReason
+import com.yandex.mapkit.map.Map
+import com.yandex.mapkit.map.MapObjectTapListener
+import com.yandex.mapkit.map.PlacemarkMapObject
 import com.yandex.mapkit.mapview.MapView
 import com.yandex.runtime.image.ImageProvider
-import com.yandex.mapkit.location.*
-import com.yandex.mapkit.search.*
+import com.yandex.mapkit.location.Location
+import com.yandex.mapkit.location.LocationListener
+import com.yandex.mapkit.location.LocationManager
+import com.yandex.mapkit.location.LocationStatus
+import com.yandex.mapkit.search.Response
+import com.yandex.mapkit.search.SearchFactory
+import com.yandex.mapkit.search.SearchManagerType
+import com.yandex.mapkit.search.SearchOptions
+import com.yandex.mapkit.search.Session
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -51,9 +67,14 @@ import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import java.util.Locale
 import java.util.concurrent.Executors
-import kotlin.math.*
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.pow
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 class MapFragment : Fragment() {
+
     private lateinit var mapView: MapView
     private val markers = mutableMapOf<String, PlacemarkMapObject>()
     private val lastActiveTime = mutableMapOf<String, Long>()
@@ -88,7 +109,7 @@ class MapFragment : Fragment() {
     private var lastCityName: String? = null
     private val cityUpdateHandler = Handler(Looper.getMainLooper())
     private var isUpdatingCity = false
-    private var locationsChildEventListener: ChildEventListener? = null
+    private var locationsValueEventListener: ValueEventListener? = null
     private var isFragmentDestroyed = false
     private val locationRestartHandler = Handler(Looper.getMainLooper())
     private val locationRestartRunnable = object : Runnable {
@@ -130,6 +151,10 @@ class MapFragment : Fragment() {
     private var shouldReloadData = true
     private val lastReceivedLocation = mutableMapOf<String, UserLocation>()
 
+    // Объявляем кнопки как ImageButton
+    private lateinit var friendsButton: androidx.appcompat.widget.AppCompatImageButton
+    private lateinit var findMeButton: androidx.appcompat.widget.AppCompatImageButton
+
     override fun onCreateView(
         inflater: LayoutInflater,
         container: ViewGroup?,
@@ -140,22 +165,30 @@ class MapFragment : Fragment() {
         cityProgressBar = layout.findViewById(R.id.cityProgressBar)
         cityTextView.text = ""
         cityProgressBar.visibility = View.GONE
-        val friendsButton = layout.findViewById<Button>(R.id.friendsButton)
+
+        // Инициализация кнопок с правильными типами
+        friendsButton = layout.findViewById(R.id.friendsButton)
+        findMeButton = layout.findViewById(R.id.findMeButton)
+
+        // Настраиваем видимость и обработчики
+        findMeButton.visibility = View.VISIBLE
         friendsButton.setOnClickListener {
             startActivity(Intent(requireContext(), FriendsListActivity::class.java))
         }
-        val findMeButton = layout.findViewById<Button>(R.id.findMeButton)
-        findMeButton.visibility = View.VISIBLE
-        findMeButton.setOnClickListener { centerCameraOnMyLocation() }
+        findMeButton.setOnClickListener {
+            centerCameraOnMyLocation()
+        }
+
         mapView = layout.findViewById(R.id.mapview)
         mapView.map.isRotateGesturesEnabled = false
-        locationManager = MapKitFactory.getInstance().createLocationManager()
+
         Handler(Looper.getMainLooper()).postDelayed({
             if (!isFragmentDestroyed && isAdded) {
                 observeUserLocations()
                 fixTouchInterception()
             }
         }, 1000)
+
         return layout
     }
 
@@ -164,15 +197,23 @@ class MapFragment : Fragment() {
         mapView = view.findViewById(R.id.mapview)
         cityTextView = view.findViewById(R.id.cityTextView)
         cityProgressBar = view.findViewById(R.id.cityProgressBar)
+
+        // Инициализация кнопок в onViewCreated
+        friendsButton = view.findViewById(R.id.friendsButton)
+        findMeButton = view.findViewById(R.id.findMeButton)
+
         mapView.map.isRotateGesturesEnabled = false
         mapView.map.isScrollGesturesEnabled = true
         mapView.map.isZoomGesturesEnabled = true
         mapView.map.isTiltGesturesEnabled = true
+
         searchManager = SearchFactory.getInstance().createSearchManager(SearchManagerType.COMBINED)
+
         val initialPoint = mapView.map.cameraPosition.target
         val coordinatesText = String.format(Locale.getDefault(),
             "Ш: %.4f, Д: %.4f", initialPoint.latitude, initialPoint.longitude)
         cityTextView.text = coordinatesText
+
         Handler(Looper.getMainLooper()).postDelayed({
             if (!isFragmentDestroyed && isAdded) {
                 val currentPoint = mapView.map.cameraPosition.target
@@ -180,6 +221,7 @@ class MapFragment : Fragment() {
                 setupNormalCameraUpdates()
             }
         }, 8000)
+
         setupMapTouchHandling()
     }
 
@@ -190,6 +232,7 @@ class MapFragment : Fragment() {
         locationRestartHandler.postDelayed(locationRestartRunnable, 45000)
         fixTouchInterception()
         checkLocationPermissionsAndStart()
+
         ioScope.launch {
             delay(100)
             withContext(Dispatchers.Main) {
@@ -214,6 +257,7 @@ class MapFragment : Fragment() {
                 }
             }
         }
+
         handler.postDelayed({
             if (!isFragmentDestroyed && isAdded) {
                 loadUserDataWithThrottle()
@@ -275,7 +319,6 @@ class MapFragment : Fragment() {
                         requireContext(),
                         Manifest.permission.ACCESS_BACKGROUND_LOCATION
                     ) == PackageManager.PERMISSION_GRANTED
-
                     if (!backgroundPermission) {
                         AlertDialog.Builder(requireContext())
                             .setTitle("Фоновое местоположение")
@@ -294,8 +337,6 @@ class MapFragment : Fragment() {
             }
         }
     }
-
-
 
     private fun loadUserDataWithThrottle() {
         val currentTime = System.currentTimeMillis()
@@ -344,11 +385,19 @@ class MapFragment : Fragment() {
         mapView.isFocusable = true
         mapView.isFocusableInTouchMode = true
         mapView.descendantFocusability = ViewGroup.FOCUS_BEFORE_DESCENDANTS
-        mapView.map.addInputListener(object : InputListener {
-            override fun onMapTap(map: com.yandex.mapkit.map.Map, point: Point) {
+
+        // Устанавливаем флаги для кнопок, чтобы они не перехватывали тапы
+        friendsButton.isFocusable = false
+        friendsButton.isFocusableInTouchMode = false
+        findMeButton.isFocusable = false
+        findMeButton.isFocusableInTouchMode = false
+
+        mapView.map.addInputListener(object : com.yandex.mapkit.map.InputListener {
+            override fun onMapTap(map: Map, point: Point) {
                 scheduleGeocode(point)
             }
-            override fun onMapLongTap(map: com.yandex.mapkit.map.Map, point: Point) {
+
+            override fun onMapLongTap(map: Map, point: Point) {
                 // ignore
             }
         })
@@ -381,6 +430,12 @@ class MapFragment : Fragment() {
             val interceptors = mutableListOf<View>()
             fun traverseViewHierarchy(view: View, depth: Int = 0) {
                 if (view.visibility != View.VISIBLE) return
+                // Пропускаем наши кнопки и элементы управления
+                if (view.id == R.id.friendsButton || view.id == R.id.findMeButton ||
+                    view.id == R.id.cityTextView || view.id == R.id.cityProgressBar ||
+                    view.id == R.id.cityContainer || view.id == R.id.buttonsContainer) {
+                    return
+                }
                 if (view.isClickable || view.isFocusable || view.isFocusableInTouchMode) {
                     if (view != mapView && isViewOverMap(view)) {
                         interceptors.add(view)
@@ -443,8 +498,9 @@ class MapFragment : Fragment() {
         mapView.map.addCameraListener(object : CameraListener {
             private var cameraUpdateHandler = Handler(Looper.getMainLooper())
             private var cameraUpdateRunnable: Runnable? = null
+
             override fun onCameraPositionChanged(
-                map: com.yandex.mapkit.map.Map,
+                map: Map,
                 cameraPosition: CameraPosition,
                 cameraUpdateReason: CameraUpdateReason,
                 finished: Boolean
@@ -464,20 +520,62 @@ class MapFragment : Fragment() {
     }
 
     private fun centerCameraOnMyLocation() {
-        myLocation?.let { location ->
+        if (myLocation != null) {
             mapView.map.move(
-                CameraPosition(location, 15.0f, 0.0f, 0.0f),
+                CameraPosition(myLocation!!, 15.0f, 0.0f, 0.0f),
                 Animation(Animation.Type.SMOOTH, 0.5f),
                 null
             )
             handler.postDelayed({
                 if (!isFragmentDestroyed && isAdded) {
-                    reverseGeocode(location)
+                    reverseGeocode(myLocation!!)
                 }
             }, 2000)
-        } ?: run {
-            Toast.makeText(requireContext(), "Локация не определена", Toast.LENGTH_SHORT).show()
+            return
         }
+
+        val uid = auth.currentUser?.uid ?: run {
+            Toast.makeText(requireContext(), "Пользователь не авторизован", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Показываем, что ищем
+        Toast.makeText(requireContext(), "Определяем вашу позицию...", Toast.LENGTH_SHORT).show()
+
+        // Читаем напрямую из Firebase
+        database.child("last_locations").child(uid).get()
+            .addOnSuccessListener { snapshot ->
+                if (isFragmentDestroyed || !isAdded) return@addOnSuccessListener
+
+                if (!snapshot.exists()) {
+                    Toast.makeText(requireContext(), "Ваша локация ещё не получена", Toast.LENGTH_SHORT).show()
+                    return@addOnSuccessListener
+                }
+
+                val userLoc = snapshot.getValue(UserLocation::class.java)
+                if (userLoc != null && userLoc.isValid()) {
+                    val point = userLoc.toPoint()
+                    myLocation = point
+                    mapView.map.move(
+                        CameraPosition(point, 15.0f, 0.0f, 0.0f),
+                        Animation(Animation.Type.SMOOTH, 0.5f),
+                        null
+                    )
+                    handler.postDelayed({
+                        if (!isFragmentDestroyed && isAdded) {
+                            reverseGeocode(point)
+                            updateMyMarker(point)
+                        }
+                    }, 2000)
+                } else {
+                    Toast.makeText(requireContext(), "Некорректные данные локации", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .addOnFailureListener { error ->
+                if (!isFragmentDestroyed && isAdded) {
+                    Toast.makeText(requireContext(), "Ошибка: ${error.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
     }
 
     private fun reverseGeocode(point: Point) {
@@ -586,59 +684,65 @@ class MapFragment : Fragment() {
     }
 
     private fun observeUserLocations() {
-        locationsChildEventListener?.let {
-            try {
-                database.child("user_locations").removeEventListener(it)
-            } catch (e: Exception) {
-                // ignore
-            }
-            locationsChildEventListener = null
-        }
-        val listener = object : ChildEventListener {
-            override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
-                if (!isFragmentDestroyed && isAdded) {
-                    updateUserMarker(snapshot)
-                }
-            }
-            override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {
-                if (!isFragmentDestroyed && isAdded) {
-                    updateUserMarker(snapshot)
-                }
-            }
-            override fun onChildRemoved(snapshot: DataSnapshot) {
-                if (!isFragmentDestroyed && isAdded) {
-                    val userId = snapshot.key
-                    userId?.let {
-                        removeMarkerSafely(it)
+        removeLocationsListener()
+
+        val listener = object : ValueEventListener {
+            override fun onDataChange(snapshot: DataSnapshot) {
+                if (isFragmentDestroyed || !isAdded) return
+
+                val currentUids = mutableSetOf<String>()
+                for (userSnapshot in snapshot.children) {
+                    val userId = userSnapshot.key
+                    val userLocation = userSnapshot.getValue(UserLocation::class.java)
+                    if (userId != null && userLocation != null && userLocation.isValid()) {
+                        currentUids.add(userId)
+                        val point = Point(userLocation.lat, userLocation.lng)
+                        val online = (System.currentTimeMillis() - userLocation.timestamp) < 30000
+                        lastActiveTime[userId] = userLocation.timestamp
+                        isOnline[userId] = online
+
+                        if (userId == auth.currentUser?.uid) {
+                            myLocation = point
+                            updateMyMarker(point)
+                        } else {
+                            loadUserInfo(userId)
+                            val existing = markers[userId]
+                            if (existing != null) {
+                                if (distanceBetween(existing.geometry, point) > MIN_MOVE_DISTANCE) {
+                                    animateMarkerToBezierCubicWithRotation(existing, point)
+                                } else {
+                                    existing.geometry = point
+                                }
+                                if (isOnline[userId] != online) {
+                                    updateMarkerAppearance(userId, existing, online)
+                                }
+                            } else {
+                                addMarker(userId, point, online, "")
+                            }
+                        }
                     }
                 }
-            }
-            override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {
-                if (!isFragmentDestroyed && isAdded) {
-                    updateUserMarker(snapshot)
+
+                // Удаляем маркеры пропавших пользователей
+                val toRemove = markers.keys - currentUids
+                for (uid in toRemove) {
+                    removeMarkerSafely(uid)
                 }
             }
+
             override fun onCancelled(error: DatabaseError) {
                 // ignore
             }
         }
-        try {
-            database.child("user_locations").addChildEventListener(listener)
-            locationsChildEventListener = listener
-        } catch (e: Exception) {
-            // ignore
-        }
+
+        database.child("last_locations").addValueEventListener(listener)
+        locationsValueEventListener = listener
     }
 
     private fun removeLocationsListener() {
-        locationsChildEventListener?.let {
-            try {
-                database.child("user_locations").removeEventListener(it)
-            } catch (e: Exception) {
-                // ignore
-            } finally {
-                locationsChildEventListener = null
-            }
+        locationsValueEventListener?.let {
+            database.child("last_locations").removeEventListener(it)
+            locationsValueEventListener = null
         }
     }
 
@@ -672,70 +776,8 @@ class MapFragment : Fragment() {
         lastActiveTime.clear()
         lastReceivedLocation.clear()
         markerUpdateTimes.clear()
-    }
-
-    private fun updateUserMarker(snapshot: DataSnapshot) {
-        if (isFragmentDestroyed || !isAdded) {
-            return
-        }
-        try {
-            val userLocation = snapshot.getValue(UserLocation::class.java)
-            val userId = snapshot.key
-            if (userLocation != null && userId != null && userLocation.isValid()) {
-                val lastUpdateTime = markerUpdateTimes[userId] ?: 0L
-                val currentTime = System.currentTimeMillis()
-                if (currentTime - lastUpdateTime < MARKER_UPDATE_THROTTLE) {
-                    return
-                }
-                val lastKnownLocation = lastReceivedLocation[userId]
-                if (lastKnownLocation != null) {
-                    val lastPoint = Point(lastKnownLocation.lat, lastKnownLocation.lng)
-                    val newPoint = Point(userLocation.lat, userLocation.lng)
-                    if (distanceBetween(lastPoint, newPoint) < MIN_MOVE_DISTANCE_FOR_UPDATE) {
-                        return
-                    }
-                    if (lastKnownLocation.lat == userLocation.lat &&
-                        lastKnownLocation.lng == userLocation.lng &&
-                        lastKnownLocation.timestamp == userLocation.timestamp) {
-                        return
-                    }
-                }
-                lastReceivedLocation[userId] = userLocation
-                markerUpdateTimes[userId] = currentTime
-                val point = userLocation.toPoint()
-                lastActiveTime[userId] = userLocation.timestamp
-                val currentOnlineStatus = (System.currentTimeMillis() - userLocation.timestamp) < 30000
-                if (userId != auth.currentUser?.uid) {
-                    loadUserInfo(userId)
-                }
-                if (userId == auth.currentUser?.uid) {
-                    updateMyMarker(point)
-                    myLocation = point
-                } else {
-                    val existingMarker = markers[userId]
-                    if (existingMarker != null) {
-                        val oldPoint = existingMarker.geometry
-                        if (distanceBetween(oldPoint, point) > MIN_MOVE_DISTANCE) {
-                            animateMarkerToBezierCubicWithRotation(existingMarker, point)
-                        } else {
-                            try {
-                                existingMarker.geometry = point
-                            } catch (e: Exception) {
-                                // ignore
-                            }
-                        }
-                        if (this.isOnline[userId] != currentOnlineStatus) {
-                            updateMarkerAppearance(userId, existingMarker, currentOnlineStatus)
-                        }
-                    } else {
-                        addMarker(userId, point, currentOnlineStatus, "")
-                    }
-                }
-                this.isOnline[userId] = currentOnlineStatus
-            }
-        } catch (e: Exception) {
-            // ignore
-        }
+        avatarCache.clear()
+        tapListeners.clear()
     }
 
     private fun loadUserInfo(userId: String) {
@@ -778,7 +820,7 @@ class MapFragment : Fragment() {
                 myMarker = mapView.map.mapObjects.addPlacemark(point).apply {
                     setIcon(
                         ImageProvider.fromResource(requireContext(), R.drawable.ic_account_circle),
-                        IconStyle().setScale(0.7f)
+                        com.yandex.mapkit.map.IconStyle().setScale(0.7f)
                     )
                     setText("Я")
                     zIndex = 100f
@@ -800,7 +842,7 @@ class MapFragment : Fragment() {
                     myMarker = mapView.map.mapObjects.addPlacemark(point).apply {
                         setIcon(
                             ImageProvider.fromResource(requireContext(), R.drawable.ic_account_circle),
-                            IconStyle().setScale(0.7f)
+                            com.yandex.mapkit.map.IconStyle().setScale(0.7f)
                         )
                         setText("Я")
                         zIndex = 100f
@@ -859,17 +901,19 @@ class MapFragment : Fragment() {
                         try {
                             val finalBitmap = createMarkerBitmap(resource, name, true)
                             if (myMarker?.isValid == true) {
-                                myMarker?.setIcon(ImageProvider.fromBitmap(finalBitmap), IconStyle().setScale(1.2f))
+                                myMarker?.setIcon(ImageProvider.fromBitmap(finalBitmap), com.yandex.mapkit.map.IconStyle().setScale(1.2f))
                             }
                         } catch (e: Exception) {
                             setDefaultMyMarkerIcon(point, name)
                         }
                     }
+
                     override fun onLoadCleared(placeholder: Drawable?) {
                         isMyAvatarLoading = false
                         if (isFragmentDestroyed || !isAdded || context == null || isDetached || isRemoving) return
                         setDefaultMyMarkerIcon(point, name)
                     }
+
                     override fun onLoadFailed(errorDrawable: Drawable?) {
                         super.onLoadFailed(errorDrawable)
                         isMyAvatarLoading = false
@@ -894,7 +938,7 @@ class MapFragment : Fragment() {
         if (myMarker?.isValid == true) {
             myMarker?.setIcon(
                 ImageProvider.fromResource(requireContext(), R.drawable.ic_account_circle),
-                IconStyle().setScale(0.7f)
+                com.yandex.mapkit.map.IconStyle().setScale(0.7f)
             )
             myMarker?.setText(name)
         }
@@ -915,6 +959,7 @@ class MapFragment : Fragment() {
                     val name = response.collection.children.firstOrNull()?.obj?.name ?: "Неизвестное место"
                     updateCityText(name)
                 }
+
                 override fun onSearchError(error: com.yandex.runtime.Error) {
                     // ignore
                 }
@@ -925,7 +970,7 @@ class MapFragment : Fragment() {
     private fun updateCityText(text: String) {
         requireActivity().runOnUiThread {
             view?.findViewById<TextView>(R.id.cityTextView)?.text = text
-            view?.findViewById<ProgressBar>(R.id.progressBar)?.visibility = View.GONE
+            view?.findViewById<ProgressBar>(R.id.cityProgressBar)?.visibility = View.GONE
         }
     }
 
@@ -936,7 +981,7 @@ class MapFragment : Fragment() {
     ) {
         if (!marker.isValid) return
         avatarCache[userId] = bitmap
-        marker.setIcon(ImageProvider.fromBitmap(bitmap), IconStyle().setScale(1.2f))
+        marker.setIcon(ImageProvider.fromBitmap(bitmap), com.yandex.mapkit.map.IconStyle().setScale(1.2f))
         marker.zIndex = 50f
         tapListeners[userId]?.let { marker.removeTapListener(it) }
         val listener = MapObjectTapListener { _, _ ->
@@ -1056,6 +1101,7 @@ class MapFragment : Fragment() {
                         // ignore
                     }
                 }
+
                 override fun onLocationStatusUpdated(locationStatus: LocationStatus) {
                     if (isFragmentDestroyed) return
                 }
@@ -1066,7 +1112,7 @@ class MapFragment : Fragment() {
                     10L,
                     0.0,
                     true,
-                    FilteringMode.OFF,
+                    com.yandex.mapkit.location.FilteringMode.OFF,
                     locationListener!!
                 )
             } catch (e: Exception) {
@@ -1126,7 +1172,7 @@ class MapFragment : Fragment() {
         if (placemark.isValid && !isFragmentDestroyed && isAdded) {
             placemark.setIcon(
                 ImageProvider.fromResource(requireContext(), R.drawable.ic_user_marker),
-                IconStyle().setScale(0.7f)
+                com.yandex.mapkit.map.IconStyle().setScale(0.7f)
             )
             placemark.setText(name)
         }
@@ -1234,7 +1280,7 @@ class MapFragment : Fragment() {
                             if (otherUser != null) {
                                 val otherUserName = otherUser.getFullName() ?: "Пользователь $userId"
                                 val otherUserAvatarUrl = otherUser.profileImageUrl
-                                database.child("users").child(currentUserId).addListenerForSingleValueEvent(object : ValueEventListener {
+                                database.child("users").child(currentUserId).addListenerForSingleValueEvent(object : com.google.firebase.database.ValueEventListener {
                                     override fun onDataChange(currentUserSnapshot: DataSnapshot) {
                                         if (!isFragmentDestroyed && isAdded) {
                                             val currentUser = currentUserSnapshot.getValue(User::class.java)
@@ -1266,6 +1312,7 @@ class MapFragment : Fragment() {
                                             }
                                         }
                                     }
+
                                     override fun onCancelled(databaseError: DatabaseError) {
                                         Toast.makeText(requireContext(), "Ошибка загрузки данных текущего пользователя", Toast.LENGTH_SHORT).show()
                                     }
@@ -1406,7 +1453,8 @@ class MapFragment : Fragment() {
             lng = location.longitude,
             timestamp = System.currentTimeMillis()
         )
-        database.child("user_locations").child(uid).setValue(userLocation)
+        // ⚠️ ЗАПИСЬ ТОЖЕ ДОЛЖНА БЫТЬ В last_locations
+        database.child("last_locations").child(uid).setValue(userLocation)
             .addOnSuccessListener {
                 // success
             }
@@ -1456,6 +1504,7 @@ class MapFragment : Fragment() {
                 updateMyMarker(point)
                 updateMyOnlineStatus()
             }
+
             override fun onLocationStatusUpdated(locationStatus: LocationStatus) {
                 if (isFragmentDestroyed) return
             }
@@ -1466,7 +1515,7 @@ class MapFragment : Fragment() {
                 10L,
                 0.0,
                 true,
-                FilteringMode.OFF,
+                com.yandex.mapkit.location.FilteringMode.OFF,
                 locationListener!!
             )
         } catch (e: Exception) {

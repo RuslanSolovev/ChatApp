@@ -44,6 +44,7 @@ class NotesAdapter : RecyclerView.Adapter<NotesAdapter.NoteViewHolder>() {
         }
     }
 
+
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): NoteViewHolder {
         val binding = ItemNoteBinding.inflate(
             LayoutInflater.from(parent.context),
@@ -61,6 +62,7 @@ class NotesAdapter : RecyclerView.Adapter<NotesAdapter.NoteViewHolder>() {
 
     fun submitList(newNotes: List<Note>) {
         notes.clear()
+        
         notes.addAll(newNotes)
         notifyDataSetChanged()
     }

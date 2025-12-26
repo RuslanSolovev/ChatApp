@@ -202,6 +202,16 @@
             android:exported="true"
             android:theme="@style/Theme.AppCompat.Light.NoActionBar" />
 
+
+        <!-- Активность настроек целей -->
+        <activity
+            android:name=".step.GoalSettingsActivity"
+            android:exported="false"
+            android:label="Настройки целей"
+            android:screenOrientation="portrait" />
+
+
+
         <!-- Maps Activity -->
         <activity
             android:name=".location.MapsActivity"
