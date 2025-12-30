@@ -1,6 +1,7 @@
 package com.example.chatapp.novosti
 
 import android.app.AlertDialog
+import android.graphics.Color
 import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
@@ -8,6 +9,8 @@ import android.view.ViewGroup
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
+import androidx.cardview.widget.CardView
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
@@ -19,9 +22,6 @@ import com.bumptech.glide.request.RequestOptions
 import com.example.chatapp.R
 import com.example.chatapp.activities.MainActivity
 import com.google.firebase.auth.FirebaseAuth
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
-import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -36,17 +36,18 @@ class NewsAdapter(
         private const val TYPE_IMAGE = 2
         private const val TYPE_EXTERNAL = 3
         private const val DEFAULT_SOURCE_NAME = "Lenta.ru"
-        private val DEFAULT_SOURCE_LOGO = R.drawable.id_lenta
+        private val DEFAULT_SOURCE_LOGO = R.drawable.anketa
         private const val AVATAR_RADIUS_DP = 24
-        private const val IMAGE_RADIUS_DP = 8
+        private const val IMAGE_RADIUS_DP = 16
+        private const val CARD_CORNER_RADIUS = 120f
     }
 
     private val currentList = mutableListOf<NewsItem>()
     private val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
 
     private val requestOptionsAvatar = RequestOptions()
-        .placeholder(R.drawable.ic_default_profile)
-        .error(R.drawable.ic_default_profile)
+        .placeholder(R.drawable.anketa)
+        .error(R.drawable.anketa)
         .transform(CenterCrop(), RoundedCorners(AVATAR_RADIUS_DP))
         .diskCacheStrategy(DiskCacheStrategy.ALL)
 
@@ -55,8 +56,6 @@ class NewsAdapter(
         .error(R.drawable.search_view_background)
         .transform(CenterCrop(), RoundedCorners(IMAGE_RADIUS_DP))
         .diskCacheStrategy(DiskCacheStrategy.ALL)
-
-    private var rootView: View? = null
 
     override fun getItemViewType(position: Int): Int {
         val item = getItem(position)
@@ -88,15 +87,36 @@ class NewsAdapter(
 
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         val newsItem = getItem(position)
-        when (holder) {
-            is TextViewHolder -> holder.bind(newsItem, currentUserId)
-            is ImageViewHolder -> holder.bind(newsItem, currentUserId)
-            is ExternalViewHolder -> holder.bind(newsItem)
-        }
 
-        if (rootView == null) {
-            rootView = holder.itemView
+        // Принудительно применяем стиль CardView для всех типов
+        when (holder) {
+            is TextViewHolder -> {
+                holder.bind(newsItem, currentUserId)
+                applyCardViewStyle(holder.itemView)
+            }
+            is ImageViewHolder -> {
+                holder.bind(newsItem, currentUserId)
+                applyCardViewStyle(holder.itemView)
+            }
+            is ExternalViewHolder -> {
+                holder.bind(newsItem)
+                applyCardViewStyle(holder.itemView)
+            }
         }
+    }
+
+    /**
+     * Принудительно применяет стиль CardView для закругленных углов
+     */
+    private fun applyCardViewStyle(view: View) {
+        val cardView = view as? CardView ?: return
+
+        // Устанавливаем радиус закругления
+        cardView.radius = CARD_CORNER_RADIUS
+
+        // Устанавливаем тень
+        cardView.cardElevation = 50f
+
     }
 
     override fun submitList(list: MutableList<NewsItem>?) {
@@ -217,14 +237,6 @@ class NewsAdapter(
         protected fun bindContentAndTime(news: NewsItem, tvContent: TextView, tvTime: TextView) {
             tvContent.text = news.content
             tvTime.text = formatTime(news.timestamp)
-
-            news.backgroundColor?.takeIf { it.isNotBlank() }?.let { color ->
-                try {
-                    itemView.setBackgroundColor(android.graphics.Color.parseColor(color))
-                } catch (e: Exception) {
-                    Log.w(TAG, "Invalid background color: $color", e)
-                }
-            }
         }
     }
 
@@ -341,13 +353,7 @@ class NewsAdapter(
 
             tvSummary?.text = news.summary ?: ""
 
-            news.backgroundColor?.takeIf { it.isNotBlank() }?.let { color ->
-                try {
-                    itemView.setBackgroundColor(android.graphics.Color.parseColor(color))
-                } catch (e: Exception) {
-                    Log.w(TAG, "Invalid background color: $color", e)
-                }
-            }
+            // УДАЛЕН блок с backgroundColor который перезаписывал фон
 
             news.imageUrl?.let { imageUrl ->
                 ivNewsImage.visibility = View.VISIBLE
@@ -357,20 +363,6 @@ class NewsAdapter(
                     .into(ivNewsImage)
             } ?: run {
                 ivNewsImage.visibility = View.GONE
-            }
-        }
-    }
-
-    fun clearGlideCache() {
-        val context = rootView?.context ?: return
-        Glide.get(context).clearMemory()
-
-        GlobalScope.launch(Dispatchers.IO) {
-            try {
-                Glide.get(context).clearDiskCache()
-                Log.d(TAG, "Glide disk cache cleared successfully")
-            } catch (e: Exception) {
-                Log.e(TAG, "Error clearing Glide disk cache", e)
             }
         }
     }
@@ -410,11 +402,7 @@ class NewsItemDiffCallback : DiffUtil.ItemCallback<NewsItem>() {
                 oldItem.isExternal == newItem.isExternal &&
                 oldItem.source == newItem.source &&
                 oldItem.sourceLogoUrl == newItem.sourceLogoUrl &&
-                oldItem.backgroundColor == newItem.backgroundColor &&
                 oldItem.summary == newItem.summary
-    }
-
-    override fun getChangePayload(oldItem: NewsItem, newItem: NewsItem): Any? {
-        return null // Упрощаем - всегда полное обновление
+        // Убрана проверка backgroundColor чтобы избежать лишних обновлений
     }
 }

@@ -4,7 +4,7 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:padding="16dp"
-    android:background="@drawable/bg_gradient_lottery">
+    android:background="@drawable/gradient_background_result">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -33,7 +33,7 @@
                 android:text="Ежедневная лотерея"
                 android:textSize="24sp"
                 android:textStyle="bold"
-                android:textColor="#2c3e50" />
+                android:textColor="@color/alarm_background" />
         </LinearLayout>
 
         <!-- Карточка призового фонда -->
@@ -417,6 +417,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             app:cardCornerRadius="16dp"
+            android:layout_marginBottom="70dp"
             app:cardElevation="4dp">
 
             <LinearLayout

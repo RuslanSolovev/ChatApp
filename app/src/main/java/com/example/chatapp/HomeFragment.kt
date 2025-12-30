@@ -16,6 +16,7 @@ import android.view.animation.OvershootInterpolator
 import android.widget.LinearLayout
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
+import androidx.recyclerview.widget.RecyclerView
 import androidx.viewpager2.widget.ViewPager2
 import com.example.chatapp.R
 import com.example.chatapp.activities.MainActivity
@@ -35,6 +36,9 @@ class HomeFragment : Fragment() {
     private var isNavHidden = false
     private var isInitialized = false
     private val handler = Handler(Looper.getMainLooper())
+
+    // Флаг для отслеживания первого нажатия на кнопку "Новости"
+    private var isFirstNewsClick = true
 
     companion object {
         private const val TAG = "HomeFragment"
@@ -68,6 +72,7 @@ class HomeFragment : Fragment() {
             setupViewPager(view)
             setupCompactNavigation()
             isInitialized = true
+            isFirstNewsClick = true // Сбрасываем флаг при создании View
 
             // Проверяем, нужно ли открыть вкладку новостей
             if (arguments?.getBoolean(ARG_OPEN_NEWS_TAB, false) == true) {
@@ -104,6 +109,11 @@ class HomeFragment : Fragment() {
             override fun onPageSelected(position: Int) {
                 updateNavigationUI(position)
                 handlePageChange(position)
+
+                // Сбрасываем флаг при смене страницы
+                if (position != 0) {
+                    isFirstNewsClick = true
+                }
             }
 
             override fun onPageScrollStateChanged(state: Int) {
@@ -118,7 +128,7 @@ class HomeFragment : Fragment() {
     private fun setupCompactNavigation() {
         // Обработка кликов по кнопкам
         btnNews.setOnClickListener {
-            switchToPage(0)
+            switchToNewsPage()
         }
         btnChats.setOnClickListener {
             switchToPage(1)
@@ -131,12 +141,32 @@ class HomeFragment : Fragment() {
         updateNavigationUI(viewPager.currentItem)
     }
 
+    /**
+     * НОВЫЙ МЕТОД: Переключение на страницу новостей с особой логикой
+     */
+    private fun switchToNewsPage() {
+        if (viewPager.currentItem == 0) {
+            // Если уже на вкладке новостей
+            if (isFirstNewsClick) {
+                // Первое нажатие: скроллим к началу
+                scrollNewsToTop()
+                isFirstNewsClick = false
+            } else {
+                // Последующие нажатия: скроллим к последней новости
+                scrollNewsToBottom()
+                isFirstNewsClick = true
+            }
+        } else {
+            // Переключаемся на вкладку новостей
+            viewPager.currentItem = 0
+            isFirstNewsClick = true // Сбрасываем флаг при переключении с другой вкладки
+        }
+    }
+
     private fun switchToPage(position: Int) {
         if (viewPager.currentItem == position) {
-            // Если нажали на активную вкладку, скроллим к началу
-            if (position == 0) {
-                scrollNewsToTop()
-            }
+            // Если нажали на активную вкладку, не делаем ничего
+            return
         } else {
             viewPager.currentItem = position
         }
@@ -274,6 +304,30 @@ class HomeFragment : Fragment() {
         }
     }
 
+    fun requestFocusForNewsList() {
+        try {
+            // Находим RecyclerView с новостями
+            val recyclerView = view?.findViewById<RecyclerView>(R.id.rvNews)
+            recyclerView?.let { rv ->
+                // Устанавливаем фокус на RecyclerView
+                rv.isFocusable = true
+                rv.isFocusableInTouchMode = true
+                rv.requestFocus()
+
+                // Если нужно, скроллим к началу
+                if (rv.adapter?.itemCount ?: 0 > 0) {
+                    rv.scrollToPosition(0)
+                }
+            }
+
+            // Также фокусируем корневой view фрагмента
+            view?.requestFocus()
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error requesting focus for news list", e)
+        }
+    }
+
     /**
      * Обработка смены страниц
      */
@@ -327,20 +381,52 @@ class HomeFragment : Fragment() {
                 val feedFragment = getCurrentFeedFragment()
                 if (feedFragment != null && feedFragment.isAdded) {
                     Log.d(TAG, "scrollNewsToTop: FeedFragment найден, вызываем scrollToTopIfNeeded")
-                    feedFragment.scrollToTopIfNeeded()
+                    feedFragment.scrollNewsToTop()
 
                     // При скролле к началу гарантируем показ всей навигации
                     showNavigationInParent()
                     (activity as? MainActivity)?.showTopNavigation()
                 } else {
                     Log.d(TAG, "scrollNewsToTop: FeedFragment не найден или не добавлен")
-                    getFeedFragmentFromAdapter()?.scrollToTopIfNeeded()
+                    getFeedFragmentFromAdapter()?.scrollNewsToTop()
                 }
             } else {
                 Log.d(TAG, "scrollNewsToTop: Не на вкладке новостей, текущая позиция: ${viewPager.currentItem}")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error in scrollNewsToTop", e)
+        }
+    }
+
+    /**
+     * НОВЫЙ МЕТОД: Скроллит новости к последней новости
+     */
+    fun scrollNewsToBottom() {
+        try {
+            if (!isViewInitialized() || !isAdded) {
+                return
+            }
+
+            Log.d(TAG, "scrollNewsToBottom: Попытка скролла новостей к последней")
+
+            if (viewPager.currentItem == 0) {
+                val feedFragment = getCurrentFeedFragment()
+                if (feedFragment != null && feedFragment.isAdded) {
+                    Log.d(TAG, "scrollNewsToBottom: FeedFragment найден, вызываем scrollToBottom")
+                    feedFragment.scrollNewsToBottom()
+
+                    // При скролле к последней гарантируем показ всей навигации
+                    showNavigationInParent()
+                    (activity as? MainActivity)?.showTopNavigation()
+                } else {
+                    Log.d(TAG, "scrollNewsToBottom: FeedFragment не найден или не добавлен")
+                    getFeedFragmentFromAdapter()?.scrollNewsToBottom()
+                }
+            } else {
+                Log.d(TAG, "scrollNewsToBottom: Не на вкладке новостей, текущая позиция: ${viewPager.currentItem}")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error in scrollNewsToBottom", e)
         }
     }
 
@@ -437,6 +523,7 @@ class HomeFragment : Fragment() {
 
         // При паузе сбрасываем состояние навигации
         isNavHidden = false
+        // Не сбрасываем isFirstNewsClick, чтобы сохранить состояние
     }
 
     override fun onDestroyView() {
@@ -449,6 +536,7 @@ class HomeFragment : Fragment() {
         // Сбрасываем флаги
         isInitialized = false
         isNavHidden = false
+        isFirstNewsClick = true // Сбрасываем при уничтожении View
 
         // Очищаем ссылки
         homePagerAdapter = null
@@ -472,6 +560,7 @@ class HomeFragment : Fragment() {
             View initialized: ${isViewInitialized()}
             Nav container visible: ${navContainer.visibility == View.VISIBLE}
             Nav container alpha: ${navContainer.alpha}
+            Is first news click: $isFirstNewsClick
         """.trimIndent()
     }
 

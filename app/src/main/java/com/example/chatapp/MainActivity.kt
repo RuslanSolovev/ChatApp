@@ -194,8 +194,10 @@ class MainActivity : AppCompatActivity() {
     }
 
     companion object {
+
+
         private const val TAG = "MainActivity"
-        private const val HOME_FRAGMENT_TAG = "home_fragment"
+        const val HOME_FRAGMENT_TAG = "home_fragment"
         private const val CHAT_FRAGMENT_TAG = "chat_fragment"
         private const val STEPS_FRAGMENT_TAG = "steps_fragment"
         private const val MAPS_FRAGMENT_TAG = "maps_fragment"
@@ -222,81 +224,88 @@ class MainActivity : AppCompatActivity() {
         try {
             super.onCreate(savedInstanceState)
 
-            // 1. ПОКАЗЫВАЕМ UI СРАЗУ - ОСНОВНОЙ ПРИНЦИП
+            // 1. Инициализация ViewBinding и установка контента
             binding = ActivityMainBinding.inflate(layoutInflater)
             setContentView(binding.root)
 
-            // 2. УСТАНАВЛИВАЕМ ИМЯ ПО УМОЛЧАНИЮ МГНОВЕННО
-            binding.tvUserName.text = "Пользователь"
+            // 2. Настройка Toolbar
+            setSupportActionBar(binding.toolbar)
+            supportActionBar?.apply {
+                setTitle(null)
+                setDisplayShowTitleEnabled(false)
+                setDisplayShowCustomEnabled(true)
+            }
 
-            // 3. СОХРАНЯЕМ СОСТОЯНИЕ СИСТЕМНЫХ UI ФЛАГОВ
+            // 3. Настройка системных UI флагов
             systemUiFlagsBeforeFullscreen = window.decorView.systemUiVisibility
             decorViewSystemUiVisibilityBefore = window.decorView.systemUiVisibility
 
-            // 4. НАСТРОЙКА ПОЛНОЭКРАННОГО РЕЖИМА
+            // 4. Настройка полноэкранного режима
             setupFullscreenSystemUI()
 
-            // 5. ЗАГРУЖАЕМ ИМЯ ПОЛЬЗОВАТЕЛЯ ПЕРВЫМ ДЕЛОМ
+            // 5. Загрузка имени пользователя
             lifecycleScope.launch(Dispatchers.Main) {
                 loadUserNameFirst()
             }
 
-            // 6. ИНИЦИАЛИЗИРУЕМ TTS MANAGER (синхронно)
+            // 6. Инициализация TTS Manager
             initTTSManagerSync()
 
-            // 7. ВКЛЮЧАЕМ КНОПКИ И НАВИГАЦИЮ СРАЗУ
+            // 7. Активация кнопок и навигации
             enableAllButtonsImmediately()
 
-            // 8. НАСТРАИВАЕМ ЭКСТРЕННУЮ НАВИГАЦИЮ (работает без сети)
+            // 8. Настройка экстренной навигации
             setupEmergencyNavigation()
 
-            // 9. ПОКАЗЫВАЕМ БАЗОВЫЙ ФРАГМЕНТ
+            // 9. Загрузка начального фрагмента
             loadInitialFragmentFast()
 
-            // 10. БЫСТРАЯ ИНИЦИАЛИЗАЦИЯ UI (без приветствия пока)
+            // 10. Базовая инициализация UI
             try {
                 WindowCompat.setDecorFitsSystemWindows(window, false)
-                setupBasicClickListeners()
                 setupBottomNavigation()
                 Log.d(TAG, "Critical UI setup completed")
+
+                // Дополнительная проверка Toolbar
+                Log.d(TAG, "Toolbar title: ${supportActionBar?.title}")
+
             } catch (e: Exception) {
                 Log.e(TAG, "Error in critical UI setup", e)
             }
 
-            // 11. АСИНХРОННАЯ ПРОВЕРКА АВТОРИЗАЦИИ (в фоне)
+            // 11. Асинхронная проверка авторизации
             lifecycleScope.launch(Dispatchers.Main) {
                 checkAuthAsync()
             }
 
-            // 12. НАСТРОЙКА ПРОЗРАЧНЫХ ПАНЕЛЕЙ (в фоне)
+            // 12. Настройка прозрачных панелей
             lifecycleScope.launch(Dispatchers.Main) {
                 makeSystemBarsTransparent()
                 handleSystemBarsInsets()
             }
 
-            // 13. ИНИЦИАЛИЗИРУЕМ WELCOME MANAGER - ИСПРАВЛЕННАЯ ВЕРСИЯ
+            // 13. Инициализация менеджера приветствия
             welcomeManager = WelcomeManager(this, binding).apply {
                 setupWelcomeCard()
                 setTTSManager(ttsManager)
             }
 
-            // 13. ИНИЦИАЛИЗИРУЕМ WELCOME MANAGER - ИСПРАВЛЕННАЯ ВЕРСИЯ
-            welcomeManager = WelcomeManager(this, binding).apply {
-                setupWelcomeCard()
-                setTTSManager(ttsManager)
-            }
-
-// 14. ПОКАЗЫВАЕМ ПРИВЕТСТВИЕ СРАЗУ (через короткую задержку)
+            // 14. Отложенное приветствие
             handler.postDelayed({
                 welcomeManager.showInstantBasicGreeting()
             }, 500)
 
+            // 15. Установка слушателей
+            handler.postDelayed({
+                setupBasicClickListeners()
+            }, 700)
+
         } catch (e: Exception) {
             Log.e(TAG, "Critical error in onCreate", e)
-            // Даже при ошибке показываем базовый UI
             showEmergencyUI()
         }
     }
+
 
     /**
      * Загружаем имя пользователя В ПЕРВУЮ ОЧЕРЕДЬ
@@ -402,6 +411,66 @@ class MainActivity : AppCompatActivity() {
             "Пользователь"
         }
     }
+
+
+
+
+    /**
+     * Скроллит новости к началу с задержкой для стабилизации layout
+     */
+    private fun scrollNewsToTop() {
+        try {
+            val homeFragment = supportFragmentManager.findFragmentByTag(HOME_FRAGMENT_TAG) as? HomeFragment
+            if (homeFragment != null && homeFragment.isVisible) {
+                // Даем небольшую задержку перед скроллингом
+                handler.postDelayed({
+                    homeFragment.scrollNewsToTop()
+                }, 150) // Увеличиваем задержку для стабилизации
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error scrolling news to top", e)
+        }
+    }
+
+    override fun onBackPressed() {
+        // Если видна приветственная карточка - скрываем ее
+        if (welcomeManager.isWelcomeCardVisible()) {
+            welcomeManager.hideWelcomeMessage()
+
+            // Даем фокус HomeFragment после скрытия
+            handler.postDelayed({
+                val homeFragment = supportFragmentManager.findFragmentByTag(HOME_FRAGMENT_TAG) as? HomeFragment
+                homeFragment?.requestFocusForNewsList()
+            }, 200)
+
+            return
+        }
+
+        // Стандартная обработка
+        if (supportFragmentManager.backStackEntryCount > 0) {
+            supportFragmentManager.popBackStack()
+        } else {
+            super.onBackPressed()
+        }
+    }
+
+
+
+    private suspend fun switchToChatAsync() = withContext(Dispatchers.Main) {
+        Log.d(TAG, "Start chat clicked")
+        if (!isNetworkAvailable()) {
+            Toast.makeText(this@MainActivity, "Для чата требуется интернет", Toast.LENGTH_SHORT).show()
+            return@withContext
+        }
+        welcomeManager.hideWelcomeMessage()
+        saveLastChatTime()
+
+
+        safeSwitchToFragment(CHAT_FRAGMENT_TAG) { ChatWithGigaFragment() }
+        binding.bottomNavigation.selectedItemId = -1
+    }
+
+
 
     /**
      * Загружает имя из кэша
@@ -599,69 +668,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Экстренная навигация (работает без сети и авторизации)
-     */
-    private fun setupEmergencyNavigation() {
-        binding.bottomNavigation.setOnItemSelectedListener { item ->
-            when (item.itemId) {
-                R.id.nav_home -> {
-                    safeSwitchToFragment(HOME_FRAGMENT_TAG) { HomeFragment() }
-                    true
-                }
-                R.id.nav_gigachat -> {
-                    // Для чата нужен интернет
-                    if (!isNetworkAvailable()) {
-                        Toast.makeText(this, "Для чата требуется интернет", Toast.LENGTH_SHORT).show()
-                        return@setOnItemSelectedListener false
-                    }
-                    safeSwitchToFragment(CHAT_FRAGMENT_TAG) { ChatWithGigaFragment() }
-                    true
-                }
-                R.id.nav_steps -> {
-                    safeSwitchToFragment(STEPS_FRAGMENT_TAG) { StepCounterFragment() }
-                    true
-                }
-                R.id.nav_maps -> {
-                    safeSwitchToFragment(MAPS_FRAGMENT_TAG) { LocationPagerFragment() }
-                    true
-                }
-                R.id.nav_games -> {
-                    safeSwitchToFragment(GAMES_FRAGMENT_TAG) { GamesFragment() }
-                    true
-                }
-                else -> false
-            }
-        }
 
-        // Настройка кнопок toolbar
-        binding.btnMusic.setOnClickListener {
-            try {
-                startActivity(Intent(this, MusicMainActivity::class.java))
-            } catch (e: Exception) {
-                Log.e(TAG, "Error starting MusicActivity", e)
-                Toast.makeText(this, "Ошибка открытия музыки", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        binding.ivUserAvatar.setOnClickListener {
-            try {
-                startActivity(Intent(this, ProfileActivity::class.java))
-            } catch (e: Exception) {
-                Log.e(TAG, "Error starting ProfileActivity", e)
-                Toast.makeText(this, "Ошибка открытия профиля", Toast.LENGTH_SHORT).show()
-            }
-        }
-
-        binding.tvUserName.setOnClickListener {
-            try {
-                startActivity(Intent(this, ProfileActivity::class.java))
-            } catch (e: Exception) {
-                Log.e(TAG, "Error starting ProfileActivity", e)
-                Toast.makeText(this, "Ошибка открытия профиля", Toast.LENGTH_SHORT).show()
-            }
-        }
-    }
 
     /**
      * Быстрая загрузка начального фрагмента
@@ -888,31 +895,50 @@ class MainActivity : AppCompatActivity() {
         showSystemUIForVoiceSettings()
     }
 
-    /**
-     * Вызывается при нажатии кнопки назад
-     */
-    override fun onBackPressed() {
-        // Если открыты настройки голоса и мы находимся в чате
-        val currentFragment = supportFragmentManager.findFragmentById(R.id.fragment_container)
 
-        if (currentFragment is VoiceSettingsFragment) {
-            // Возвращаемся в чат
-            supportFragmentManager.popBackStack()
 
-            // ВАЖНО: Восстанавливаем полноэкранный режим чата
-            handler.postDelayed({
-                restoreChatFullscreenMode()
-            }, 100)
-            return
-        }
+    private fun setupToolbar() {
+        lifecycleScope.launch(Dispatchers.Main) {
+            try {
+                Log.d(TAG, "setupToolbar: Начало")
+                val toolbar = binding.toolbar
+                setSupportActionBar(toolbar)
 
-        // Стандартная обработка
-        if (supportFragmentManager.backStackEntryCount > 0) {
-            supportFragmentManager.popBackStack()
-        } else {
-            super.onBackPressed()
+                // Скрываем кнопку музыки или делаем невидимой
+                binding.btnMusic.visibility = View.GONE
+                binding.btnMusic.setOnClickListener(null) // Отключаем слушатель
+
+                binding.btnQuestionnaire.setOnClickListener {
+                    showQuestionnairePrompt()
+                }
+
+                binding.btnMenu.setOnClickListener { view ->
+                    showPopupMenu(view)
+                }
+
+                binding.ivUserAvatar.setOnClickListener {
+                    try {
+                        startActivity(Intent(this@MainActivity, ProfileActivity::class.java))
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error starting ProfileActivity", e)
+                        Toast.makeText(this@MainActivity, "Ошибка открытия профиля", Toast.LENGTH_SHORT).show()
+                    }
+                }
+
+                binding.tvUserName.setOnClickListener {
+                    try {
+                        startActivity(Intent(this@MainActivity, ProfileActivity::class.java))
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error starting ProfileActivity", e)
+                        Toast.makeText(this@MainActivity, "Ошибка открытия профиля", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Error setting up toolbar", e)
+            }
         }
     }
+
 
     /**
      * Восстанавливает полноэкранный режим чата
@@ -1354,32 +1380,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private suspend fun switchToChatAsync() = withContext(Dispatchers.Main) {
-        Log.d(TAG, "Start chat clicked")
-
-        // Проверяем сеть перед открытием чата
-        if (!isNetworkAvailable()) {
-            Toast.makeText(this@MainActivity, "Для чата требуется интернет", Toast.LENGTH_SHORT).show()
-            return@withContext
-        }
-
-        welcomeManager.hideWelcomeMessage()
-        saveLastChatTime()
-
-        // Получаем фразу от WelcomeManager
-        val finalPhrase = welcomeManager.getContinuationPhraseForChat()
-
-        // Сохраняем фразу для чата
-        saveWelcomePhraseForChat(finalPhrase)
-
-        // ВАЖНО: Используем safeSwitchToFragment вместо прямого replace
-        safeSwitchToFragment(CHAT_FRAGMENT_TAG) { ChatWithGigaFragment() }
-
-        // Обновляем навигацию
-        binding.bottomNavigation.selectedItemId = -1 // Снимаем выделение
-
-        Log.d(TAG, "Switching to chat with phrase: $finalPhrase")
-    }
 
     /**
      * Обновленный метод переключения фрагментов с учетом чата
@@ -2080,52 +2080,164 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun setupToolbar() {
-        lifecycleScope.launch(Dispatchers.Main) {
+
+
+    /**
+     * Настраивает обработчики кликов меню
+     */
+    private fun setupMenuClickListeners(popupView: View, popupWindow: PopupWindow) {
+        // Профиль
+        popupView.findViewById<View>(R.id.profile_section).setOnClickListener {
+            animateMenuItemClick(it)
+            startActivity(Intent(this, ProfileActivity::class.java))
+            popupWindow.dismiss()
+        }
+
+        // Анкета
+        popupView.findViewById<View>(R.id.questionnaire_item).setOnClickListener {
+            animateMenuItemClick(it)
+            startUserQuestionnaireActivity()
+            popupWindow.dismiss()
+        }
+
+        // Заметки
+        popupView.findViewById<View>(R.id.notes_item).setOnClickListener {
+            animateMenuItemClick(it)
             try {
-                Log.d(TAG, "setupToolbar: Начало")
-                val toolbar = binding.toolbar
-                setSupportActionBar(toolbar)
-
-                binding.btnMusic.setOnClickListener {
-                    try {
-                        startActivity(Intent(this@MainActivity, MusicMainActivity::class.java))
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error starting MusicActivity", e)
-                        Toast.makeText(this@MainActivity, "Ошибка открытия музыки", Toast.LENGTH_SHORT).show()
-                    }
-                }
-
-                binding.btnQuestionnaire.setOnClickListener {
-                    showQuestionnairePrompt()
-                }
-
-                binding.btnMenu.setOnClickListener { view ->
-                    showPopupMenu(view)
-                }
-
-                binding.ivUserAvatar.setOnClickListener {
-                    try {
-                        startActivity(Intent(this@MainActivity, ProfileActivity::class.java))
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error starting ProfileActivity", e)
-                        Toast.makeText(this@MainActivity, "Ошибка открытия профиля", Toast.LENGTH_SHORT).show()
-                    }
-                }
-
-                binding.tvUserName.setOnClickListener {
-                    try {
-                        startActivity(Intent(this@MainActivity, ProfileActivity::class.java))
-                    } catch (e: Exception) {
-                        Log.e(TAG, "Error starting ProfileActivity", e)
-                        Toast.makeText(this@MainActivity, "Ошибка открытия профиля", Toast.LENGTH_SHORT).show()
-                    }
-                }
+                val intent = Intent(this, NotesActivity::class.java)
+                startActivity(intent)
+                overridePendingTransition(R.anim.fade_in, R.anim.fade_out)
             } catch (e: Exception) {
-                Log.e(TAG, "Error setting up toolbar", e)
+                Log.e(TAG, "Error starting NotesActivity", e)
+                Toast.makeText(this, "Ошибка открытия заметок", Toast.LENGTH_SHORT).show()
+            }
+            popupWindow.dismiss()
+        }
+
+        // Музыка
+        popupView.findViewById<View>(R.id.music_item).setOnClickListener {
+            animateMenuItemClick(it)
+            try {
+                startActivity(Intent(this@MainActivity, MusicMainActivity::class.java))
+            } catch (e: Exception) {
+                Log.e(TAG, "Error starting MusicActivity", e)
+                Toast.makeText(this@MainActivity, "Ошибка открытия музыки", Toast.LENGTH_SHORT).show()
+            }
+            popupWindow.dismiss()
+        }
+
+        // Лотерея
+        popupView.findViewById<View>(R.id.games_item).setOnClickListener {
+            animateMenuItemClick(it)
+            switchToLotteryFragment()
+            popupWindow.dismiss()
+        }
+
+        // Мозг тест
+        popupView.findViewById<View>(R.id.mozgi_item).setOnClickListener {
+            animateMenuItemClick(it)
+            startActivity(Intent(this, CategoriesActivity::class.java))
+            popupWindow.dismiss()
+        }
+
+        // Игра Блоки
+        popupView.findViewById<View>(R.id.blocks_item).setOnClickListener {
+            animateMenuItemClick(it)
+            startActivity(Intent(this, BlockGameActivity::class.java))
+            popupWindow.dismiss()
+        }
+
+        // Будильник
+        popupView.findViewById<View>(R.id.alarm_item).setOnClickListener {
+            animateMenuItemClick(it)
+            startActivity(Intent(this, AlarmActivity::class.java))
+            popupWindow.dismiss()
+        }
+
+        // Таймер
+        popupView.findViewById<View>(R.id.timer_item).setOnClickListener {
+            animateMenuItemClick(it)
+            startActivity(Intent(this@MainActivity, TimerActivity::class.java))
+            popupWindow.dismiss()
+        }
+
+        // Выход
+        popupView.findViewById<View>(R.id.logout_item).setOnClickListener {
+            animateMenuItemClick(it)
+            popupWindow.dismiss()
+            Handler(Looper.getMainLooper()).postDelayed({
+                showLogoutConfirmationDialog()
+            }, 200)
+        }
+    }
+
+
+
+    private fun setupEmergencyNavigation() {
+        binding.bottomNavigation.setOnItemSelectedListener { item ->
+            when (item.itemId) {
+                R.id.nav_home -> {
+                    safeSwitchToFragment(HOME_FRAGMENT_TAG) { HomeFragment() }
+                    true
+                }
+                R.id.nav_gigachat -> {
+                    // Для чата нужен интернет
+                    if (!isNetworkAvailable()) {
+                        Toast.makeText(this, "Для чата требуется интернет", Toast.LENGTH_SHORT).show()
+                        return@setOnItemSelectedListener false
+                    }
+                    safeSwitchToFragment(CHAT_FRAGMENT_TAG) { ChatWithGigaFragment() }
+                    true
+                }
+                R.id.nav_steps -> {
+                    safeSwitchToFragment(STEPS_FRAGMENT_TAG) { StepCounterFragment() }
+                    true
+                }
+                R.id.nav_maps -> {
+                    safeSwitchToFragment(MAPS_FRAGMENT_TAG) { LocationPagerFragment() }
+                    true
+                }
+                R.id.nav_games -> {
+                    safeSwitchToFragment(GAMES_FRAGMENT_TAG) { GamesFragment() }
+                    true
+                }
+                else -> false
+            }
+        }
+
+        // Убираем кнопку музыки из экстренной навигации
+        /*
+        binding.btnMusic.setOnClickListener {
+            try {
+                startActivity(Intent(this, MusicMainActivity::class.java))
+            } catch (e: Exception) {
+                Log.e(TAG, "Error starting MusicActivity", e)
+                Toast.makeText(this, "Ошибка открытия музыки", Toast.LENGTH_SHORT).show()
+            }
+        }
+        */
+
+        binding.ivUserAvatar.setOnClickListener {
+            try {
+                startActivity(Intent(this, ProfileActivity::class.java))
+            } catch (e: Exception) {
+                Log.e(TAG, "Error starting ProfileActivity", e)
+                Toast.makeText(this, "Ошибка открытия профиля", Toast.LENGTH_SHORT).show()
+            }
+        }
+
+        binding.tvUserName.setOnClickListener {
+            try {
+                startActivity(Intent(this, ProfileActivity::class.java))
+            } catch (e: Exception) {
+                Log.e(TAG, "Error starting ProfileActivity", e)
+                Toast.makeText(this, "Ошибка открытия профиля", Toast.LENGTH_SHORT).show()
             }
         }
     }
+
+
+
 
     private fun updateToolbarUserInfo(user: User) {
         try {
@@ -2502,19 +2614,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Скроллит новости к началу
-     */
-    private fun scrollNewsToTop() {
-        try {
-            val homeFragment = supportFragmentManager.findFragmentByTag(HOME_FRAGMENT_TAG) as? HomeFragment
-            if (homeFragment != null && homeFragment.isVisible) {
-                homeFragment.scrollNewsToTop()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error scrolling news to top", e)
-        }
-    }
+
 
     private fun logoutUser() {
         lifecycleScope.launch(Dispatchers.IO) {
@@ -3292,83 +3392,84 @@ class MainActivity : AppCompatActivity() {
         badge.visibility = if (questionnaireCompleted) View.GONE else View.VISIBLE
     }
 
+
+
     /**
-     * Настраивает обработчики кликов меню
+     * Обрабатывает клики по пунктам стандартного меню
      */
-    private fun setupMenuClickListeners(popupView: View, popupWindow: PopupWindow) {
-        // Профиль
-        popupView.findViewById<View>(R.id.profile_section).setOnClickListener {
-            animateMenuItemClick(it)
-            startActivity(Intent(this, ProfileActivity::class.java))
-            popupWindow.dismiss()
-        }
-
-        // Анкета
-        popupView.findViewById<View>(R.id.questionnaire_item).setOnClickListener {
-            animateMenuItemClick(it)
-            startUserQuestionnaireActivity()
-            popupWindow.dismiss()
-        }
-
-        // ЗАМЕТКИ - ДОБАВЬТЕ ЭТОТ ОБРАБОТЧИК
-        popupView.findViewById<View>(R.id.notes_item).setOnClickListener {
-            animateMenuItemClick(it)
-            try {
-                val intent = Intent(this, NotesActivity::class.java)
-                startActivity(intent)
-                // Опционально: добавьте анимацию перехода
-                overridePendingTransition(R.anim.fade_in, R.anim.fade_out)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error starting NotesActivity", e)
-                Toast.makeText(this, "Ошибка открытия заметок", Toast.LENGTH_SHORT).show()
+    private fun handleMenuItemClick(item: MenuItem) {
+        when (item.itemId) {
+            R.id.menu_profile -> {
+                try {
+                    startActivity(Intent(this, ProfileActivity::class.java))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error starting ProfileActivity", e)
+                }
             }
-            popupWindow.dismiss()
-        }
-
-        // Лотерея
-        popupView.findViewById<View>(R.id.games_item).setOnClickListener {
-            animateMenuItemClick(it)
-            switchToLotteryFragment()
-            popupWindow.dismiss()
-        }
-
-        // Мозг тест
-        popupView.findViewById<View>(R.id.mozgi_item).setOnClickListener {
-            animateMenuItemClick(it)
-            startActivity(Intent(this, CategoriesActivity::class.java))
-            popupWindow.dismiss()
-        }
-
-        // Игра Блоки
-        popupView.findViewById<View>(R.id.blocks_item).setOnClickListener {
-            animateMenuItemClick(it)
-            startActivity(Intent(this, BlockGameActivity::class.java))
-            popupWindow.dismiss()
-        }
-
-        // Будильник
-        popupView.findViewById<View>(R.id.alarm_item).setOnClickListener {
-            animateMenuItemClick(it)
-            startActivity(Intent(this, AlarmActivity::class.java))
-            popupWindow.dismiss()
-        }
-
-        // Таймер
-        popupView.findViewById<View>(R.id.timer_item).setOnClickListener {
-            animateMenuItemClick(it)
-            startActivity(Intent(this, TimerActivity::class.java))
-            popupWindow.dismiss()
-        }
-
-        // Выход
-        popupView.findViewById<View>(R.id.logout_item).setOnClickListener {
-            animateMenuItemClick(it)
-            popupWindow.dismiss()
-            Handler(Looper.getMainLooper()).postDelayed({
+            R.id.menu_questionnaire -> {
+                startUserQuestionnaireActivity()
+            }
+            R.id.menu_notes -> {
+                try {
+                    startActivity(Intent(this, NotesActivity::class.java))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error starting NotesActivity", e)
+                    Toast.makeText(this, "Ошибка открытия заметок", Toast.LENGTH_SHORT).show()
+                }
+            }
+            R.id.music_item -> {
+                try {
+                    startActivity(Intent(this, MusicMainActivity::class.java))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error starting MusicActivity", e)
+                    Toast.makeText(this, "Ошибка открытия музыки", Toast.LENGTH_SHORT).show()
+                }
+            }
+            R.id.menu_mozgi -> {
+                try {
+                    startActivity(Intent(this, CategoriesActivity::class.java))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error starting CategoriesActivity", e)
+                }
+            }
+            R.id.menu_alarm -> {
+                try {
+                    startActivity(Intent(this, AlarmActivity::class.java))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error starting AlarmActivity", e)
+                }
+            }
+            R.id.menu_blocks -> {
+                try {
+                    startActivity(Intent(this@MainActivity, BlockGameActivity::class.java))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error starting BlockGameActivity", e)
+                    Toast.makeText(this@MainActivity, "Ошибка открытия игры Блоки", Toast.LENGTH_SHORT).show()
+                }
+            }
+            R.id.menu_lottery -> {
+                try {
+                    switchToLotteryFragment()
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error switching to lottery fragment", e)
+                    Toast.makeText(this, "Ошибка открытия лотереи", Toast.LENGTH_SHORT).show()
+                }
+            }
+            R.id.menu_timer -> {
+                try {
+                    startActivity(Intent(this@MainActivity, TimerActivity::class.java))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error starting TimerActivity", e)
+                    Toast.makeText(this@MainActivity, "Ошибка открытия таймера", Toast.LENGTH_SHORT).show()
+                }
+            }
+            R.id.menu_logout -> {
                 showLogoutConfirmationDialog()
-            }, 200)
+            }
         }
     }
+
+
 
     /**
      * Анимация нажатия пункта меню
@@ -3501,75 +3602,7 @@ class MainActivity : AppCompatActivity() {
         popupWindow.width = preferredWidth.coerceIn(minWidth, maxWidth)
     }
 
-    /**
-     * Обрабатывает клики по пунктам стандартного меню
-     */
-    private fun handleMenuItemClick(item: MenuItem) {
-        when (item.itemId) {
-            R.id.menu_profile -> {
-                try {
-                    startActivity(Intent(this, ProfileActivity::class.java))
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error starting ProfileActivity", e)
-                }
-            }
-            R.id.menu_questionnaire -> {
-                startUserQuestionnaireActivity()
-            }
-            R.id.menu_mozgi -> {
-                try {
-                    startActivity(Intent(this, CategoriesActivity::class.java))
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error starting CategoriesActivity", e)
-                }
-            }
 
-            // ДОБАВЛЯЕМ ОБРАБОТКУ ЗАМЕТОК
-            R.id.menu_notes -> {
-                try {
-                    startActivity(Intent(this, NotesActivity::class.java))
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error starting NotesActivity", e)
-                    Toast.makeText(this, "Ошибка открытия заметок", Toast.LENGTH_SHORT).show()
-                }
-            }
-
-            R.id.menu_alarm -> {
-                try {
-                    startActivity(Intent(this, AlarmActivity::class.java))
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error starting AlarmActivity", e)
-                }
-            }
-            R.id.menu_blocks -> {
-                try {
-                    startActivity(Intent(this@MainActivity, BlockGameActivity::class.java))
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error starting BlockGameActivity", e)
-                    Toast.makeText(this@MainActivity, "Ошибка открытия игры Блоки", Toast.LENGTH_SHORT).show()
-                }
-            }
-            R.id.menu_lottery -> {
-                try {
-                    switchToLotteryFragment()
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error switching to lottery fragment", e)
-                    Toast.makeText(this, "Ошибка открытия лотереи", Toast.LENGTH_SHORT).show()
-                }
-            }
-            R.id.menu_timer -> {
-                try {
-                    startActivity(Intent(this@MainActivity, TimerActivity::class.java))
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error starting TimerActivity", e)
-                    Toast.makeText(this@MainActivity, "Ошибка открытия таймера", Toast.LENGTH_SHORT).show()
-                }
-            }
-            R.id.menu_logout -> {
-                showLogoutConfirmationDialog()
-            }
-        }
-    }
 
     // Сохраняем ссылку на popupView для анимации
     private var popupView: View? = null

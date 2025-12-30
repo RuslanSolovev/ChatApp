@@ -557,35 +557,6 @@ class FeedFragment : Fragment() {
         }
     }
 
-    fun scrollToTopIfNeeded() {
-        safeUpdateUI { binding ->
-            try {
-                if (::newsAdapter.isInitialized && newsAdapter.itemCount > 0) {
-                    val layoutManager = binding.rvNews.layoutManager as? LinearLayoutManager
-                    val firstVisiblePosition = layoutManager?.findFirstVisibleItemPosition() ?: 0
-
-                    if (firstVisiblePosition > 5) {
-                        binding.rvNews.smoothScrollToPosition(0)
-                        Log.d(TAG, "scrollToTopIfNeeded: Плавный скролл к началу с позиции $firstVisiblePosition")
-                    } else if (firstVisiblePosition > 0) {
-                        binding.rvNews.smoothScrollToPosition(0)
-                        Log.d(TAG, "scrollToTopIfNeeded: Быстрый скролл к началу с позиции $firstVisiblePosition")
-                    } else {
-                        Log.d(TAG, "scrollToTopIfNeeded: Уже в начале списка")
-                    }
-
-                    // При скролле к началу показываем ВСЮ навигацию
-                    showNavigationSmoothly()
-                    isNavigationHidden = false
-
-                    // Также показываем навигацию в MainActivity
-                    (activity as? MainActivity)?.showTopNavigation()
-                }
-            } catch (e: Exception) {
-                Log.e(TAG, "Error in scrollToTopIfNeeded", e)
-            }
-        }
-    }
 
     /**
      * БЕЗОПАСНЫЙ МЕТОД ОБНОВЛЕНИЯ UI
@@ -825,6 +796,88 @@ class FeedFragment : Fragment() {
         }
     }
 
+
+
+
+
+
+    /**
+     * Прокручивает список новостей к последней новости
+     */
+    fun scrollNewsToBottom() {
+        try {
+            if (!isAdded || !isVisible) {
+                return
+            }
+
+            lifecycleScope.launch(Dispatchers.Main) {
+                delay(100) // Небольшая задержка для стабилизации layout
+
+                binding?.let { binding ->
+                    val adapter = binding.rvNews.adapter as? NewsAdapter
+                    val itemCount = adapter?.itemCount ?: 0
+
+                    if (itemCount > 0) {
+                        binding.rvNews.scrollToPosition(itemCount - 1) // Прокрутка к последней новости
+
+                        // Опционально: плавная анимация прокрутки
+                        val layoutManager = binding.rvNews.layoutManager as? LinearLayoutManager
+                        layoutManager?.smoothScrollToPosition(binding.rvNews, null, itemCount - 1)
+
+                        Log.d(TAG, "Прокрутка к последней новости, позиция: ${itemCount - 1}")
+                    } else {
+                        Log.d(TAG, "Нет новостей для прокрутки")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при прокрутке к последней новости", e)
+        }
+    }
+
+    /**
+     * Прокручивает список новостей к первой новости
+     */
+    fun scrollNewsToTop() {
+        try {
+            if (!isAdded || !isVisible) {
+                return
+            }
+
+            lifecycleScope.launch(Dispatchers.Main) {
+                delay(100) // Небольшая задержка для стабилизации layout
+
+                binding?.let { binding ->
+                    val itemCount = (binding.rvNews.adapter as? NewsAdapter)?.itemCount ?: 0
+
+                    if (itemCount > 0) {
+                        binding.rvNews.scrollToPosition(0) // Прокрутка к первой новости
+
+                        // Опционально: плавная анимация прокрутки
+                        val layoutManager = binding.rvNews.layoutManager as? LinearLayoutManager
+                        layoutManager?.smoothScrollToPosition(binding.rvNews, null, 0)
+
+                        Log.d(TAG, "Прокрутка к первой новости")
+                    } else {
+                        Log.d(TAG, "Нет новостей для прокрутки")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка при прокрутке к первой новости", e)
+        }
+    }
+
+    // Переименуйте существующий метод для ясности
+    fun scrollToTopIfNeeded() {
+        scrollNewsToTop()
+    }
+
+
+
+
+
+
     private suspend fun refreshNewsWithProgress() {
         try {
             safeUpdateUI { binding ->
@@ -891,12 +944,6 @@ class FeedFragment : Fragment() {
         }
     }
 
-    fun clearImageCache() {
-        if (::newsAdapter.isInitialized) {
-            newsAdapter.clearGlideCache()
-            showMessage("Кэш изображений очищен")
-        }
-    }
 
     fun forceClearKnownLinks() {
         if (::newsFetcher.isInitialized) {
@@ -954,13 +1001,6 @@ class FeedFragment : Fragment() {
                 }
             }
         }
-    }
-
-    /**
-     * Метод для скролла к началу (вызывается из MainActivity)
-     */
-    fun scrollNewsToTop() {
-        scrollToTopIfNeeded()
     }
 
     /**

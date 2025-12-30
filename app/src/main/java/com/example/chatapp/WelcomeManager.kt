@@ -1,4 +1,4 @@
-package com.example.chatapp.activities
+package com.example.chatapp.privetstvie_giga
 
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
@@ -11,12 +11,15 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
+import android.view.MotionEvent
 import android.view.View
+import android.view.ViewGroup
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
@@ -26,8 +29,9 @@ import androidx.cardview.widget.CardView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.example.chatapp.R
+import com.example.chatapp.activities.MainActivity
 import com.example.chatapp.databinding.ActivityMainBinding
-import com.example.chatapp.privetstvie_giga.*
+import com.example.chatapp.fragments.HomeFragment
 import com.example.chatapp.utils.TTSManager
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import kotlinx.coroutines.*
@@ -84,6 +88,11 @@ class WelcomeManager(
     // Флаг для отслеживания установки обработчиков
     private var areListenersSetup = false
 
+    // Callback функции для обработки кликов
+    private var onStartChatClickedCallback: (() -> Unit)? = null
+    private var onMaybeLaterClickedCallback: (() -> Unit)? = null
+    private var onCloseWelcomeClickedCallback: (() -> Unit)? = null
+
     // Константы
     companion object {
         private const val TAG = "WelcomeManager"
@@ -93,6 +102,7 @@ class WelcomeManager(
         private const val WELCOME_RETRY_DELAY = 2000L
         private const val TTS_GREETING_DELAY = 500L
         private const val TTS_CONTINUATION_DELAY = 2500L
+        private const val BUTTON_CHECK_DELAY = 1000L
     }
 
     /**
@@ -115,33 +125,64 @@ class WelcomeManager(
             welcomeContent = binding.welcomeContent
             ivWelcomeAvatar = binding.ivWelcomeAvatar
 
-            // ВАЖНО: Изначально устанавливаем видимость, но с прозрачностью
+            // КРИТИЧЕСКИ ВАЖНО: Устанавливаем правильные параметры для кликабельности
             handler.post {
-                welcomeCard.visibility = View.VISIBLE
-                welcomeCard.alpha = 0f
+                try {
+                    // 1. Устанавливаем видимость
+                    welcomeCard.visibility = View.VISIBLE
+                    welcomeCard.alpha = 0f
 
-                progressWelcome.visibility = View.VISIBLE
-                progressWelcome.alpha = 0f
+                    // 2. Настраиваем карточку для правильной работы с кликами
+                    welcomeCard.apply {
+                        isEnabled = true
+                        isClickable = true // Сама карточка не должна перехватывать клики
+                        isFocusable = false
+                        descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+                        clipChildren = true
+                        clipToPadding = true
+                    }
 
-                welcomeContent.visibility = View.VISIBLE
-                welcomeContent.alpha = 0f
+                    // 3. Настраиваем прогресс-бар
+                    progressWelcome.visibility = View.VISIBLE
+                    progressWelcome.alpha = 0f
 
-                // Включаем все элементы
-                welcomeCard.isEnabled = true
-                welcomeCard.isClickable = true
-                welcomeCard.isFocusable = true
+                    // 4. Настраиваем контент
+                    welcomeContent.visibility = View.VISIBLE
+                    welcomeContent.alpha = 0f
+                    welcomeContent.isClickable = false
+                    welcomeContent.isFocusable = false
 
-                btnStartChat.isEnabled = true
-                btnStartChat.isClickable = true
-                btnStartChat.isFocusable = true
-                btnMaybeLater.isEnabled = true
-                btnMaybeLater.isClickable = true
-                btnMaybeLater.isFocusable = true
-                btnCloseWelcome.isEnabled = true
-                btnCloseWelcome.isClickable = true
-                btnCloseWelcome.isFocusable = true
+                    // 5. КРИТИЧЕСКИ ВАЖНО: Включаем кнопки с правильными параметрами
+                    setupButtonProperties(btnStartChat, "Продолжить")
+                    setupButtonProperties(btnMaybeLater, "Позже")
 
-                Log.d(TAG, "setupWelcomeCard: Элементы инициализированы, видимость установлена")
+                    btnCloseWelcome.apply {
+                        isEnabled = true
+                        isClickable = true
+                        isFocusable = true
+                        isFocusableInTouchMode = true
+                        visibility = View.VISIBLE
+                        alpha = 1f
+                        scaleX = 1f
+                        scaleY = 1f
+                        background = ContextCompat.getDrawable(activity, R.drawable.gradient_background_result)
+                    }
+
+                    Log.d(TAG, "setupWelcomeCard: Элементы инициализированы, кнопки включены")
+
+                    // 6. Форсируем перерисовку
+                    welcomeCard.requestLayout()
+                    welcomeCard.invalidate()
+                    btnStartChat.requestLayout()
+                    btnStartChat.invalidate()
+                    btnMaybeLater.requestLayout()
+                    btnMaybeLater.invalidate()
+                    btnCloseWelcome.requestLayout()
+                    btnCloseWelcome.invalidate()
+
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in handler post during setup", e)
+                }
             }
 
             // Настройка внешнего вида
@@ -155,58 +196,35 @@ class WelcomeManager(
     }
 
     /**
-     * Настройка внешнего вида приветственной карточки
+     * Настройка базовых свойств кнопки
      */
-    private fun setupWelcomeCardAppearance() {
-        try {
-            Log.d(TAG, "setupWelcomeCardAppearance: Настройка внешнего вида карточки")
+    private fun setupButtonProperties(button: Button, text: String) {
+        button.apply {
+            isEnabled = true
+            isClickable = true
+            isFocusable = true
+            isFocusableInTouchMode = true
+            this.text = text
+            alpha = 1f
+            scaleX = 1f
+            scaleY = 1f
+            visibility = View.VISIBLE
 
-            // Устанавливаем цвет фона карточки
-            welcomeCard.setCardBackgroundColor(Color.WHITE)
-            welcomeCard.cardElevation = 16f
-            welcomeCard.radius = activity.resources.getDimension(R.dimen.card_corner_radius)
+            // Устанавливаем минимальные размеры
+            minimumWidth = 120.dpToPx()
+            minimumHeight = 48.dpToPx()
 
-            // Используем стандартный аватар для скорости
-            ivWelcomeAvatar.setImageResource(R.drawable.ic_default_profile)
+            // Добавляем отступы
+            val padding = activity.resources.getDimensionPixelSize(R.dimen.button_padding)
+            setPadding(padding, padding / 2, padding, padding / 2)
 
-            // Устанавливаем фон и стили для кнопок
-            setupButtonAppearance(btnStartChat, Color.parseColor("#6200EE"), "Начать общение")
-            setupButtonAppearance(btnMaybeLater, Color.parseColor("#03DAC6"), "Позже")
-
-            // Настройка кнопки закрытия
-            btnCloseWelcome.setBackgroundColor(Color.TRANSPARENT)
-            btnCloseWelcome.setImageResource(R.drawable.ic_close)
-            btnCloseWelcome.contentDescription = "Закрыть приветствие"
-
-            // Устанавливаем стили текста
-            tvWelcomeTitle.setTextColor(Color.BLACK)
-            tvWelcomeTitle.textSize = 20f
-            tvWelcomeTitle.typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
-
-            tvWelcomeQuestion.setTextColor(Color.parseColor("#424242"))
-            tvWelcomeQuestion.textSize = 16f
-
-            tvWelcomeContext.setTextColor(Color.parseColor("#757575"))
-            tvWelcomeContext.textSize = 14f
-
-            // Настройка прогресс-бара - УПРОЩЕННАЯ ВЕРСИЯ
-            try {
-                // Только устанавливаем цвет трека, цвет индикатора оставляем по умолчанию
-                progressWelcome.trackColor = Color.parseColor("#E0E0E0")
-
-                // ИЛИ если и это не работает, используем безопасный метод:
-                // progressWelcome.setTrackColor(Color.parseColor("#E0E0E0"))
-
-            } catch (e: Exception) {
-                Log.e(TAG, "Error setting progress bar colors", e)
-            }
-
-            Log.d(TAG, "setupWelcomeCardAppearance: Внешний вид настроен успешно")
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error setting up welcome card appearance", e)
+            // Убираем любые старые обработчики касаний
+            setOnTouchListener(null)
         }
     }
+
+
+
 
     /**
      * Настройка внешнего вида кнопки
@@ -250,41 +268,6 @@ class WelcomeManager(
     }
 
     /**
-     * Установка тестовых обработчиков кликов (ТОЛЬКО как fallback)
-     */
-    private fun setupTestClickListenersAsFallback() {
-        try {
-            Log.d(TAG, "setupTestClickListenersAsFallback: Установка тестовых обработчиков")
-
-            // Очищаем все предыдущие обработчики
-            btnStartChat.setOnClickListener(null)
-            btnMaybeLater.setOnClickListener(null)
-            btnCloseWelcome.setOnClickListener(null)
-
-            // Устанавливаем тестовые обработчики
-            btnStartChat.setOnClickListener {
-                Log.d(TAG, "FALLBACK TEST: Start Chat button clicked")
-                Toast.makeText(activity, "Тест: Начать общение (рабочие обработчики не установлены)", Toast.LENGTH_LONG).show()
-            }
-
-            btnMaybeLater.setOnClickListener {
-                Log.d(TAG, "FALLBACK TEST: Maybe Later button clicked")
-                Toast.makeText(activity, "Тест: Позже (рабочие обработчики не установлены)", Toast.LENGTH_LONG).show()
-            }
-
-            btnCloseWelcome.setOnClickListener {
-                Log.d(TAG, "FALLBACK TEST: Close Welcome button clicked")
-                Toast.makeText(activity, "Тест: Закрыть (рабочие обработчики не установлены)", Toast.LENGTH_LONG).show()
-            }
-
-            Log.d(TAG, "Fallback test click listeners setup")
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Error setting up fallback test click listeners", e)
-        }
-    }
-
-    /**
      * Настройка слушателей для карточки приветствия
      */
     fun setupWelcomeCardListeners(
@@ -295,54 +278,86 @@ class WelcomeManager(
         try {
             Log.d(TAG, "setupWelcomeCardListeners: Настройка рабочих обработчиков")
 
+            // Сохраняем callback для возможной переустановки
+            onStartChatClickedCallback = onStartChatClicked
+            onMaybeLaterClickedCallback = onMaybeLaterClicked
+            onCloseWelcomeClickedCallback = onCloseWelcomeClicked
+
             // Убедимся, что элементы инициализированы
             if (!::btnStartChat.isInitialized || !::btnMaybeLater.isInitialized || !::btnCloseWelcome.isInitialized) {
                 Log.e(TAG, "setupWelcomeCardListeners: Кнопки не инициализированы, откладываем настройку")
-                // Попробуем позже
                 handler.postDelayed({
                     setupWelcomeCardListeners(onStartChatClicked, onMaybeLaterClicked, onCloseWelcomeClicked)
                 }, 500)
                 return
             }
 
-            // ВАЖНО: Очищаем ВСЕ предыдущие слушатели
+            // ВАЖНО: Устанавливаем обработчики в главном потоке
             handler.post {
                 try {
-                    // Очищаем все обработчики
+                    // Очищаем все предыдущие обработчики
                     btnStartChat.setOnClickListener(null)
                     btnMaybeLater.setOnClickListener(null)
                     btnCloseWelcome.setOnClickListener(null)
 
+                    // Убираем старые обработчики касаний
+                    btnStartChat.setOnTouchListener(null)
+                    btnMaybeLater.setOnTouchListener(null)
+
                     // Устанавливаем новые РАБОЧИЕ слушатели
                     btnStartChat.setOnClickListener {
-                        Log.d(TAG, "РАБОЧИЙ: Start Chat button clicked - opening chat")
+                        Log.d(TAG, "РАБОЧИЙ ОБРАБОТЧИК: Start Chat button clicked")
+
                         // Анимация нажатия
-                        animateButtonClick(it as Button)
+                        it.animate()
+                            .scaleX(0.95f)
+                            .scaleY(0.95f)
+                            .setDuration(100)
+                            .withEndAction {
+                                it.animate()
+                                    .scaleX(1f)
+                                    .scaleY(1f)
+                                    .setDuration(100)
+                                    .start()
+                            }
+                            .start()
 
                         // Проверяем, что обработчик работает
                         Toast.makeText(activity, "Переход в чат...", Toast.LENGTH_SHORT).show()
 
-                        onStartChatClicked()
+                        onStartChatClicked.invoke()
                     }
 
                     btnMaybeLater.setOnClickListener {
-                        Log.d(TAG, "РАБОЧИЙ: Maybe Later button clicked - hiding welcome")
+                        Log.d(TAG, "РАБОЧИЙ ОБРАБОТЧИК: Maybe Later button clicked")
+
                         // Анимация нажатия
-                        animateButtonClick(it as Button)
+                        it.animate()
+                            .scaleX(0.95f)
+                            .scaleY(0.95f)
+                            .setDuration(100)
+                            .withEndAction {
+                                it.animate()
+                                    .scaleX(1f)
+                                    .scaleY(1f)
+                                    .setDuration(100)
+                                    .start()
+                            }
+                            .start()
 
                         // Проверяем, что обработчик работает
                         Toast.makeText(activity, "Скрываем приветствие...", Toast.LENGTH_SHORT).show()
 
-                        onMaybeLaterClicked()
+                        onMaybeLaterClicked.invoke()
                     }
 
                     btnCloseWelcome.setOnClickListener {
-                        Log.d(TAG, "РАБОЧИЙ: Close Welcome button clicked - hiding welcome")
+                        Log.d(TAG, "РАБОЧИЙ ОБРАБОТЧИК: Close Welcome button clicked")
 
                         // Проверяем, что обработчик работает
                         Toast.makeText(activity, "Закрываем приветствие...", Toast.LENGTH_SHORT).show()
 
-                        onCloseWelcomeClicked()
+                        onCloseWelcomeClicked.invoke()
                     }
 
                     areListenersSetup = true
@@ -355,16 +370,11 @@ class WelcomeManager(
 
                     // Проверяем через 1 секунду, что обработчики все еще есть
                     handler.postDelayed({
-                        checkListenersStillActive(onStartChatClicked, onMaybeLaterClicked, onCloseWelcomeClicked)
+                        checkListenersStillActive()
                     }, 1000)
 
-                    // Если через 5 секунд обработчики не установились, ставим тестовые
-                    handler.postDelayed({
-                        if (!btnStartChat.hasOnClickListeners() || !btnMaybeLater.hasOnClickListeners()) {
-                            Log.w(TAG, "Обработчики не установились через 5 секунд, ставим тестовые")
-                            setupTestClickListenersAsFallback()
-                        }
-                    }, 5000)
+                    // Отладочная проверка состояния кнопок
+                    debugButtonState("После установки обработчиков")
 
                 } catch (e: Exception) {
                     Log.e(TAG, "Error in handler post", e)
@@ -375,19 +385,17 @@ class WelcomeManager(
 
         } catch (e: Exception) {
             Log.e(TAG, "Error setting up welcome card listeners", e)
-            // Если не удалось установить рабочие обработчики, ставим тестовые
-            setupTestClickListenersAsFallback()
+            // Повторная попытка через некоторое время
+            handler.postDelayed({
+                setupWelcomeCardListeners(onStartChatClicked, onMaybeLaterClicked, onCloseWelcomeClicked)
+            }, 1000)
         }
     }
 
     /**
      * Проверяет, что обработчики все еще активны
      */
-    private fun checkListenersStillActive(
-        onStartChatClicked: () -> Unit,
-        onMaybeLaterClicked: () -> Unit,
-        onCloseWelcomeClicked: () -> Unit
-    ) {
+    private fun checkListenersStillActive() {
         Log.d(TAG, "Проверка активности обработчиков:")
         Log.d(TAG, "btnStartChat has listeners: ${btnStartChat.hasOnClickListeners()}")
         Log.d(TAG, "btnMaybeLater has listeners: ${btnMaybeLater.hasOnClickListeners()}")
@@ -396,32 +404,81 @@ class WelcomeManager(
         // Если нет обработчиков, переустанавливаем
         if (!btnStartChat.hasOnClickListeners() || !btnMaybeLater.hasOnClickListeners()) {
             Log.w(TAG, "Обработчики пропали! Переустанавливаем...")
-            setupWelcomeCardListeners(onStartChatClicked, onMaybeLaterClicked, onCloseWelcomeClicked)
+
+            onStartChatClickedCallback?.let { startCallback ->
+                onMaybeLaterClickedCallback?.let { laterCallback ->
+                    onCloseWelcomeClickedCallback?.let { closeCallback ->
+                        setupWelcomeCardListeners(startCallback, laterCallback, closeCallback)
+                    }
+                }
+            }
         }
     }
 
     /**
-     * Анимация нажатия кнопки
+     * Принудительная переустановка обработчиков
      */
-    private fun animateButtonClick(button: Button) {
-        try {
-            val originalScaleX = button.scaleX
-            val originalScaleY = button.scaleY
+    fun forceReattachListeners(
+        onStartChatClicked: () -> Unit,
+        onMaybeLaterClicked: () -> Unit,
+        onCloseWelcomeClicked: () -> Unit
+    ) {
+        Log.d(TAG, "forceReattachListeners: Принудительная переустановка обработчиков")
 
-            button.animate()
-                .scaleX(0.95f)
-                .scaleY(0.95f)
-                .setDuration(100)
-                .withEndAction {
-                    button.animate()
-                        .scaleX(originalScaleX)
-                        .scaleY(originalScaleY)
-                        .setDuration(100)
-                        .start()
+        handler.post {
+            try {
+                // Сохраняем callback
+                onStartChatClickedCallback = onStartChatClicked
+                onMaybeLaterClickedCallback = onMaybeLaterClicked
+                onCloseWelcomeClickedCallback = onCloseWelcomeClicked
+
+                // Сначала гарантируем, что кнопки включены
+                btnStartChat.isEnabled = true
+                btnStartChat.isClickable = true
+                btnMaybeLater.isEnabled = true
+                btnMaybeLater.isClickable = true
+                btnCloseWelcome.isEnabled = true
+                btnCloseWelcome.isClickable = true
+
+                // Очищаем все обработчики
+                btnStartChat.setOnClickListener(null)
+                btnMaybeLater.setOnClickListener(null)
+                btnCloseWelcome.setOnClickListener(null)
+                btnStartChat.setOnTouchListener(null)
+                btnMaybeLater.setOnTouchListener(null)
+
+                // Устанавливаем новые обработчики напрямую
+                btnStartChat.setOnClickListener {
+                    Log.d(TAG, "FORCE REATTACH: Start Chat clicked")
+                    Toast.makeText(activity, "Переход в чат...", Toast.LENGTH_SHORT).show()
+                    onStartChatClicked.invoke()
                 }
-                .start()
-        } catch (e: Exception) {
-            Log.e(TAG, "Error animating button click", e)
+
+                btnMaybeLater.setOnClickListener {
+                    Log.d(TAG, "FORCE REATTACH: Maybe Later clicked")
+                    Toast.makeText(activity, "Скрываем приветствие...", Toast.LENGTH_SHORT).show()
+                    onMaybeLaterClicked.invoke()
+                }
+
+                btnCloseWelcome.setOnClickListener {
+                    Log.d(TAG, "FORCE REATTACH: Close Welcome clicked")
+                    Toast.makeText(activity, "Закрываем приветствие...", Toast.LENGTH_SHORT).show()
+                    onCloseWelcomeClicked.invoke()
+                }
+
+                // Форсируем перерисовку
+                btnStartChat.invalidate()
+                btnMaybeLater.invalidate()
+                btnCloseWelcome.invalidate()
+
+                Log.d(TAG, "FORCE REATTACH: Обработчики переустановлены")
+
+                // Проверяем состояние
+                debugButtonState("После принудительной переустановки")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in forceReattachListeners", e)
+            }
         }
     }
 
@@ -505,6 +562,7 @@ class WelcomeManager(
                     tvWelcomeTitle.text = "Добро пожаловать!"
                     tvWelcomeQuestion.text = "Рад видеть вас!"
                     tvWelcomeContext.text = "Давайте начнем наше общение"
+                    tvWelcomeContext.text = "Здарова"
 
                     // Сразу показываем карточку
                     showWelcomeCardImmediately()
@@ -532,39 +590,37 @@ class WelcomeManager(
         }
     }
 
+
+
     /**
-     * Мгновенный показ карточки приветствия
+     * Проверка и исправление состояния кнопок
      */
-    private fun showWelcomeCardImmediately() {
-        try {
-            handler.post {
-                // Устанавливаем видимость
-                welcomeCard.visibility = View.VISIBLE
-                welcomeContent.visibility = View.VISIBLE
-                progressWelcome.visibility = View.GONE
+    private fun checkAndFixButtonState() {
+        Log.d(TAG, "Проверка состояния кнопок:")
+        Log.d(TAG, "btnStartChat - enabled: ${btnStartChat.isEnabled}, clickable: ${btnStartChat.isClickable}, visible: ${btnStartChat.visibility}")
+        Log.d(TAG, "btnMaybeLater - enabled: ${btnMaybeLater.isEnabled}, clickable: ${btnMaybeLater.isClickable}, visible: ${btnMaybeLater.visibility}")
+        Log.d(TAG, "btnCloseWelcome - enabled: ${btnCloseWelcome.isEnabled}, clickable: ${btnCloseWelcome.isClickable}, visible: ${btnCloseWelcome.visibility}")
 
-                // Устанавливаем прозрачность
-                welcomeCard.alpha = 1f
-                welcomeContent.alpha = 1f
+        // Если кнопки не активны, исправляем
+        if (!btnStartChat.isEnabled || !btnStartChat.isClickable) {
+            Log.w(TAG, "Кнопка 'Начать общение' неактивна, исправляем...")
+            btnStartChat.isEnabled = true
+            btnStartChat.isClickable = true
+            btnStartChat.invalidate()
+        }
 
-                // Включаем интерактивность
-                welcomeCard.isEnabled = true
-                welcomeCard.isClickable = true
-                btnStartChat.isEnabled = true
-                btnMaybeLater.isEnabled = true
-                btnCloseWelcome.isEnabled = true
+        if (!btnMaybeLater.isEnabled || !btnMaybeLater.isClickable) {
+            Log.w(TAG, "Кнопка 'Позже' неактивна, исправляем...")
+            btnMaybeLater.isEnabled = true
+            btnMaybeLater.isClickable = true
+            btnMaybeLater.invalidate()
+        }
 
-                // Принудительная перерисовка
-                welcomeCard.requestLayout()
-                welcomeCard.invalidate()
-
-                Log.d(TAG, "Welcome card shown immediately with buttons enabled")
-
-                // Отладочная информация
-                debugWelcomeCardState()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Error showing welcome card immediately", e)
+        if (!btnCloseWelcome.isEnabled || !btnCloseWelcome.isClickable) {
+            Log.w(TAG, "Кнопка 'Закрыть' неактивна, исправляем...")
+            btnCloseWelcome.isEnabled = true
+            btnCloseWelcome.isClickable = true
+            btnCloseWelcome.invalidate()
         }
     }
 
@@ -707,6 +763,173 @@ class WelcomeManager(
 
         entranceAnimator.start()
     }
+
+
+
+
+
+
+
+
+
+
+
+
+
+    /**
+     * Настройка внешнего вида приветственной карточки
+     */
+    private fun setupWelcomeCardAppearance() {
+        try {
+            Log.d(TAG, "setupWelcomeCardAppearance: Настройка внешнего вида карточки")
+
+            // Устанавливаем цвет фона карточки в соответствии с alarm_primary
+            welcomeCard.setCardBackgroundColor(ContextCompat.getColor(activity, R.color.alarm_primary))
+            welcomeCard.radius = 90f
+
+            // Используем аватар
+            ivWelcomeAvatar.setImageResource(R.drawable.fill)
+
+
+            // Устанавливаем улучшенный фон и стили для кнопок
+            setupWelcomeButtonAppearance(btnStartChat, "Продолить")
+            setupWelcomeButtonAppearance(btnMaybeLater, "Позже")
+
+            // Настройка кнопки закрытия
+            btnCloseWelcome.setBackgroundColor(Color.TRANSPARENT)
+            btnCloseWelcome.setImageResource(R.drawable.ic_close)
+            btnCloseWelcome.contentDescription = "Закрыть приветствие"
+
+            // Устанавливаем стили текста с белым цветом для контраста на alarm_primary
+            tvWelcomeTitle.setTextColor(Color.WHITE)
+            tvWelcomeTitle.textSize = 28f
+            tvWelcomeTitle.typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+
+            tvWelcomeQuestion.setTextColor(Color.parseColor("#E0E0E0"))
+            tvWelcomeQuestion.textSize = 22f
+
+            tvWelcomeContext.setTextColor(Color.WHITE)
+            tvWelcomeContext.textSize = 20f
+            tvWelcomeContext.typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.ITALIC)
+
+            // Настройка прогресс-бара
+            try {
+                progressWelcome.trackColor = Color.parseColor("#80FFFFFF")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error setting progress bar colors", e)
+            }
+
+            Log.d(TAG, "setupWelcomeCardAppearance: Улучшенный внешний вид настроен успешно")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting up welcome card appearance", e)
+        }
+    }
+
+    /**
+     * Настройка внешнего вида кнопок приветствия (белый стиль на alarm_primary)
+     */
+    private fun setupWelcomeButtonAppearance(button: Button, text: String) {
+        try {
+            // Устанавливаем текст
+            button.text = text
+            button.setTextColor(ContextCompat.getColor(activity, R.color.alarm_primary))
+            button.textSize = 18f
+            button.typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL)
+            button.isAllCaps = false
+
+            // Для кнопки "Начать диалог" делаем жирный шрифт
+            if (text == "Продолжить диалог") {
+                button.typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+            }
+
+            // Устанавливаем минимальные размеры
+            button.minHeight = 52.dpToPx()
+            button.minWidth = 120.dpToPx()
+
+            // Устанавливаем отступы
+            val padding = activity.resources.getDimensionPixelSize(R.dimen.button_padding_large)
+            button.setPadding(padding, padding, padding, padding)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting up welcome button appearance", e)
+        }
+    }
+
+    /**
+     * Мгновенный показ карточки приветствия с улучшенной анимацией
+     */
+    private fun showWelcomeCardImmediately() {
+        try {
+            handler.post {
+                try {
+                    // 1. Устанавливаем видимость и позиционирование
+                    welcomeCard.visibility = View.VISIBLE
+                    welcomeContent.visibility = View.VISIBLE
+                    progressWelcome.visibility = View.GONE
+
+                    // 2. Устанавливаем full-width стиль
+                    val layoutParams = welcomeCard.layoutParams as FrameLayout.LayoutParams
+                    layoutParams.width = FrameLayout.LayoutParams.MATCH_PARENT
+                    layoutParams.height = FrameLayout.LayoutParams.WRAP_CONTENT
+                    layoutParams.topMargin = 0
+                    welcomeCard.layoutParams = layoutParams
+
+                    // 3. Анимация появления
+                    welcomeCard.animate()
+                        .alpha(1f)
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .translationY(0f)
+                        .setDuration(300)
+                        .setInterpolator(OvershootInterpolator(0.5f))
+                        .start()
+
+                    welcomeContent.animate()
+                        .alpha(1f)
+                        .setDuration(300)
+                        .setStartDelay(100)
+                        .start()
+
+                    // 4. Включаем интерактивность
+                    welcomeCard.isEnabled = true
+                    btnStartChat.isEnabled = true
+                    btnStartChat.isClickable = true
+                    btnStartChat.isFocusable = true
+                    btnMaybeLater.isEnabled = true
+                    btnMaybeLater.isClickable = true
+                    btnMaybeLater.isFocusable = true
+                    btnCloseWelcome.isEnabled = true
+                    btnCloseWelcome.isClickable = true
+                    btnCloseWelcome.isFocusable = true
+
+                    // 5. Принудительная перерисовка
+                    welcomeCard.requestLayout()
+                    welcomeCard.invalidate()
+                    btnStartChat.requestLayout()
+                    btnStartChat.invalidate()
+                    btnMaybeLater.requestLayout()
+                    btnMaybeLater.invalidate()
+                    btnCloseWelcome.requestLayout()
+                    btnCloseWelcome.invalidate()
+
+                    Log.d(TAG, "Welcome card shown immediately with improved design")
+
+                    // 6. Через секунду проверяем состояние кнопок
+                    handler.postDelayed({
+                        checkAndFixButtonState()
+                    }, BUTTON_CHECK_DELAY)
+
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error in showWelcomeCardImmediately handler", e)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error showing welcome card immediately", e)
+        }
+    }
+
+
 
     /**
      * Последовательность загрузки контента
@@ -1794,7 +2017,7 @@ class WelcomeManager(
         // Глубокий анализ последнего сообщения пользователя
         analyzeLastMessageForStrategies(lastUserMessage, strategies)
 
-        // Добавление контекстных стратегий
+        // Добавление контекстных стратегии
         addContextualStrategies(strategies, mainTopics, lastUserMessage)
 
         // Fallback стратегии если не найдено конкретных
@@ -2143,26 +2366,46 @@ class WelcomeManager(
         }
     }
 
-    /**
-     * Скрытие карточки приветствия (только видимость)
-     */
     fun hideWelcomeCard() {
         try {
             if (::welcomeCard.isInitialized && welcomeCard.visibility == View.VISIBLE) {
                 handler.post {
-                    welcomeCard.visibility = View.GONE
-                    welcomeCard.alpha = 0f
+                    // 1. Сначала анимируем скрытие
+                    welcomeCard.animate()
+                        .alpha(0f)
+                        .translationY(-50f)
+                        .setDuration(300)
+                        .withEndAction {
+                            // 2. Только после анимации меняем видимость
+                            welcomeCard.visibility = View.GONE
+
+                            // 3. КРИТИЧЕСКИ ВАЖНО: Освобождаем focus и requestFocus
+                            welcomeCard.clearFocus()
+                            welcomeCard.isFocusable = false
+                            welcomeCard.isFocusableInTouchMode = false
+
+                            // 4. Форсируем перерисовку родительского контейнера
+                            val parent = welcomeCard.parent as? ViewGroup
+                            parent?.requestLayout()
+                            parent?.invalidate()
+                        }
+                        .start()
+
+                    // 5. Также скрываем кнопки и контент
+                    btnStartChat.visibility = View.GONE
+                    btnMaybeLater.visibility = View.GONE
+                    welcomeContent.visibility = View.GONE
                 }
-                Log.d(TAG, "Welcome card hidden (visibility only)")
+                Log.d(TAG, "Welcome card hidden with animation and focus cleared")
             }
         } catch (e: Exception) {
             Log.e(TAG, "Error hiding welcome card", e)
+            handler.post {
+                welcomeCard.visibility = View.GONE
+            }
         }
     }
 
-    /**
-     * Скрытие приветственного сообщения с анимацией и остановкой TTS
-     */
     fun hideWelcomeMessage() {
         try {
             // Отменяем последовательность приветствия
@@ -2171,42 +2414,74 @@ class WelcomeManager(
 
             // Останавливаем ВСЕ TTS
             ttsManager?.stop()
-            ttsManager?.clearQueue()  // Очищаем очередь
+            ttsManager?.clearQueue()
 
-            val exitAnimator = ValueAnimator.ofFloat(1f, 0f).apply {
-                duration = 300
-                interpolator = AccelerateInterpolator()
+            // Используем плавную анимацию без резких изменений layout
+            welcomeCard.animate()
+                .alpha(0f)
+                .translationY(-30f)
+                .scaleX(0.95f)
+                .scaleY(0.95f)
+                .setDuration(250)
+                .setInterpolator(AccelerateInterpolator())
+                .withEndAction {
+                    // 1. Меняем видимость ТОЛЬКО после анимации
+                    welcomeCard.visibility = View.GONE
 
-                addUpdateListener { animation ->
-                    val progress = animation.animatedValue as Float
-                    welcomeCard.alpha = progress
-                    welcomeCard.scaleX = 1f - 0.1f * (1 - progress)
-                    welcomeCard.scaleY = 1f - 0.1f * (1 - progress)
-                    welcomeCard.translationY = -30f * (1 - progress)
+                    // 2. КРИТИЧЕСКИ ВАЖНО: Сбрасываем все состояния фокуса
+                    welcomeCard.clearFocus()
+                    btnStartChat.clearFocus()
+                    btnMaybeLater.clearFocus()
+                    btnCloseWelcome.clearFocus()
+
+                    // 3. Отключаем возможность фокуса у всей карточки
+                    welcomeCard.isFocusable = false
+                    welcomeCard.isFocusableInTouchMode = false
+                    welcomeCard.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+
+                    // 4. Даем фокус HomeFragment
+                    giveFocusToHomeFragment()
+
+                    // 5. Форсируем перерисовку
+                    val rootView = welcomeCard.rootView
+                    rootView?.requestLayout()
+                    rootView?.invalidate()
                 }
+                .start()
 
-                addListener(object : AnimatorListenerAdapter() {
-                    override fun onAnimationEnd(animation: Animator) {
-                        welcomeCard.visibility = View.GONE
-                        resetWelcomeCardState() // Сбрасываем для следующего показа
+            // Сбрасываем флаги TTS
+            hasGreetingBeenSpoken = false
+            hasAIContinuationBeenSpoken = false
 
-                        // Сбрасываем флаги TTS
-                        hasGreetingBeenSpoken = false
-                        hasAIContinuationBeenSpoken = false
-                    }
-                })
-            }
-
-            exitAnimator.start()
-
-            Log.d(TAG, "Welcome message hidden with animation, TTS stopped")
+            Log.d(TAG, "Welcome message hidden smoothly")
 
         } catch (e: Exception) {
             Log.e(TAG, "Error hiding welcome message", e)
             handler.post {
                 welcomeCard.visibility = View.GONE
+                giveFocusToHomeFragment()
             }
             ttsManager?.stop()
+        }
+    }
+
+
+    private fun giveFocusToHomeFragment() {
+        try {
+            // Используем константу из MainActivity
+            val fragment = activity.supportFragmentManager.findFragmentByTag(MainActivity.HOME_FRAGMENT_TAG)
+            if (fragment is HomeFragment) {
+                handler.postDelayed({
+                    fragment.requestFocusForNewsList()
+                }, 100)
+            }
+
+            val rootView = welcomeCard.rootView
+            rootView?.requestFocus()
+            rootView?.isFocusableInTouchMode = true
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error giving focus to home fragment", e)
         }
     }
 
@@ -2290,47 +2565,13 @@ class WelcomeManager(
     }
 
     /**
-     * Принудительная проверка и установка обработчиков
+     * Отладочная информация о состоянии кнопок
      */
-    fun forceSetupListeners(
-        onStartChatClicked: () -> Unit,
-        onMaybeLaterClicked: () -> Unit,
-        onCloseWelcomeClicked: () -> Unit
-    ) {
-        Log.d(TAG, "forceSetupListeners: Принудительная установка обработчиков")
-
-        handler.post {
-            try {
-                // Очищаем ВСЕ обработчики
-                btnStartChat.setOnClickListener(null)
-                btnMaybeLater.setOnClickListener(null)
-                btnCloseWelcome.setOnClickListener(null)
-
-                // Устанавливаем обработчики напрямую
-                btnStartChat.setOnClickListener {
-                    Log.d(TAG, "FORCE: Start Chat clicked")
-                    Toast.makeText(activity, "FORCE: Переход в чат", Toast.LENGTH_SHORT).show()
-                    onStartChatClicked()
-                }
-
-                btnMaybeLater.setOnClickListener {
-                    Log.d(TAG, "FORCE: Maybe Later clicked")
-                    Toast.makeText(activity, "FORCE: Скрытие приветствия", Toast.LENGTH_SHORT).show()
-                    onMaybeLaterClicked()
-                }
-
-                btnCloseWelcome.setOnClickListener {
-                    Log.d(TAG, "FORCE: Close Welcome clicked")
-                    Toast.makeText(activity, "FORCE: Закрытие приветствия", Toast.LENGTH_SHORT).show()
-                    onCloseWelcomeClicked()
-                }
-
-                areListenersSetup = true
-                Log.d(TAG, "FORCE: Обработчики установлены принудительно")
-
-            } catch (e: Exception) {
-                Log.e(TAG, "Error in forceSetupListeners", e)
-            }
-        }
+    private fun debugButtonState(context: String) {
+        Log.d(TAG, "=== BUTTON STATE DEBUG: $context ===")
+        Log.d(TAG, "btnStartChat - enabled: ${btnStartChat.isEnabled}, clickable: ${btnStartChat.isClickable}, visible: ${btnStartChat.visibility}")
+        Log.d(TAG, "btnMaybeLater - enabled: ${btnMaybeLater.isEnabled}, clickable: ${btnMaybeLater.isClickable}, visible: ${btnMaybeLater.visibility}")
+        Log.d(TAG, "btnCloseWelcome - enabled: ${btnCloseWelcome.isEnabled}, clickable: ${btnCloseWelcome.isClickable}, visible: ${btnCloseWelcome.visibility}")
+        Log.d(TAG, "=== END BUTTON DEBUG ===")
     }
 }

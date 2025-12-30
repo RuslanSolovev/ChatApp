@@ -170,7 +170,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="56dp"
                 android:orientation="horizontal"
-                android:background="@color/primary_color"
+                android:background="@color/alarm_primary"
                 android:paddingStart="16dp"
                 android:paddingEnd="12dp"
                 android:paddingVertical="8dp"
@@ -233,7 +233,7 @@
                             android:layout_width="24dp"
                             android:layout_height="24dp"
                             android:src="@drawable/ic_history"
-                            app:tint="@color/primary_color"
+                            app:tint="@color/alarm_primary"
                             android:layout_marginEnd="16dp" />
 
                         <TextView
@@ -268,7 +268,7 @@
                             android:layout_width="24dp"
                             android:layout_height="24dp"
                             android:src="@drawable/ic_save"
-                            app:tint="@color/primary_color"
+                            app:tint="@color/alarm_primary"
                             android:layout_marginEnd="16dp" />
 
                         <TextView
@@ -297,7 +297,7 @@
                             android:layout_width="24dp"
                             android:layout_height="24dp"
                             android:src="@drawable/ic_delete"
-                            app:tint="@color/primary_color"
+                            app:tint="@color/alarm_primary"
                             android:layout_marginEnd="16dp" />
 
                         <TextView
@@ -328,7 +328,7 @@
                             android:layout_width="24dp"
                             android:layout_height="24dp"
                             android:src="@drawable/ic_empty_chat"
-                            app:tint="@color/primary_color"
+                            app:tint="@color/alarm_primary"
                             android:layout_marginEnd="16dp" />
 
                         <TextView
@@ -371,7 +371,7 @@
                             android:layout_width="24dp"
                             android:layout_height="24dp"
                             android:src="@drawable/ic_settings"
-                            app:tint="@color/primary_color"
+                            app:tint="@color/alarm_primary"
                             android:layout_marginEnd="16dp" />
 
                         <TextView
@@ -402,7 +402,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="56dp"
                 android:orientation="horizontal"
-                android:background="@color/primary_color"
+                android:background="@color/alarm_primary"
                 android:paddingStart="16dp"
                 android:paddingEnd="12dp"
                 android:paddingVertical="8dp"

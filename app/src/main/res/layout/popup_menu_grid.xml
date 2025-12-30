@@ -43,7 +43,7 @@
                 android:layout_height="wrap_content"
                 android:text="Руслан"
                 android:textSize="18sp"
-                android:textColor="@color/on_surface_variant"
+                android:textColor="@color/alarm_text"
                 android:fontFamily="sans-serif-medium"
                 android:maxLines="1"
                 android:ellipsize="end" />
@@ -54,7 +54,7 @@
                 android:layout_height="wrap_content"
                 android:text="user@example.com"
                 android:textSize="14sp"
-                android:textColor="@color/on_surface_variant"
+                android:textColor="@color/alarm_text"
                 android:maxLines="1"
                 android:ellipsize="end" />
 
@@ -99,7 +99,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="4dp"
                 android:layout_weight="1"
-                android:background="?attr/selectableItemBackground"
+                android:background="@drawable/battle_result_background"
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
@@ -147,7 +147,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:orientation="vertical"
-                android:background="?attr/selectableItemBackground"
+                android:background="@drawable/battle_result_background"
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
@@ -155,13 +155,14 @@
                 android:layout_marginStart="4dp">
 
                 <!-- Изображение на всю ширину -->
+
                 <ImageView
                     android:layout_width="match_parent"
                     android:layout_height="100dp"
-                    android:scaleType="centerCrop"
-                    android:src="@drawable/zametki"
                     android:background="@color/surface_variant"
-                    android:padding="16dp" />
+                    android:padding="16dp"
+                    android:scaleType="centerCrop"
+                    android:src="@drawable/zametki" />
 
                 <TextView
                     android:layout_width="wrap_content"
@@ -206,7 +207,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:orientation="vertical"
-                android:background="?attr/selectableItemBackground"
+                android:background="@drawable/battle_result_background"
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
@@ -241,7 +242,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:orientation="vertical"
-                android:background="?attr/selectableItemBackground"
+                android:background="@drawable/battle_result_background"
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
@@ -285,7 +286,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:orientation="vertical"
-                android:background="?attr/selectableItemBackground"
+                android:background="@drawable/battle_result_background"
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
@@ -320,7 +321,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:orientation="vertical"
-                android:background="?attr/selectableItemBackground"
+                android:background="@drawable/battle_result_background"
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
@@ -363,7 +364,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:orientation="vertical"
-                android:background="?attr/selectableItemBackground"
+                android:background="@drawable/battle_result_background"
                 android:clickable="true"
                 android:focusable="true"
                 android:gravity="center"
@@ -391,12 +392,40 @@
 
             </LinearLayout>
 
-            <!-- Пустое место для выравнивания -->
-            <View
+            <!-- Музыка (новый элемент) -->
+            <LinearLayout
+                android:id="@+id/music_item"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:visibility="invisible" />
+                android:orientation="vertical"
+                android:background="@drawable/battle_result_background"
+                android:clickable="true"
+                android:focusable="true"
+                android:gravity="center"
+                android:padding="0dp"
+                android:layout_marginStart="4dp">
+
+                <ImageView
+                    android:layout_width="match_parent"
+                    android:layout_height="100dp"
+                    android:scaleType="centerCrop"
+                    android:src="@drawable/ic_music_note"
+                android:background="@color/surface_variant"
+                android:padding="16dp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Музыка"
+                    android:textSize="14sp"
+                    android:textColor="@color/on_surface"
+                    android:layout_marginTop="8dp"
+                    android:layout_marginBottom="8dp"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+
+            </LinearLayout>
 
         </LinearLayout>
 

@@ -152,5 +152,7 @@
     <!-- Градиент для фона -->
     <color name="primary_light">#E3F2FD</color>
 
+    <color name="alarm_primary_dark">#3A0066</color>
+
 
 </resources>

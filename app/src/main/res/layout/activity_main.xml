@@ -8,21 +8,31 @@
     android:background="@color/alarm_primary"
     android:fitsSystemWindows="true">
 
-    <!-- AppBar с кастомным Toolbar -->
     <androidx.appcompat.widget.Toolbar
         android:id="@+id/toolbar"
         android:layout_width="match_parent"
         android:layout_height="40dp"
+        app:title=""
         android:background="@color/alarm_primary"
-        app:layout_constraintTop_toTopOf="parent">
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:titleTextColor="@android:color/transparent"
+        app:contentInsetStart="0dp"
+        app:contentInsetLeft="0dp"
+        app:contentInsetStartWithNavigation="0dp"
+        app:contentInsetEnd="0dp"
+        app:contentInsetRight="0dp"
+        android:padding="0dp"
+        app:contentPadding="0dp"
+        android:layout_margin="0dp" >
 
-        <!-- Контейнер для аватарки и имени -->
+    <!-- Контейнер для аватарки и имени -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:gravity="center_vertical"
-            android:paddingStart="16dp">
+            android:gravity="start"
+            android:paddingStart="6dp">
 
             <!-- Аватар пользователя -->
             <ImageView
@@ -99,30 +109,32 @@
         app:layout_constraintVertical_bias="0.0"
         tools:layout_editor_absoluteX="0dp">
 
-        <!-- Стильный приветственный виджет с современным дизайном -->
+        <!-- УЛУЧШЕННАЯ ПРИВЕТСТВЕННАЯ КАРТОЧКА - СТИЛЬНЫЙ ДИЗАЙН -->
         <androidx.cardview.widget.CardView
             android:id="@+id/welcomeCard"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_gravity="top"
-            android:layout_marginHorizontal="20dp"
-            android:layout_marginTop="12dp"
+            android:layout_marginTop="0dp"
             android:alpha="0"
-            android:scaleX="0.9"
-            android:scaleY="0.9"
-            android:translationY="-50dp"
+            android:scaleX="0.95"
+            android:scaleY="0.95"
+            android:translationY="-20dp"
             android:visibility="gone"
-            app:cardBackgroundColor="@color/white"
-            app:cardCornerRadius="28dp"
-            app:cardElevation="16dp"
-            app:cardUseCompatPadding="true">
+            android:focusable="false"
+            android:focusableInTouchMode="false"
+            android:clickable="false"
+            android:descendantFocusability="blocksDescendants"
+            app:cardBackgroundColor="@color/alarm_primary"
+            app:cardCornerRadius="0dp"
+            app:cardUseCompatPadding="false">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:background="@drawable/welcome_card_gradient"
+                android:background="@drawable/welcome_card_gradient_improved"
                 android:orientation="vertical"
-                android:padding="24dp">
+                android:padding="28dp">
 
                 <!-- Заголовок и кнопка закрытия -->
                 <LinearLayout
@@ -134,9 +146,9 @@
                     <!-- Аватарка в заголовке -->
                     <ImageView
                         android:id="@+id/ivWelcomeAvatar"
-                        android:layout_width="36dp"
-                        android:layout_height="36dp"
-                        android:layout_marginEnd="12dp"
+                        android:layout_width="42dp"
+                        android:layout_height="42dp"
+                        android:layout_marginEnd="16dp"
                         android:contentDescription="Аватар"
                         android:src="@drawable/ic_default_profile" />
 
@@ -147,18 +159,19 @@
                         android:layout_weight="1"
                         android:fontFamily="sans-serif-medium"
                         android:text="Доброе утро!"
-                        android:textColor="@color/black"
-                        android:textSize="20sp"
+                        android:textColor="@android:color/white"
+                        android:textSize="24sp"
                         android:textStyle="bold" />
 
                     <ImageButton
                         android:id="@+id/btnCloseWelcome"
-                        android:layout_width="40dp"
-                        android:layout_height="40dp"
+                        android:layout_width="44dp"
+                        android:layout_height="44dp"
                         android:layout_marginStart="8dp"
                         android:background="?attr/selectableItemBackgroundBorderless"
                         android:contentDescription="Закрыть"
-                        android:src="@drawable/ic_army_enemy" />
+                        app:tint="@android:color/white"
+                        android:src="@drawable/ic_close" />
                 </LinearLayout>
 
                 <!-- Progress bar для индикации загрузки контента -->
@@ -166,10 +179,10 @@
                     android:id="@+id/progressWelcome"
                     android:layout_width="match_parent"
                     android:layout_height="4dp"
-                    android:layout_marginTop="16dp"
+                    android:layout_marginTop="20dp"
                     android:visibility="visible"
-                    app:indicatorColor="#4285F4"
-                    app:trackColor="#E3E3E3"
+                    app:indicatorColor="@android:color/white"
+                    app:trackColor="#80FFFFFF"
                     app:trackCornerRadius="2dp" />
 
                 <!-- Контентная часть -->
@@ -179,6 +192,7 @@
                     android:layout_height="wrap_content"
                     android:alpha="0"
                     android:orientation="vertical"
+                    android:paddingTop="16dp"
                     android:visibility="gone">
 
                     <!-- Контекстный вопрос из анкеты -->
@@ -186,19 +200,19 @@
                         android:id="@+id/tvWelcomeQuestion"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
+                        android:layout_marginTop="8dp"
                         android:fontFamily="sans-serif"
-                        android:lineSpacingExtra="4dp"
+                        android:lineSpacingExtra="6dp"
                         android:text="Формирую вопрос на основе ваших интересов..."
-                        android:textColor="#666666"
-                        android:textSize="16sp" />
+                        android:textColor="#E0E0E0"
+                        android:textSize="18sp" />
 
                     <!-- Разделитель -->
                     <View
                         android:layout_width="match_parent"
                         android:layout_height="1dp"
-                        android:layout_marginVertical="16dp"
-                        android:background="#F0F0F0" />
+                        android:layout_marginVertical="20dp"
+                        android:background="#40FFFFFF" />
 
                     <!-- Анализ диалога (продолжение темы) -->
                     <TextView
@@ -206,45 +220,49 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:fontFamily="sans-serif"
-                        android:lineSpacingExtra="4dp"
+                        android:lineSpacingExtra="6dp"
                         android:text="Анализирую наши предыдущие обсуждения..."
-                        android:textColor="@color/black"
-                        android:textSize="15sp"
+                        android:textColor="@android:color/white"
+                        android:textSize="16sp"
                         android:textStyle="italic" />
 
-                    <!-- Кнопки действий -->
+                    <!-- Кнопки действий - УЛУЧШЕННЫЙ ВИД -->
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="20dp"
+                        android:layout_marginTop="28dp"
                         android:gravity="center_vertical"
-                        android:orientation="horizontal">
+                        android:orientation="horizontal"
+                        android:paddingBottom="8dp">
 
                         <Button
                             android:id="@+id/btnStartChat"
                             android:layout_width="0dp"
-                            android:layout_height="44dp"
-                            android:layout_marginEnd="8dp"
+                            android:layout_height="52dp"
+                            android:layout_marginEnd="12dp"
                             android:layout_weight="1"
-                            android:background="@drawable/btn_primary_small"
-                            android:elevation="0dp"
+                            android:background="@drawable/btn_welcome_primary"
+                            android:elevation="2dp"
                             android:stateListAnimator="@null"
-                            android:text="Начать диалог"
-                            android:textColor="@color/white"
-                            android:textSize="14sp" />
+                            android:text="Продолжить"
+                            android:textAllCaps="false"
+                            android:textColor="@android:color/white"
+                            android:textSize="16sp"
+                            android:textStyle="bold" />
 
                         <Button
                             android:id="@+id/btnMaybeLater"
                             android:layout_width="0dp"
-                            android:layout_height="44dp"
-                            android:layout_marginStart="8dp"
+                            android:layout_height="52dp"
+                            android:layout_marginStart="12dp"
                             android:layout_weight="1"
-                            android:background="@drawable/btn_outline_small"
+                            android:background="@drawable/btn_welcome_primary"
                             android:elevation="0dp"
                             android:stateListAnimator="@null"
                             android:text="Позже"
-                            android:textColor="#666666"
-                            android:textSize="14sp" />
+                            android:textAllCaps="false"
+                            android:textColor="@android:color/white"
+                            android:textSize="16sp" />
 
                     </LinearLayout>
 

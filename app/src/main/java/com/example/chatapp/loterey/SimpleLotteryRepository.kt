@@ -31,7 +31,7 @@ class SimpleLotteryRepository {
     companion object {
         private const val TAG = "LotteryRepo"
         private const val adminUserId = "4b3dGWLXHNO5LCeD7R8VAbnmnRg1"
-        private const val ONESIGNAL_REST_API_KEY = "os_v2_app_acb55d34ubecjleitqbxe6bdp3ikecppy5petsuwwf5ooxn5u25bv5fdzosm2rxc4pr36zsnmo4f3zy5mungxglwboqd7hctpz3pmya"
+        private const val ONESIGNAL_REST_API_KEY = "os_v2_app_acb55d34ubecjleitqbxe6bdp3ad7ao3pwiuhrnowr2mcfzachyna2rtvpqvc7xnljq7k6zocjsv6jehlrgrqfqky4w22wzxhcnvdjq"
     }
 
     // ОСНОВНОЙ метод отправки уведомлений через OneSignal

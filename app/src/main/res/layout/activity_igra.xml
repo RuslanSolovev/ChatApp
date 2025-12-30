@@ -8,7 +8,6 @@
     <ImageView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        app:cardBackgroundColor="@color/alarm_primary"
         android:scaleType="centerCrop"
         android:contentDescription="Background" />
 
@@ -34,7 +33,7 @@
                 android:fadeScrollbars="false"
                 android:fillViewport="true"
                 android:layout_marginBottom="110dp"
-                android:padding="8dp">
+                >
 
                 <GridLayout
                     android:id="@+id/grid_games"
@@ -58,7 +57,7 @@
                         android:layout_gravity="fill"
                         android:clickable="true"
                         android:focusable="true"
-                        app:cardCornerRadius="16dp"
+                        app:cardCornerRadius="26dp"
                         app:cardElevation="6dp"
                         app:cardBackgroundColor="@color/alarm_primary">
 
@@ -75,8 +74,7 @@
 
                             <View
                                 android:layout_width="match_parent"
-                                android:layout_height="match_parent"
-                                android:background="@drawable/gradient_overlay" />
+                                android:layout_height="match_parent" />
 
                             <TextView
                                 android:layout_width="match_parent"
@@ -85,7 +83,7 @@
                                 android:background="@drawable/bottom_gradient"
                                 android:padding="12dp"
                                 android:text="Угадай число"
-                                android:textColor="@color/white"
+                                android:textColor="@color/alarm_primary"
                                 android:textSize="14sp"
                                 android:textStyle="bold"
                                 android:gravity="center" />
@@ -104,9 +102,9 @@
                         android:clickable="true"
                         android:focusable="true"
                         android:foreground="?android:attr/selectableItemBackground"
-                        app:cardCornerRadius="16dp"
+                        app:cardCornerRadius="26dp"
                         app:cardElevation="6dp"
-                        app:cardBackgroundColor="@color/white">
+                        app:cardBackgroundColor="@color/alarm_primary">
 
                         <RelativeLayout
                             android:layout_width="match_parent"
@@ -122,7 +120,7 @@
                             <View
                                 android:layout_width="match_parent"
                                 android:layout_height="match_parent"
-                                android:background="@drawable/gradient_overlay" />
+                                />
 
                             <TextView
                                 android:layout_width="match_parent"
@@ -131,7 +129,7 @@
                                 android:background="@drawable/bottom_gradient"
                                 android:padding="12dp"
                                 android:text="Сложение чисел"
-                                android:textColor="@color/white"
+                                android:textColor="@color/alarm_primary"
                                 android:textSize="14sp"
                                 android:textStyle="bold"
                                 android:gravity="center" />
@@ -150,7 +148,7 @@
                         android:clickable="true"
                         android:focusable="true"
                         android:foreground="?android:attr/selectableItemBackground"
-                        app:cardCornerRadius="16dp"
+                        app:cardCornerRadius="26dp"
                         app:cardElevation="6dp"
                         app:cardBackgroundColor="@color/white">
 
@@ -168,7 +166,7 @@
                             <View
                                 android:layout_width="match_parent"
                                 android:layout_height="match_parent"
-                                android:background="@drawable/gradient_overlay" />
+                                />
 
                             <TextView
                                 android:layout_width="match_parent"
@@ -177,7 +175,7 @@
                                 android:background="@drawable/bottom_gradient"
                                 android:padding="12dp"
                                 android:text="Шахматы"
-                                android:textColor="@color/white"
+                                android:textColor="@color/alarm_primary"
                                 android:textSize="14sp"
                                 android:textStyle="bold"
                                 android:gravity="center" />
@@ -196,7 +194,7 @@
                         android:clickable="true"
                         android:focusable="true"
                         android:foreground="?android:attr/selectableItemBackground"
-                        app:cardCornerRadius="16dp"
+                        app:cardCornerRadius="26dp"
                         app:cardElevation="6dp"
                         app:cardBackgroundColor="@color/white">
 
@@ -213,8 +211,7 @@
 
                             <View
                                 android:layout_width="match_parent"
-                                android:layout_height="match_parent"
-                                android:background="@drawable/gradient_overlay" />
+                                android:layout_height="match_parent" />
 
                             <TextView
                                 android:layout_width="match_parent"
@@ -223,7 +220,7 @@
                                 android:background="@drawable/bottom_gradient"
                                 android:padding="12dp"
                                 android:text="На память"
-                                android:textColor="@color/white"
+                                android:textColor="@color/alarm_primary"
                                 android:textSize="14sp"
                                 android:textStyle="bold"
                                 android:gravity="center" />
@@ -242,7 +239,7 @@
                         android:clickable="true"
                         android:focusable="true"
                         android:foreground="?android:attr/selectableItemBackground"
-                        app:cardCornerRadius="16dp"
+                        app:cardCornerRadius="26dp"
                         app:cardElevation="6dp"
                         app:cardBackgroundColor="@color/white">
 
@@ -259,8 +256,7 @@
 
                             <View
                                 android:layout_width="match_parent"
-                                android:layout_height="match_parent"
-                                android:background="@drawable/gradient_overlay" />
+                                android:layout_height="match_parent" />
 
                             <TextView
                                 android:layout_width="match_parent"
@@ -269,7 +265,7 @@
                                 android:background="@drawable/bottom_gradient"
                                 android:padding="12dp"
                                 android:text="Стратегия"
-                                android:textColor="@color/white"
+                                android:textColor="@color/alarm_primary"
                                 android:textSize="14sp"
                                 android:textStyle="bold"
                                 android:gravity="center" />
@@ -288,7 +284,7 @@
                         android:clickable="true"
                         android:focusable="true"
                         android:foreground="?android:attr/selectableItemBackground"
-                        app:cardCornerRadius="16dp"
+                        app:cardCornerRadius="26dp"
                         app:cardElevation="6dp"
                         app:cardBackgroundColor="@color/white">
 
@@ -305,8 +301,7 @@
 
                             <View
                                 android:layout_width="match_parent"
-                                android:layout_height="match_parent"
-                                android:background="@drawable/gradient_overlay" />
+                                android:layout_height="match_parent" />
 
                             <TextView
                                 android:layout_width="match_parent"
@@ -315,7 +310,7 @@
                                 android:background="@drawable/bottom_gradient"
                                 android:padding="12dp"
                                 android:text="ПВО"
-                                android:textColor="@color/white"
+                                android:textColor="@color/alarm_primary"
                                 android:textSize="14sp"
                                 android:textStyle="bold"
                                 android:gravity="center" />
@@ -335,7 +330,7 @@
                         android:clickable="true"
                         android:focusable="true"
                         android:foreground="?android:attr/selectableItemBackground"
-                        app:cardCornerRadius="16dp"
+                        app:cardCornerRadius="26dp"
                         app:cardElevation="6dp"
                         app:cardBackgroundColor="@color/white">
 
@@ -352,8 +347,7 @@
 
                             <View
                                 android:layout_width="match_parent"
-                                android:layout_height="match_parent"
-                                android:background="@drawable/gradient_overlay" />
+                                android:layout_height="match_parent" />
 
                             <TextView
                                 android:layout_width="match_parent"
@@ -362,7 +356,7 @@
                                 android:background="@drawable/bottom_gradient"
                                 android:padding="16dp"
                                 android:text="Кирпичики - Разбей все блоки"
-                                android:textColor="@color/white"
+                                android:textColor="@color/alarm_primary"
                                 android:textSize="16sp"
                                 android:textStyle="bold"
                                 android:gravity="center" />

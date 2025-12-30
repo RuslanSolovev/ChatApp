@@ -114,6 +114,7 @@
     <style name="Theme.AlarmFullscreen" parent="Theme.AppCompat.Light.NoActionBar">
         <item name="android:windowFullscreen">true</item>
         <item name="android:windowNoTitle">true</item>
+        <item name="android:label">""</item>
         <item name="android:windowActionBar">false</item>
         <item name="android:windowBackground">@color/alarm_background</item>
     </style>

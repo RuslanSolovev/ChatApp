@@ -29,10 +29,6 @@ import com.yandex.mapkit.map.PlacemarkMapObject
 import com.yandex.mapkit.map.PolylineMapObject
 import com.yandex.mapkit.mapview.MapView
 import com.yandex.runtime.image.ImageProvider
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
 import kotlin.math.*
 
 class RouteTrackerFragment : Fragment() {
@@ -63,20 +59,22 @@ class RouteTrackerFragment : Fragment() {
     private var isTracking = false
     private var routePoints = mutableListOf<Point>()
     private var locationList = mutableListOf<UserLocation>()
+    private val processedTimestamps = mutableSetOf<Long>()
+
     private var locationListener: ValueEventListener? = null
     private var trackingStatusListener: ValueEventListener? = null
 
     private val handler = Handler(Looper.getMainLooper())
     private var statsUpdateRunnable: Runnable? = null
-    private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     private var isFirstLoad = true
     private var shouldShowFullHistory = true
 
     companion object {
         private const val STATS_UPDATE_INTERVAL = 3000L
-        private const val MAX_REALISTIC_SPEED = 27.78 // 100 км/ч в м/с
-        private const val MAX_BIKE_SPEED = 16.67 // 60 км/ч в м/с
+        private const val MAX_REALISTIC_SPEED = 27.78 // 100 km/h → m/s
+        private const val MAX_BIKE_SPEED = 16.67 // 60 km/h → m/s
+        private const val MIN_DISTANCE_BETWEEN_POINTS = 5.0 // meters
     }
 
     override fun onCreateView(
@@ -100,7 +98,7 @@ class RouteTrackerFragment : Fragment() {
         setupFirebaseListeners()
 
         handler.postDelayed({
-            loadFullRouteHistory()
+            if (isAdded) loadFullRouteHistory()
         }, 1000)
     }
 
@@ -201,11 +199,10 @@ class RouteTrackerFragment : Fragment() {
 
         database.child("user_locations").child(userId).removeValue()
             .addOnSuccessListener {
-                shouldShowFullHistory = true
-                isFirstLoad = true
+                resetState(keepHistory = true)
                 loadFullRouteHistory()
             }
-            .addOnFailureListener { e ->
+            .addOnFailureListener {
                 Toast.makeText(context, "Ошибка очистки маршрута", Toast.LENGTH_SHORT).show()
             }
     }
@@ -217,12 +214,29 @@ class RouteTrackerFragment : Fragment() {
             .addOnSuccessListener {
                 database.child("user_locations").child(userId).removeValue()
                     .addOnSuccessListener {
-                        clearUI()
+                        resetState(keepHistory = false)
                     }
             }
-            .addOnFailureListener { e ->
+            .addOnFailureListener {
                 Toast.makeText(context, "Ошибка очистки истории", Toast.LENGTH_SHORT).show()
             }
+    }
+
+    private fun resetState(keepHistory: Boolean) {
+        processedTimestamps.clear()
+        locationList.clear()
+        routePoints.clear()
+        totalDistance = 0.0
+        totalTime = 0L
+        maxSpeed = 0.0
+        avgSpeed = 0.0
+        isFirstLoad = true
+        shouldShowFullHistory = keepHistory
+
+        requireActivity().runOnUiThread {
+            updateUI()
+            clearRoute()
+        }
     }
 
     private fun setupStatsUpdater() {
@@ -246,8 +260,7 @@ class RouteTrackerFragment : Fragment() {
     }
 
     private fun setupFirebaseListeners() {
-        val userId = auth.currentUser?.uid
-        if (userId == null) {
+        val userId = auth.currentUser?.uid ?: run {
             Toast.makeText(context, "Требуется авторизация", Toast.LENGTH_SHORT).show()
             return
         }
@@ -255,14 +268,17 @@ class RouteTrackerFragment : Fragment() {
         trackingStatusListener = database.child("tracking_status").child(userId)
             .addValueEventListener(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
+                    val wasTracking = isTracking
                     isTracking = snapshot.getValue(Boolean::class.java) ?: false
                     updateTrackingUI()
 
-                    if (isTracking) {
+                    if (isTracking && !wasTracking) {
                         startLocationListener()
                         shouldShowFullHistory = false
-                        loadCurrentSession()
-                    } else {
+                        if (locationList.isEmpty()) {
+                            loadCurrentSession()
+                        }
+                    } else if (!isTracking && wasTracking) {
                         shouldShowFullHistory = true
                         stopLocationListener()
                         if (!isFirstLoad) {
@@ -270,6 +286,7 @@ class RouteTrackerFragment : Fragment() {
                         }
                     }
                 }
+
                 override fun onCancelled(error: DatabaseError) {
                     // ignore
                 }
@@ -283,9 +300,9 @@ class RouteTrackerFragment : Fragment() {
             .addListenerForSingleValueEvent(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     if (!isAdded) return
-
                     processRouteData(snapshot, "history")
                 }
+
                 override fun onCancelled(error: DatabaseError) {
                     // ignore
                 }
@@ -299,9 +316,9 @@ class RouteTrackerFragment : Fragment() {
             .addListenerForSingleValueEvent(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     if (!isAdded) return
-
                     processRouteData(snapshot, "session")
                 }
+
                 override fun onCancelled(error: DatabaseError) {
                     // ignore
                 }
@@ -309,74 +326,61 @@ class RouteTrackerFragment : Fragment() {
     }
 
     private fun parseUserLocation(snapshot: DataSnapshot): UserLocation? {
-        try {
-            if (snapshot.key in listOf("accuracy", "color", "lat", "lng", "timestamp", "speed")) {
+        return try {
+            if (snapshot.key in setOf("accuracy", "color", "lat", "lng", "timestamp", "speed")) {
                 return null
             }
 
-            if (snapshot.hasChild("lat") && snapshot.hasChild("lng")) {
-                val lat = snapshot.child("lat").getValue(Double::class.java) ?: 0.0
-                val lng = snapshot.child("lng").getValue(Double::class.java) ?: 0.0
-                val timestamp = snapshot.child("timestamp").getValue(Long::class.java) ?: System.currentTimeMillis()
+            val lat = snapshot.child("lat").getValue(Double::class.java) ?: 0.0
+            val lng = snapshot.child("lng").getValue(Double::class.java) ?: 0.0
+            val timestamp = snapshot.child("timestamp").getValue(Long::class.java) ?: System.currentTimeMillis()
 
-                if (isValidCoordinates(lat, lng)) {
-                    return UserLocation(lat, lng, timestamp)
-                }
-            } else if (snapshot.value is Map<*, *>) {
-                val data = snapshot.value as Map<*, *>
-                val lat = (data["lat"] as? Double) ?: 0.0
-                val lng = (data["lng"] as? Double) ?: 0.0
-                val timestamp = (data["timestamp"] as? Long) ?: System.currentTimeMillis()
-
-                if (isValidCoordinates(lat, lng)) {
-                    return UserLocation(lat, lng, timestamp)
-                }
+            if (isValidCoordinates(lat, lng) && timestamp !in processedTimestamps) {
+                processedTimestamps.add(timestamp)
+                UserLocation(lat, lng, timestamp)
+            } else {
+                null
             }
-
-            return null
-
         } catch (e: Exception) {
-            return null
+            null
         }
     }
 
     private fun isValidCoordinates(lat: Double, lng: Double): Boolean {
         return lat != 0.0 && lng != 0.0 &&
                 abs(lat) <= 90 && abs(lng) <= 180 &&
-                lat > 1.0 && lng > 1.0
+                lat in 1.0..89.9 && lng in 1.0..179.9
     }
 
     private fun processRouteData(snapshot: DataSnapshot, source: String) {
-        val locations = mutableListOf<UserLocation>()
+        val newLocations = mutableListOf<UserLocation>()
 
         for (child in snapshot.children) {
-            val location = parseUserLocation(child)
-            if (location != null) {
-                locations.add(location)
-            }
+            parseUserLocation(child)?.let { newLocations.add(it) }
         }
 
-        if (locations.isNotEmpty()) {
-            locations.sortBy { it.timestamp }
+        if (newLocations.isNotEmpty()) {
+            newLocations.sortBy { it.timestamp }
 
             if (source == "history" && isFirstLoad) {
+                processedTimestamps.clear()
                 locationList.clear()
                 routePoints.clear()
-                locationList.addAll(locations)
-                routePoints.addAll(locations.map { Point(it.lat, it.lng) })
-                isFirstLoad = false
-            } else if (source == "session") {
-                val newPoints = locations.map { Point(it.lat, it.lng) }
-                routePoints.addAll(newPoints)
-                locationList.addAll(locations)
-            }
 
-            updateRouteOnMap()
-            calculateStats()
-        } else {
-            if (source == "history" && isFirstLoad) {
-                clearUI()
+                locationList.addAll(newLocations)
+                routePoints.addAll(newLocations.map { Point(it.lat, it.lng) })
+                newLocations.forEach { processedTimestamps.add(it.timestamp) }
+                isFirstLoad = false
+
+                // Обновляем карту и камеру
+                updatePolylineIncrementally()
+                adjustCameraToRoute()
+                calculateStats()
+            } else if (source == "session") {
+                addNewLocationsToRoute(newLocations)
             }
+        } else if (source == "history" && isFirstLoad) {
+            clearUI()
         }
     }
 
@@ -404,10 +408,7 @@ class RouteTrackerFragment : Fragment() {
 
                     val newLocations = mutableListOf<UserLocation>()
                     for (child in snapshot.children) {
-                        val location = parseUserLocation(child)
-                        if (location != null) {
-                            newLocations.add(location)
-                        }
+                        parseUserLocation(child)?.let { newLocations.add(it) }
                     }
 
                     if (newLocations.isNotEmpty()) {
@@ -415,6 +416,7 @@ class RouteTrackerFragment : Fragment() {
                         addNewLocationsToRoute(newLocations)
                     }
                 }
+
                 override fun onCancelled(error: DatabaseError) {
                     // ignore
                 }
@@ -422,79 +424,80 @@ class RouteTrackerFragment : Fragment() {
     }
 
     private fun addNewLocationsToRoute(newLocations: List<UserLocation>) {
-        val existingTimestamps = locationList.map { it.timestamp }.toSet()
+        val trulyNew = mutableListOf<UserLocation>()
 
-        val trulyNewLocations = newLocations
-            .filter { it.timestamp !in existingTimestamps }
-            .sortedBy { it.timestamp }
-            .filterIndexed { index, location ->
-                if (index > 0) {
-                    val prev = newLocations[index - 1]
-                    val distance = calculateDistance(prev.lat, prev.lng, location.lat, location.lng)
-                    val timeDiff = (location.timestamp - prev.timestamp) / 1000.0
+        for (loc in newLocations) {
+            if (loc.timestamp in processedTimestamps) continue
 
-                    if (timeDiff > 0) {
-                        val speed = distance / timeDiff
-                        val isRealistic = speed <= MAX_REALISTIC_SPEED
-                        isRealistic
-                    } else {
-                        true
-                    }
-                } else {
-                    true
-                }
+            if (locationList.isNotEmpty()) {
+                val last = locationList.last()
+                val distance = calculateDistance(last.lat, last.lng, loc.lat, loc.lng)
+                if (distance < MIN_DISTANCE_BETWEEN_POINTS) continue
+
+                val timeDiff = (loc.timestamp - last.timestamp) / 1000.0
+                if (timeDiff <= 0) continue
+
+                val speed = distance / timeDiff
+                if (speed > MAX_REALISTIC_SPEED) continue
             }
 
-        if (trulyNewLocations.isEmpty()) {
+            processedTimestamps.add(loc.timestamp)
+            trulyNew.add(loc)
+        }
+
+        if (trulyNew.isEmpty()) return
+
+        locationList.addAll(trulyNew)
+        routePoints.addAll(trulyNew.map { Point(it.lat, it.lng) })
+
+        updatePolylineIncrementally()
+        calculateStats()
+
+        if (isTracking) {
+            mapView.map.move(
+                CameraPosition(routePoints.last(), 16f, 0f, 0f),
+                Animation(Animation.Type.SMOOTH, 0.5f),
+                null
+            )
+        }
+    }
+
+    private fun updatePolylineIncrementally() {
+        if (routePoints.size < 2) {
+            clearRoute()
             return
         }
 
-        locationList.addAll(trulyNewLocations)
-        locationList.sortBy { it.timestamp }
-        routePoints.clear()
-        routePoints.addAll(locationList.map { Point(it.lat, it.lng) })
-
-        updateRouteOnMap()
-        calculateStats()
-    }
-
-    private fun updateRouteOnMap() {
-        if (!isAdded || routePoints.isEmpty()) return
-
-        clearRoute()
-
-        try {
-            if (routePoints.size >= 2) {
-                polyline = mapView.map.mapObjects.addPolyline(Polyline(routePoints)).apply {
-                    setStrokeColor(Color.parseColor("#1E88E5"))
-                    setStrokeWidth(6f)
-                    setOutlineColor(Color.WHITE)
-                    setOutlineWidth(2f)
-                }
+        if (polyline == null) {
+            polyline = mapView.map.mapObjects.addPolyline(Polyline(routePoints)).apply {
+                setStrokeColor(Color.parseColor("#1E88E5"))
+                setStrokeWidth(6f)
+                setOutlineColor(Color.WHITE)
+                setOutlineWidth(2f)
             }
+        } else {
+            polyline?.setGeometry(Polyline(routePoints))
+        }
 
+        if (startMarker == null) {
             startMarker = mapView.map.mapObjects.addPlacemark(routePoints.first()).apply {
                 setIcon(ImageProvider.fromResource(requireContext(), R.drawable.ic_location))
                 setIconStyle(IconStyle().setScale(1.5f))
             }
+        }
 
-            if (routePoints.size > 1) {
-                endMarker = mapView.map.mapObjects.addPlacemark(routePoints.last()).apply {
-                    setIcon(ImageProvider.fromResource(requireContext(), R.drawable.ic_marker))
-                    setIconStyle(IconStyle().setScale(1.5f))
-                }
+        if (endMarker == null) {
+            endMarker = mapView.map.mapObjects.addPlacemark(routePoints.last()).apply {
+                setIcon(ImageProvider.fromResource(requireContext(), R.drawable.ic_marker))
+                setIconStyle(IconStyle().setScale(1.5f))
             }
-
-            adjustCameraToRoute()
-
-        } catch (e: Exception) {
-            // ignore
+        } else {
+            endMarker?.geometry = routePoints.last()
         }
     }
 
     private fun adjustCameraToRoute() {
         if (routePoints.isEmpty()) return
-
         val bbox = calculateBoundingBox(routePoints)
         val center = Point(
             (bbox.southWest.latitude + bbox.northEast.latitude) / 2,
@@ -512,7 +515,7 @@ class RouteTrackerFragment : Fragment() {
             maxDiff < 0.02 -> 13f
             maxDiff < 0.05 -> 12f
             else -> 11f
-        }.coerceIn(10f, 18f)
+        }.coerceIn(10f, 17f)
 
         mapView.map.move(
             CameraPosition(center, zoom, 0f, 0f),
@@ -549,47 +552,38 @@ class RouteTrackerFragment : Fragment() {
             return
         }
 
-        totalDistance = 0.0
-        totalTime = 0L
-        maxSpeed = 0.0
+        var calculatedDistance = 0.0
+        var calculatedTime = 0L
         var totalSpeed = 0.0
         var validSegments = 0
+        var localMaxSpeed = 0.0
 
         for (i in 1 until locationList.size) {
             val prev = locationList[i - 1]
             val curr = locationList[i]
 
             val timeDiff = (curr.timestamp - prev.timestamp) / 1000.0
-            val distance = calculateDistance(
-                prev.lat, prev.lng,
-                curr.lat, curr.lng
-            )
+            val distance = calculateDistance(prev.lat, prev.lng, curr.lat, curr.lng)
 
             if (timeDiff > 0 && distance > 0) {
                 val speed = distance / timeDiff
-
                 if (speed <= MAX_REALISTIC_SPEED) {
-                    totalDistance += distance
-                    totalTime += timeDiff.toLong()
+                    calculatedDistance += distance
+                    calculatedTime += timeDiff.toLong()
                     totalSpeed += speed
                     validSegments++
-
-                    if (speed > maxSpeed) {
-                        maxSpeed = speed
-                    }
+                    if (speed > localMaxSpeed) localMaxSpeed = speed
                 }
             }
         }
 
+        totalDistance = calculatedDistance
+        totalTime = calculatedTime
+        maxSpeed = localMaxSpeed
         avgSpeed = if (validSegments > 0) totalSpeed / validSegments else 0.0
 
-        if (maxSpeed * 3.6 > 80) {
-            maxSpeed = avgSpeed * 1.5
-        }
-
-        if (maxSpeed * 3.6 > 60) {
-            maxSpeed = min(maxSpeed, MAX_BIKE_SPEED)
-        }
+        if (maxSpeed * 3.6 > 80) maxSpeed = avgSpeed * 1.5
+        if (maxSpeed * 3.6 > 60) maxSpeed = min(maxSpeed, MAX_BIKE_SPEED)
 
         updateUI()
     }
@@ -603,13 +597,11 @@ class RouteTrackerFragment : Fragment() {
         val maxSpeedKmh = maxSpeed * 3.6
         val calories = calculateCalories(distanceKm, timeMinutes / 60.0, avgSpeedKmh)
 
-        activity?.runOnUiThread {
-            tvDistance.text = "${String.format("%.2f", distanceKm)} км"
-            tvTime.text = "${String.format("%.0f", timeMinutes)} мин"
-            tvAvgSpeed.text = "${String.format("%.1f", avgSpeedKmh)} км/ч"
-            tvMaxSpeed.text = "${String.format("%.1f", maxSpeedKmh)} км/ч"
-            tvCalories.text = "${calories.toInt()} ккал"
-        }
+        tvDistance.text = "${String.format("%.2f", distanceKm)} км"
+        tvTime.text = "${String.format("%.0f", timeMinutes)} мин"
+        tvAvgSpeed.text = "${String.format("%.1f", avgSpeedKmh)} км/ч"
+        tvMaxSpeed.text = "${String.format("%.1f", maxSpeedKmh)} км/ч"
+        tvCalories.text = "${calories.toInt()} ккал"
     }
 
     private fun calculateCalories(distanceKm: Double, timeHours: Double, speedKmh: Double): Double {
@@ -657,16 +649,7 @@ class RouteTrackerFragment : Fragment() {
     }
 
     private fun clearUI() {
-        totalDistance = 0.0
-        totalTime = 0L
-        maxSpeed = 0.0
-        avgSpeed = 0.0
-        routePoints.clear()
-        locationList.clear()
-        isFirstLoad = true
-
-        updateUI()
-        clearRoute()
+        resetState(keepHistory = true)
     }
 
     override fun onStart() {
@@ -685,7 +668,6 @@ class RouteTrackerFragment : Fragment() {
         stopLocationListener()
         trackingStatusListener?.let { database.removeEventListener(it) }
         statsUpdateRunnable?.let { handler.removeCallbacks(it) }
-        serviceScope.cancel()
         clearRoute()
         super.onDestroyView()
     }

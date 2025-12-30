@@ -556,8 +556,8 @@
             android:layout_height="wrap_content"
             app:cardCornerRadius="12dp"
             app:cardElevation="4dp"
+            android:layout_marginBottom="60dp"
             app:cardBackgroundColor="@color/alarm_primary"
-            android:layout_marginBottom="16dp"
             android:visibility="gone">
 
             <LinearLayout
@@ -640,7 +640,8 @@
                     android:text="Путешествие через Ла-Манш"
                     android:textSize="12sp"
                     android:textColor="@color/alarm_background"
-                    android:paddingTop="4dp" />
+                    android:paddingTop="4dp"
+                    android:layout_marginBottom="60dp"/>
             </LinearLayout>
         </androidx.cardview.widget.CardView>
 

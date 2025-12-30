@@ -16,30 +16,25 @@
             android:id="@+id/tv_title"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:textSize="18sp"
+            android:textSize="40sp"
+            android:textColor="@color/white"
             android:textStyle="bold" />
 
         <TextView
             android:id="@+id/tv_description"
             android:layout_width="match_parent"
+            android:textColor="@color/white"
+            android:textSize="20sp"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp" />
+            android:layout_marginTop="1dp" />
 
         <TextView
             android:id="@+id/tv_date"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:textSize="12sp"
-            android:textColor="#777" />
+            android:layout_marginTop="1dp"
+            android:textSize="15sp"
+            android:textColor="@color/white"/>
     </LinearLayout>
 
-    <ImageView
-        android:id="@+id/btn_delete"
-        android:layout_width="48dp"
-        android:layout_height="48dp"
-        android:padding="12dp"
-        android:src="@drawable/ic_delete"
-        android:contentDescription="Удалить"
-        android:visibility="gone" />
 </LinearLayout>
