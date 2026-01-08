@@ -434,7 +434,8 @@ class LocationUpdateService : Service() {
             return
         }
 
-        val locationData = hashMapOf(
+        // Используем явное объявление типа Map с указанием типов
+        val locationData = hashMapOf<String, Any>(
             "lat" to location.latitude,
             "lng" to location.longitude,
             "timestamp" to System.currentTimeMillis(),
@@ -522,10 +523,14 @@ class LocationUpdateService : Service() {
 
                     // Таймаут
                     handler.postDelayed({
-                        if (continuation.context.isActive) {
-                            Log.w(TAG, "⚠️ Таймаут единичной локации")
-                            continuation.resume(null)
-                            fusedLocationClient.removeLocationUpdates(tempCallback)
+                        try {
+                            if (continuation.context.isActive) {
+                                Log.w(TAG, "⚠️ Таймаут единичной локации")
+                                continuation.resume(null)
+                                fusedLocationClient.removeLocationUpdates(tempCallback)
+                            }
+                        } catch (e: Exception) {
+                            Log.e(TAG, "❌ Ошибка в таймауте", e)
                         }
                     }, 15000)
                 }
@@ -556,19 +561,22 @@ class LocationUpdateService : Service() {
         }
 
         releaseWakeLock()
-        serviceScope.cancel()
+        serviceScope.cancel("Service stopped")
 
         Log.d(TAG, "✅ Трекинг остановлен")
     }
 
     private fun removeLocationUpdates() {
         try {
-            if (::locationCallback.isInitialized) {
+            // Исправленная проверка инициализации lateinit переменной
+            if (this::locationCallback.isInitialized) {
                 fusedLocationClient.removeLocationUpdates(locationCallback)
                 Log.d(TAG, "✅ Location updates removed")
+            } else {
+                Log.d(TAG, "⚠️ Location callback not initialized yet")
             }
         } catch (e: Exception) {
-            Log.d(TAG, "⚠️ Location updates already removed или не инициализирован")
+            Log.d(TAG, "⚠️ Location updates already removed", e)
         }
     }
 
@@ -584,7 +592,8 @@ class LocationUpdateService : Service() {
 
     private fun releaseWakeLock() {
         try {
-            if (::wakeLock.isInitialized && wakeLock.isHeld) {
+            // Проверка инициализации wakeLock
+            if (this::wakeLock.isInitialized && wakeLock.isHeld) {
                 wakeLock.release()
                 Log.d(TAG, "🔋 WakeLock освобожден")
             }

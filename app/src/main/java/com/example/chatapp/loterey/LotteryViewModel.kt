@@ -39,7 +39,7 @@ class LotteryViewModel : ViewModel() {
 
     private fun checkAdminStatus() {
         val user = auth.currentUser
-        _isAdmin.value = user?.uid == "4b3dGWLXHNO5LCeD7R8VAbnmnRg1"
+        _isAdmin.value = user?.uid == "vuei98kyRuQC30CnQ954zQr3Qwr1"
         if (_isAdmin.value) {
             Log.d("LotteryVM", "👑 Пользователь является администратором")
         } else {

@@ -8,5 +8,5 @@ data class NotificationRequest(
     val headings: Map<String, String>? = null,
     val android_channel_id: String? = null,
     val small_icon: String? = null,
-    val data: Map<String, String>? = null
+    val data: Map<String, String?>? = null
 )

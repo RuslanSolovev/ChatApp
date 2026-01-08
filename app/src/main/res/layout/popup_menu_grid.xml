@@ -1,476 +1,471 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:id="@+id/popup_container"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:layout_marginHorizontal="16dp"
-    android:orientation="vertical"
-    android:background="@drawable/popup_menu_background"
-    android:elevation="24dp"
-    android:outlineProvider="background">
+    android:fillViewport="true">
 
-    <!-- Заголовок профиля -->
     <LinearLayout
-        android:id="@+id/profile_section"
+        android:id="@+id/popup_container"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="horizontal"
-        android:padding="20dp"
-        android:background="?attr/selectableItemBackground"
-        android:clickable="true"
-        android:focusable="true">
+        android:layout_marginHorizontal="16dp"
+        android:orientation="vertical"
+        android:background="@drawable/popup_menu_background"
+        android:elevation="24dp"
+        android:outlineProvider="background">
 
-        <com.google.android.material.imageview.ShapeableImageView
-            android:id="@+id/iv_profile_avatar"
-            android:layout_width="52dp"
-            android:layout_height="52dp"
-            android:layout_marginEnd="16dp"
-            app:shapeAppearanceOverlay="@style/CircleImageView"
-            android:scaleType="centerCrop"
-            android:src="@drawable/ic_default_profile" />
-
+        <!-- Заголовок профиля -->
         <LinearLayout
-            android:layout_width="0dp"
+            android:id="@+id/profile_section"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
+            android:orientation="horizontal"
+            android:padding="20dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true">
+
+            <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/iv_profile_avatar"
+                android:layout_width="52dp"
+                android:layout_height="52dp"
+                android:layout_marginEnd="16dp"
+                app:shapeAppearanceOverlay="@style/CircleImageView"
+                android:scaleType="centerCrop"
+                android:src="@drawable/ic_default_profile" />
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center_vertical">
+
+                <TextView
+                    android:id="@+id/tv_profile_name"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Руслан"
+                    android:textSize="18sp"
+                    android:textColor="@color/alarm_text"
+                    android:fontFamily="sans-serif-medium"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+
+                <TextView
+                    android:id="@+id/tv_profile_email"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="user@example.com"
+                    android:textSize="14sp"
+                    android:textColor="@color/alarm_text"
+                    android:maxLines="1"
+                    android:ellipsize="end" />
+
+            </LinearLayout>
+
+            <ImageView
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginStart="8dp"
+                android:src="@drawable/ic_chevron_right"
+                app:tint="@color/outline" />
+
+        </LinearLayout>
+
+        <!-- Разделитель -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="12dp"
+            android:background="@color/surface" />
+
+        <!-- Сетка меню в 2 ряда -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
             android:orientation="vertical"
+            android:paddingHorizontal="12dp"
+            android:paddingVertical="8dp">
+
+            <!-- Первый ряд -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="8dp">
+
+                <LinearLayout
+                    android:id="@+id/questionnaire_item"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="4dp"
+                    android:layout_weight="1"
+                    android:background="@drawable/battle_result_background"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:padding="0dp">
+
+                    <ImageView
+                        android:layout_width="match_parent"
+                        android:layout_height="110dp"
+                        android:background="@color/surface_variant"
+                        android:scaleType="centerCrop"
+                        android:src="@drawable/anketa2" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:layout_marginBottom="8dp"
+                        android:ellipsize="end"
+                        android:maxLines="1"
+                        android:text="Анкета"
+                        android:textColor="@color/on_surface"
+                        android:textSize="14sp" />
+
+                    <TextView
+                        android:id="@+id/badge_questionnaire"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginBottom="8dp"
+                        android:background="@drawable/badge_background"
+                        android:fontFamily="sans-serif-medium"
+                        android:paddingHorizontal="8dp"
+                        android:paddingVertical="4dp"
+                        android:text="NEW"
+                        android:textColor="@color/on_primary"
+                        android:textSize="11sp"
+                        android:visibility="gone" />
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/notes_item"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:background="@drawable/battle_result_background"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:padding="0dp"
+                    android:layout_marginStart="4dp">
+
+                    <ImageView
+                        android:layout_width="match_parent"
+                        android:layout_height="100dp"
+                        android:background="@color/surface_variant"
+                        android:padding="16dp"
+                        android:scaleType="centerCrop"
+                        android:src="@drawable/zametki" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Заметки"
+                        android:textSize="14sp"
+                        android:textColor="@color/on_surface"
+                        android:layout_marginTop="8dp"
+                        android:layout_marginBottom="8dp"
+                        android:maxLines="1"
+                        android:ellipsize="end" />
+
+                    <TextView
+                        android:id="@+id/badge_notes"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="3"
+                        android:textSize="11sp"
+                        android:textColor="@color/on_primary"
+                        android:fontFamily="sans-serif-medium"
+                        android:background="@drawable/badge_background"
+                        android:paddingHorizontal="8dp"
+                        android:paddingVertical="4dp"
+                        android:layout_marginBottom="8dp"
+                        android:visibility="gone" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <!-- Второй ряд -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="8dp">
+
+                <LinearLayout
+                    android:id="@+id/games_item"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:background="@drawable/battle_result_background"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:padding="0dp"
+                    android:layout_marginEnd="4dp">
+
+                    <ImageView
+                        android:layout_width="match_parent"
+                        android:layout_height="100dp"
+                        android:scaleType="centerCrop"
+                        android:src="@drawable/loterei"
+                        android:background="@color/surface_variant"
+                        android:padding="16dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Лотерея"
+                        android:textSize="14sp"
+                        android:textColor="@color/on_surface"
+                        android:layout_marginTop="8dp"
+                        android:layout_marginBottom="8dp"
+                        android:maxLines="1"
+                        android:ellipsize="end" />
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/mozgi_item"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:background="@drawable/battle_result_background"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:padding="0dp"
+                    android:layout_marginStart="4dp">
+
+                    <ImageView
+                        android:layout_width="match_parent"
+                        android:layout_height="100dp"
+                        android:scaleType="centerCrop"
+                        android:src="@drawable/test_mozg"
+                        android:background="@color/surface_variant"
+                        android:padding="16dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Мозг Тест"
+                        android:textSize="14sp"
+                        android:textColor="@color/on_surface"
+                        android:layout_marginTop="8dp"
+                        android:layout_marginBottom="8dp"
+                        android:maxLines="1"
+                        android:ellipsize="end" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <!-- Третий ряд -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:layout_marginBottom="8dp">
+
+                <LinearLayout
+                    android:id="@+id/blocks_item"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:background="@drawable/battle_result_background"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:padding="0dp"
+                    android:layout_marginEnd="4dp">
+
+                    <ImageView
+                        android:layout_width="match_parent"
+                        android:layout_height="100dp"
+                        android:scaleType="centerCrop"
+                        android:src="@drawable/igra_kirpiz"
+                        android:background="@color/surface_variant"
+                        android:padding="16dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Кирпичики"
+                        android:textSize="14sp"
+                        android:textColor="@color/on_surface"
+                        android:layout_marginTop="8dp"
+                        android:layout_marginBottom="8dp"
+                        android:maxLines="1"
+                        android:ellipsize="end" />
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/alarm_item"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:background="@drawable/battle_result_background"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:padding="0dp"
+                    android:layout_marginStart="4dp">
+
+                    <ImageView
+                        android:layout_width="match_parent"
+                        android:layout_height="100dp"
+                        android:scaleType="centerCrop"
+                        android:src="@drawable/budilnik"
+                        android:background="@color/surface_variant"
+                        android:padding="16dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Будильник"
+                        android:textSize="14sp"
+                        android:textColor="@color/on_surface"
+                        android:layout_marginTop="8dp"
+                        android:layout_marginBottom="8dp"
+                        android:maxLines="1"
+                        android:ellipsize="end" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <!-- Четвертый ряд -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <LinearLayout
+                    android:id="@+id/timer_item"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:background="@drawable/battle_result_background"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:padding="0dp"
+                    android:layout_marginEnd="4dp">
+
+                    <ImageView
+                        android:layout_width="match_parent"
+                        android:layout_height="100dp"
+                        android:scaleType="centerCrop"
+                        android:src="@drawable/gruha_box"
+                        android:background="@color/surface_variant"
+                        android:padding="16dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Груша"
+                        android:textSize="14sp"
+                        android:textColor="@color/on_surface"
+                        android:layout_marginTop="8dp"
+                        android:layout_marginBottom="8dp"
+                        android:maxLines="1"
+                        android:ellipsize="end" />
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:id="@+id/music_item"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:orientation="vertical"
+                    android:background="@drawable/battle_result_background"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:gravity="center"
+                    android:padding="0dp"
+                    android:layout_marginStart="4dp">
+
+                    <ImageView
+                        android:layout_width="match_parent"
+                        android:layout_height="100dp"
+                        android:scaleType="centerCrop"
+                        android:src="@drawable/ic_music_note"
+                        android:background="@color/surface_variant"
+                        android:padding="16dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Музыка"
+                        android:textSize="14sp"
+                        android:textColor="@color/on_surface"
+                        android:layout_marginTop="8dp"
+                        android:layout_marginBottom="8dp"
+                        android:maxLines="1"
+                        android:ellipsize="end" />
+
+                </LinearLayout>
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+        <!-- Разделитель перед выходом -->
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="12dp"
+            android:background="@color/surface" />
+
+        <View
+            android:layout_width="match_parent"
+            android:layout_height="1dp"
+            android:background="@color/surface_variant" />
+
+        <!-- Выход -->
+        <LinearLayout
+            android:id="@+id/logout_item"
+            android:layout_width="match_parent"
+            android:layout_height="60dp"
+            android:orientation="horizontal"
+            android:paddingStart="24dp"
+            android:paddingEnd="24dp"
+            android:background="?attr/selectableItemBackground"
+            android:clickable="true"
+            android:focusable="true"
             android:gravity="center_vertical">
 
-            <TextView
-                android:id="@+id/tv_profile_name"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="Руслан"
-                android:textSize="18sp"
-                android:textColor="@color/alarm_text"
-                android:fontFamily="sans-serif-medium"
-                android:maxLines="1"
-                android:ellipsize="end" />
+            <ImageView
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginEnd="16dp"
+                android:src="@drawable/ic_exit"
+                app:tint="@color/error" />
 
             <TextView
-                android:id="@+id/tv_profile_email"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="user@example.com"
-                android:textSize="14sp"
-                android:textColor="@color/alarm_text"
-                android:maxLines="1"
-                android:ellipsize="end" />
-
-        </LinearLayout>
-
-        <ImageView
-            android:layout_width="28dp"
-            android:layout_height="28dp"
-            android:layout_marginStart="8dp"
-            android:src="@drawable/ic_chevron_right"
-            app:tint="@color/outline" />
-
-    </LinearLayout>
-
-    <!-- Разделитель -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="12dp"
-        android:background="@color/surface" />
-
-    <!-- Сетка меню в 2 ряда -->
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="vertical"
-        android:paddingHorizontal="12dp"
-        android:paddingVertical="8dp">
-
-        <!-- Первый ряд -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="8dp">
-
-            <!-- Анкета - НА ВСЮ ЯЧЕЙКУ -->
-
-            <!-- Заметки - ТАКЖЕ НА ВСЮ ЯЧЕЙКУ -->
-            <LinearLayout
-                android:id="@+id/questionnaire_item"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_marginEnd="4dp"
-                android:layout_weight="1"
-                android:background="@drawable/battle_result_background"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:orientation="vertical"
-                android:padding="0dp">
-
-                <!-- Изображение на всю ширину -->
-                <ImageView
-                    android:layout_width="match_parent"
-                    android:layout_height="110dp"
-                    android:background="@color/surface_variant"
-                    android:scaleType="centerCrop"
-                    android:src="@drawable/anketa2" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:layout_marginBottom="8dp"
-                    android:ellipsize="end"
-                    android:maxLines="1"
-                    android:text="Анкета"
-                    android:textColor="@color/on_surface"
-                    android:textSize="14sp" />
-
-                <TextView
-                    android:id="@+id/badge_questionnaire"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginBottom="8dp"
-                    android:background="@drawable/badge_background"
-                    android:fontFamily="sans-serif-medium"
-                    android:paddingHorizontal="8dp"
-                    android:paddingVertical="4dp"
-                    android:text="NEW"
-                    android:textColor="@color/on_primary"
-                    android:textSize="11sp"
-                    android:visibility="gone" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:id="@+id/notes_item"
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:orientation="vertical"
-                android:background="@drawable/battle_result_background"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:padding="0dp"
-                android:layout_marginStart="4dp">
-
-                <!-- Изображение на всю ширину -->
-
-                <ImageView
-                    android:layout_width="match_parent"
-                    android:layout_height="100dp"
-                    android:background="@color/surface_variant"
-                    android:padding="16dp"
-                    android:scaleType="centerCrop"
-                    android:src="@drawable/zametki" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Заметки"
-                    android:textSize="14sp"
-                    android:textColor="@color/on_surface"
-                    android:layout_marginTop="8dp"
-                    android:layout_marginBottom="8dp"
-                    android:maxLines="1"
-                    android:ellipsize="end" />
-
-                <TextView
-                    android:id="@+id/badge_notes"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="3"
-                    android:textSize="11sp"
-                    android:textColor="@color/on_primary"
-                    android:fontFamily="sans-serif-medium"
-                    android:background="@drawable/badge_background"
-                    android:paddingHorizontal="8dp"
-                    android:paddingVertical="4dp"
-                    android:layout_marginBottom="8dp"
-                    android:visibility="gone" />
-
-            </LinearLayout>
-
-        </LinearLayout>
-
-        <!-- Второй ряд -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="8dp">
-
-            <!-- Лотерея -->
-            <LinearLayout
-                android:id="@+id/games_item"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical"
-                android:background="@drawable/battle_result_background"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:padding="0dp"
-                android:layout_marginEnd="4dp">
-
-                <ImageView
-                    android:layout_width="match_parent"
-                    android:layout_height="100dp"
-                    android:scaleType="centerCrop"
-                    android:src="@drawable/loterei"
-                    android:background="@color/surface_variant"
-                    android:padding="16dp" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Лотерея"
-                    android:textSize="14sp"
-                    android:textColor="@color/on_surface"
-                    android:layout_marginTop="8dp"
-                    android:layout_marginBottom="8dp"
-                    android:maxLines="1"
-                    android:ellipsize="end" />
-
-            </LinearLayout>
-
-            <!-- Мозг тест -->
-            <LinearLayout
-                android:id="@+id/mozgi_item"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical"
-                android:background="@drawable/battle_result_background"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:padding="0dp"
-                android:layout_marginStart="4dp">
-
-                <ImageView
-                    android:layout_width="match_parent"
-                    android:layout_height="100dp"
-                    android:scaleType="centerCrop"
-                    android:src="@drawable/test_mozg"
-                    android:background="@color/surface_variant"
-                    android:padding="16dp" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Мозг Тест"
-                    android:textSize="14sp"
-                    android:textColor="@color/on_surface"
-                    android:layout_marginTop="8dp"
-                    android:layout_marginBottom="8dp"
-                    android:maxLines="1"
-                    android:ellipsize="end" />
-
-            </LinearLayout>
-
-        </LinearLayout>
-
-        <!-- Третий ряд -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:layout_marginBottom="8dp">
-
-            <!-- Игра Блоки -->
-            <LinearLayout
-                android:id="@+id/blocks_item"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical"
-                android:background="@drawable/battle_result_background"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:padding="0dp"
-                android:layout_marginEnd="4dp">
-
-                <ImageView
-                    android:layout_width="match_parent"
-                    android:layout_height="100dp"
-                    android:scaleType="centerCrop"
-                    android:src="@drawable/igra_kirpiz"
-                    android:background="@color/surface_variant"
-                    android:padding="16dp" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Кирпичики"
-                    android:textSize="14sp"
-                    android:textColor="@color/on_surface"
-                    android:layout_marginTop="8dp"
-                    android:layout_marginBottom="8dp"
-                    android:maxLines="1"
-                    android:ellipsize="end" />
-
-            </LinearLayout>
-
-            <!-- Будильник -->
-            <LinearLayout
-                android:id="@+id/alarm_item"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical"
-                android:background="@drawable/battle_result_background"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:padding="0dp"
-                android:layout_marginStart="4dp">
-
-                <ImageView
-                    android:layout_width="match_parent"
-                    android:layout_height="100dp"
-                    android:scaleType="centerCrop"
-                    android:src="@drawable/budilnik"
-                    android:background="@color/surface_variant"
-                    android:padding="16dp" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Будильник"
-                    android:textSize="14sp"
-                    android:textColor="@color/on_surface"
-                    android:layout_marginTop="8dp"
-                    android:layout_marginBottom="8dp"
-                    android:maxLines="1"
-                    android:ellipsize="end" />
-
-            </LinearLayout>
-
-        </LinearLayout>
-
-        <!-- Четвертый ряд -->
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="horizontal">
-
-            <!-- Таймер -->
-            <LinearLayout
-                android:id="@+id/timer_item"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical"
-                android:background="@drawable/battle_result_background"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:padding="0dp"
-                android:layout_marginEnd="4dp">
-
-                <ImageView
-                    android:layout_width="match_parent"
-                    android:layout_height="100dp"
-                    android:scaleType="centerCrop"
-                    android:src="@drawable/gruha_box"
-                    android:background="@color/surface_variant"
-                    android:padding="16dp" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Груша"
-                    android:textSize="14sp"
-                    android:textColor="@color/on_surface"
-                    android:layout_marginTop="8dp"
-                    android:layout_marginBottom="8dp"
-                    android:maxLines="1"
-                    android:ellipsize="end" />
-
-            </LinearLayout>
-
-            <!-- Музыка (новый элемент) -->
-            <LinearLayout
-                android:id="@+id/music_item"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:orientation="vertical"
-                android:background="@drawable/battle_result_background"
-                android:clickable="true"
-                android:focusable="true"
-                android:gravity="center"
-                android:padding="0dp"
-                android:layout_marginStart="4dp">
-
-                <ImageView
-                    android:layout_width="match_parent"
-                    android:layout_height="100dp"
-                    android:scaleType="centerCrop"
-                    android:src="@drawable/ic_music_note"
-                android:background="@color/surface_variant"
-                android:padding="16dp" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="Музыка"
-                    android:textSize="14sp"
-                    android:textColor="@color/on_surface"
-                    android:layout_marginTop="8dp"
-                    android:layout_marginBottom="8dp"
-                    android:maxLines="1"
-                    android:ellipsize="end" />
-
-            </LinearLayout>
+                android:text="Выйти"
+                android:textSize="16sp"
+                android:textColor="@color/error"
+                android:fontFamily="sans-serif-medium" />
 
         </LinearLayout>
 
     </LinearLayout>
 
-    <!-- Разделитель перед выходом -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="12dp"
-        android:background="@color/surface" />
-
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:background="@color/surface_variant" />
-
-    <!-- Выход -->
-    <LinearLayout
-        android:id="@+id/logout_item"
-        android:layout_width="match_parent"
-        android:layout_height="60dp"
-        android:orientation="horizontal"
-        android:paddingStart="24dp"
-        android:paddingEnd="24dp"
-        android:background="?attr/selectableItemBackground"
-        android:clickable="true"
-        android:focusable="true"
-        android:gravity="center_vertical">
-
-        <ImageView
-            android:layout_width="28dp"
-            android:layout_height="28dp"
-            android:layout_marginEnd="16dp"
-            android:src="@drawable/ic_exit"
-            app:tint="@color/error" />
-
-        <TextView
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Выйти"
-            android:textSize="16sp"
-            android:textColor="@color/error"
-            android:fontFamily="sans-serif-medium" />
-
-    </LinearLayout>
-
-</LinearLayout>
+</ScrollView>

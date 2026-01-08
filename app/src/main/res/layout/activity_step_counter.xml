@@ -637,7 +637,7 @@
                     android:id="@+id/tv_journey_description"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Путешествие через Ла-Манш"
+                    android:text="Путешествие"
                     android:textSize="12sp"
                     android:textColor="@color/alarm_background"
                     android:paddingTop="4dp"

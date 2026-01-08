@@ -3,6 +3,7 @@ package com.example.chatapp.step
 import android.Manifest
 import android.animation.ObjectAnimator
 import android.app.ActivityManager
+import android.app.AlertDialog
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -42,7 +43,6 @@ import com.github.mikephil.charting.formatter.LargeValueFormatter
 import com.github.mikephil.charting.listener.OnChartValueSelectedListener
 import com.github.mikephil.charting.highlight.Highlight
 import com.github.mikephil.charting.data.Entry
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.tabs.TabLayout
 import com.mikhaellopez.circularprogressbar.CircularProgressBar
 import kotlinx.coroutines.launch
@@ -56,8 +56,14 @@ import androidx.work.WorkManager
 import java.util.concurrent.TimeUnit
 
 class StepCounterFragment : Fragment() {
+
+    companion object {
+        private const val TAG = "StepCounterFragment"
+        private const val STEP_SERVICE_WORK_NAME = "StepCounterServicePeriodicWork"
+        private const val STEP_SERVICE_INTERVAL_MINUTES = 30L
+    }
+
     private lateinit var viewModel: StepCounterViewModel
-    private lateinit var motivationManager: MotivationManager
     private val executor = Executors.newFixedThreadPool(4)
 
     // Views
@@ -73,7 +79,6 @@ class StepCounterFragment : Fragment() {
     private lateinit var tvQuickMonth: TextView
     private lateinit var tvQuickRecord: TextView
     private lateinit var tvForecast: TextView
-    private lateinit var tvJourneyRoute: TextView
     private lateinit var tvJourneyProgress: TextView
     private lateinit var tvJourneyDistance: TextView
     private lateinit var tvStreakDays: TextView
@@ -93,18 +98,11 @@ class StepCounterFragment : Fragment() {
         WEEK, MONTH, YEAR
     }
 
-    companion object {
-        private const val STEP_SERVICE_WORK_NAME = "StepCounterServicePeriodicWork"
-        private const val STEP_SERVICE_INTERVAL_MINUTES = 30L
-        private const val TAG = "StepCounterFragment"
-    }
-
     private val stepsReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
             if (intent.action == StepCounterService.ACTION_STEPS_UPDATED) {
                 Log.d(TAG, "Получено обновление шагов от сервиса")
                 viewModel.loadStatistics()
-                showMotivationsIfNeeded()
             }
         }
     }
@@ -117,11 +115,15 @@ class StepCounterFragment : Fragment() {
             Toast.makeText(requireContext(), "Разрешения получены!", Toast.LENGTH_SHORT).show()
             startStepService()
         } else {
-            Toast.makeText(
-                requireContext(),
-                "Для работы шагомера требуются все разрешения",
-                Toast.LENGTH_LONG
-            ).show()
+            // Используем обычный AlertDialog вместо MaterialAlertDialogBuilder
+            AlertDialog.Builder(requireContext())
+                .setTitle("Требуются разрешения")
+                .setMessage("Для работы шагомера требуются разрешения на отслеживание активности. Без них приложение не сможет считать ваши шаги.")
+                .setPositiveButton("Повторить") { _, _ ->
+                    checkRequiredPermissions()
+                }
+                .setNegativeButton("Отмена", null)
+                .show()
         }
     }
 
@@ -139,7 +141,6 @@ class StepCounterFragment : Fragment() {
         Log.d(TAG, "onViewCreated: Инициализация фрагмента")
 
         viewModel = ViewModelProvider(requireActivity()).get(StepCounterViewModel::class.java)
-        motivationManager = MotivationManager(requireContext())
 
         initializeViews(view)
         setupBarChart()
@@ -180,7 +181,6 @@ class StepCounterFragment : Fragment() {
             tvQuickMonth = view.findViewById(R.id.tv_quick_month)
             tvQuickRecord = view.findViewById(R.id.tv_quick_record)
             tvForecast = view.findViewById(R.id.tv_forecast)
-            tvJourneyRoute = view.findViewById(R.id.tv_journey_route)
             tvJourneyProgress = view.findViewById(R.id.tv_journey_progress)
             tvJourneyDistance = view.findViewById(R.id.tv_journey_distance)
             tvStreakDays = view.findViewById(R.id.tv_streak_days)
@@ -224,17 +224,18 @@ class StepCounterFragment : Fragment() {
                 setDrawGridLines(false)
                 granularity = 1f
                 textColor = ContextCompat.getColor(requireContext(), R.color.black)
-                valueFormatter = IndexAxisValueFormatter(getWeekDays())
                 labelCount = 7
+                setAvoidFirstLastClipping(true)
             }
 
             axisLeft.apply {
                 setDrawGridLines(true)
-                gridColor = ContextCompat.getColor(requireContext(), R.color.black)
+                gridColor = ContextCompat.getColor(requireContext(), R.color.light_gray)
                 textColor = ContextCompat.getColor(requireContext(), R.color.black)
                 axisMinimum = 0f
                 valueFormatter = LargeValueFormatter()
                 setLabelCount(5, true)
+                gridLineWidth = 0.5f
             }
 
             axisRight.isEnabled = false
@@ -259,27 +260,21 @@ class StepCounterFragment : Fragment() {
         }
     }
 
-    private fun getWeekDays(): List<String> {
-        return listOf("Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс")
-    }
-
-
-
     private fun setupTabLayout() {
         tabLayoutPeriod.addOnTabSelectedListener(object : TabLayout.OnTabSelectedListener {
             override fun onTabSelected(tab: TabLayout.Tab?) {
                 when (tab?.position) {
                     0 -> {
                         currentChartType = ChartType.WEEK
-                        updateChartWithData(ChartType.WEEK)
+                        updateChartForCurrentType()
                     }
                     1 -> {
                         currentChartType = ChartType.MONTH
-                        updateChartWithData(ChartType.MONTH)
+                        updateChartForCurrentType()
                     }
                     2 -> {
                         currentChartType = ChartType.YEAR
-                        updateChartWithData(ChartType.YEAR)
+                        updateChartForCurrentType()
                     }
                 }
             }
@@ -289,38 +284,42 @@ class StepCounterFragment : Fragment() {
         })
     }
 
-    private fun updateChartWithData(type: ChartType) {
-        when (type) {
+    private fun updateChartForCurrentType() {
+        when (currentChartType) {
             ChartType.WEEK -> {
-                viewModel.weeklyChartData.value?.let { updateBarChart(it, type) }
+                viewModel.weeklyChartData.value?.let { data ->
+                    viewModel.weeklyChartLabels.value?.let { labels ->
+                        updateBarChart(data, labels, "Активность за неделю")
+                    }
+                }
             }
             ChartType.MONTH -> {
-                viewModel.monthlyChartData.value?.let { updateBarChart(it, type) }
+                viewModel.monthlyChartData.value?.let { data ->
+                    viewModel.monthlyChartLabels.value?.let { labels ->
+                        updateBarChart(data, labels, "Активность за месяц")
+                    }
+                }
             }
             ChartType.YEAR -> {
-                // TODO: Реализовать годовой график
-                barChart.clear()
-                barChart.invalidate()
-                barChart.animateY(500)
+                viewModel.yearlyChartData.value?.let { data ->
+                    viewModel.yearlyChartLabels.value?.let { labels ->
+                        updateBarChart(data, labels, "Активность за год")
+                    }
+                }
             }
         }
     }
 
-    private fun updateBarChart(data: List<Int>, type: ChartType = ChartType.WEEK) {
-        if (data.isEmpty()) {
+    private fun updateBarChart(data: List<Int>, labels: List<String>, description: String) {
+        if (data.isEmpty() || data.all { it == 0 }) {
             barChart.clear()
             barChart.invalidate()
+            barChart.setNoDataText("Нет данных за выбранный период")
             return
         }
 
         val entries = data.mapIndexed { index, value ->
             BarEntry(index.toFloat(), value.toFloat())
-        }
-
-        val labels = when (type) {
-            ChartType.WEEK -> getWeekDays()
-            ChartType.MONTH -> getMonthDays(data.size)
-            ChartType.YEAR -> getMonths()
         }
 
         val dataSet = BarDataSet(entries, "Шаги").apply {
@@ -339,22 +338,14 @@ class StepCounterFragment : Fragment() {
             setValueTextSize(10f)
         }
 
-        barChart.description.text = when (type) {
-            ChartType.WEEK -> "неделя"
-            ChartType.MONTH -> "месяц"
-            ChartType.YEAR -> "год"
-        }
+        barChart.description.text = description
+
+        // Настраиваем ось Y в зависимости от максимального значения
+        val maxValue = data.maxOrNull() ?: 0
+        barChart.axisLeft.axisMaximum = maxValue.toFloat() * 1.2f
 
         barChart.invalidate()
         barChart.animateY(800, Easing.EaseInOutQuad)
-    }
-
-    private fun getMonthDays(count: Int): List<String> {
-        return (1..count).map { "$it" }
-    }
-
-    private fun getMonths(): List<String> {
-        return listOf("Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек")
     }
 
     private fun setupButtons(view: View) {
@@ -363,7 +354,9 @@ class StepCounterFragment : Fragment() {
         }
 
         btnSettings.setOnClickListener {
-            startActivity(Intent(requireContext(), GoalSettingsActivity::class.java))
+            // Открываем активность настроек целей
+            val intent = Intent(requireContext(), GoalSettingsActivity::class.java)
+            startActivity(intent)
         }
     }
 
@@ -391,16 +384,18 @@ class StepCounterFragment : Fragment() {
         }
 
         viewModel.goalProgress.observe(viewLifecycleOwner) { (current, goal) ->
-            tvProgressText.text = "$current / $goal"
+            val formattedCurrent = formatNumber(current)
+            val formattedGoal = formatNumber(goal)
+            tvProgressText.text = "$formattedCurrent / $formattedGoal"
         }
 
         // Детализированная статистика
         viewModel.todaySteps.observe(viewLifecycleOwner) { steps ->
-            tvTodaySteps.text = steps.toString()
+            tvTodaySteps.text = formatNumber(steps)
         }
 
         viewModel.todayDistance.observe(viewLifecycleOwner) { distance ->
-            tvTodayDistance.text = String.format("%.2f км", distance)
+            tvTodayDistance.text = String.format("%.1f км", distance)
         }
 
         viewModel.todayCalories.observe(viewLifecycleOwner) { calories ->
@@ -416,6 +411,8 @@ class StepCounterFragment : Fragment() {
             if (text.isNotEmpty()) {
                 tvComparison.text = text
                 cardComparison.visibility = View.VISIBLE
+            } else {
+                cardComparison.visibility = View.GONE
             }
         }
 
@@ -439,13 +436,25 @@ class StepCounterFragment : Fragment() {
         // Графики
         viewModel.weeklyChartData.observe(viewLifecycleOwner) { data ->
             if (currentChartType == ChartType.WEEK) {
-                updateBarChart(data, ChartType.WEEK)
+                viewModel.weeklyChartLabels.value?.let { labels ->
+                    updateBarChart(data, labels, "Активность за неделю")
+                }
             }
         }
 
         viewModel.monthlyChartData.observe(viewLifecycleOwner) { data ->
             if (currentChartType == ChartType.MONTH) {
-                updateBarChart(data, ChartType.MONTH)
+                viewModel.monthlyChartLabels.value?.let { labels ->
+                    updateBarChart(data, labels, "Активность за месяц")
+                }
+            }
+        }
+
+        viewModel.yearlyChartData.observe(viewLifecycleOwner) { data ->
+            if (currentChartType == ChartType.YEAR) {
+                viewModel.yearlyChartLabels.value?.let { labels ->
+                    updateBarChart(data, labels, "Активность за год")
+                }
             }
         }
 
@@ -454,6 +463,8 @@ class StepCounterFragment : Fragment() {
             if (text.isNotEmpty()) {
                 tvForecast.text = text
                 cardForecast.visibility = View.VISIBLE
+            } else {
+                cardForecast.visibility = View.GONE
             }
         }
 
@@ -467,12 +478,18 @@ class StepCounterFragment : Fragment() {
             if (text.isNotEmpty()) {
                 val lines = text.split("\n")
                 if (lines.size >= 3) {
-                    tvJourneyRoute.text = lines[0]
+                    // Первая строка - название маршрута
+                    val journeyTitle = view?.findViewById<TextView>(R.id.tv_journey_route)
+                    journeyTitle?.text = lines[0]
+
+                    // Вторая и третья строки - прогресс и описание
                     tvJourneyDistance.text = lines[1] + "\n" + lines[2]
                 } else {
                     tvJourneyDistance.text = text
                 }
                 cardJourney.visibility = View.VISIBLE
+            } else {
+                cardJourney.visibility = View.GONE
             }
         }
 
@@ -481,50 +498,40 @@ class StepCounterFragment : Fragment() {
             tvStreakDays.text = "$streak дней"
             cardStreak.visibility = if (streak > 0) View.VISIBLE else View.GONE
 
-            if (streak >= 7) {
-                cardStreak.setCardBackgroundColor(ContextCompat.getColor(requireContext(), R.color.gold))
-            } else if (streak >= 3) {
-                cardStreak.setCardBackgroundColor(ContextCompat.getColor(requireContext(), R.color.silver))
-            }
-        }
-
-        // Настройки мотивации
-        viewModel.motivationEnabled.observe(viewLifecycleOwner) { enabled ->
-            if (enabled) {
-                showMotivationsIfNeeded()
+            // Изменяем цвет карточки в зависимости от серии
+            when {
+                streak >= 30 -> {
+                    cardStreak.setCardBackgroundColor(ContextCompat.getColor(requireContext(), R.color.gold))
+                }
+                streak >= 7 -> {
+                    cardStreak.setCardBackgroundColor(ContextCompat.getColor(requireContext(), R.color.silver))
+                }
+                else -> {
+                    cardStreak.setCardBackgroundColor(ContextCompat.getColor(requireContext(), R.color.bronze))
+                }
             }
         }
     }
 
-
-
-
-
-
-
-
     private fun showDayDetails(dayIndex: Int, steps: Int) {
-        val dayNames = getWeekDays()
-        val dayName = if (dayIndex in dayNames.indices) dayNames[dayIndex] else "День $dayIndex"
+        val dayNames = viewModel.getWeekDaysRussian()
+        val dayName = if (dayIndex in dayNames.indices) dayNames[dayIndex] else "День ${dayIndex + 1}"
 
-        val distance = steps * 0.00075f
-        val calories = steps * 0.04f
-        val activeTime = steps / 100f
+        val distance = steps * 0.00075
+        val calories = steps * 0.04
+        val activeTime = steps / 100
 
-        // Используем обычный AlertDialog.Builder вместо MaterialAlertDialogBuilder
-        android.app.AlertDialog.Builder(requireContext())
-            .setTitle("$dayName - ${steps} шагов")
+        // ИСПРАВЛЕНИЕ: Используем обычный AlertDialog.Builder вместо MaterialAlertDialogBuilder
+        AlertDialog.Builder(requireContext())
+            .setTitle("$dayName - ${formatNumber(steps)} шагов")
             .setMessage(
                 "📏 Дистанция: ${String.format("%.2f", distance)} км\n" +
-                        "🔥 Калории: ${String.format("%.0f", calories)}\n" +
+                        "🔥 Сожжено калорий: ${String.format("%.0f", calories)}\n" +
                         "⏱️ Активное время: ${String.format("%.0f", activeTime)} мин"
             )
             .setPositiveButton("OK", null)
             .show()
     }
-
-
-
 
     private fun animateCircularProgress(targetProgress: Int) {
         ObjectAnimator.ofFloat(circularProgressBar, "progress", targetProgress.toFloat())
@@ -538,6 +545,7 @@ class StepCounterFragment : Fragment() {
     private fun formatNumber(number: Int): String {
         return when {
             number >= 1_000_000 -> String.format("%.1fM", number / 1_000_000f)
+            number >= 10_000 -> String.format("%.0fK", number / 1_000f)
             number >= 1_000 -> String.format("%.1fK", number / 1_000f)
             else -> number.toString()
         }
@@ -545,11 +553,14 @@ class StepCounterFragment : Fragment() {
 
     private fun checkRequiredPermissions() {
         val requiredPermissions = mutableListOf<String>().apply {
-            add(Manifest.permission.ACTIVITY_RECOGNITION)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                add(Manifest.permission.ACTIVITY_RECOGNITION)
+            } else {
+                add("com.google.android.gms.permission.ACTIVITY_RECOGNITION")
+            }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 add(Manifest.permission.POST_NOTIFICATIONS)
             }
-            add(Manifest.permission.BODY_SENSORS)
         }.filter {
             ContextCompat.checkSelfPermission(requireContext(), it) != PackageManager.PERMISSION_GRANTED
         }
@@ -568,7 +579,6 @@ class StepCounterFragment : Fragment() {
         } else {
             Log.d(TAG, "Сервис шагомера уже запущен")
         }
-        schedulePeriodicStepServiceWork()
     }
 
     private fun isServiceRunning(serviceClass: Class<*>): Boolean {
@@ -602,43 +612,6 @@ class StepCounterFragment : Fragment() {
         }
     }
 
-    private fun showMotivationsIfNeeded() {
-        viewLifecycleOwner.lifecycleScope.launch {
-            // Проверяем мотивацию каждые 4 часа
-            val prefs = requireContext().getSharedPreferences("step_prefs", Context.MODE_PRIVATE)
-            val lastMotivation = prefs.getLong("last_motivation", 0)
-            val currentTime = System.currentTimeMillis()
-            val fourHours = 4 * 60 * 60 * 1000L
-
-            if (currentTime - lastMotivation > fourHours) {
-                viewModel.todaySteps.value?.let { steps ->
-                    viewModel.goalProgress.value?.let { (current, goal) ->
-                        viewModel.comparisonText.value?.let { comparison ->
-                            viewModel.streakDays.value?.let { streak ->
-                                // Проверяем достижения
-                                val milestones = motivationManager.checkForMilestones(current)
-                                milestones.forEach { milestone ->
-                                    Toast.makeText(requireContext(), milestone, Toast.LENGTH_LONG).show()
-                                }
-
-                                // Показываем уведомление
-                                if (viewModel.motivationEnabled.value == true) {
-                                    motivationManager.showMotivationNotification(
-                                        current,
-                                        goal,
-                                        comparison,
-                                        streak
-                                    )
-                                    prefs.edit().putLong("last_motivation", currentTime).apply()
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-
     override fun onResume() {
         super.onResume()
         registerReceiver()
@@ -649,13 +622,16 @@ class StepCounterFragment : Fragment() {
     }
 
     private fun checkGoalAdjustment() {
-        val prefs = requireContext().getSharedPreferences("step_prefs", Context.MODE_PRIVATE)
-        val lastAdjustment = prefs.getLong("last_goal_adjustment", 0)
-        val currentTime = System.currentTimeMillis()
-        val oneWeek = 7 * 24 * 60 * 60 * 1000L
+        lifecycleScope.launch {
+            val prefs = requireContext().getSharedPreferences("step_prefs", Context.MODE_PRIVATE)
+            val lastAdjustment = prefs.getLong("last_goal_adjustment", 0)
+            val currentTime = System.currentTimeMillis()
+            val oneWeek = 7 * 24 * 60 * 60 * 1000L
 
-        if (currentTime - lastAdjustment > oneWeek) {
-            viewModel.analyzeAndAdjustGoals()
+            if (currentTime - lastAdjustment > oneWeek) {
+                // Здесь можно вызвать метод для анализа и корректировки целей
+                Log.d(TAG, "Проверка корректировки целей")
+            }
         }
     }
 

@@ -23,7 +23,7 @@ object NotificationUtils {
     private const val ONESIGNAL_APP_ID = "0083de8f-7ca0-4824-ac88-9c037278237e"
 
     // ⚠️ ОБНОВЛЕННЫЙ ПРАВИЛЬНЫЙ REST API KEY
-    private const val REST_API_KEY = "os_v2_app_acb55d34ubecjleitqbxe6bdp3ad7ao3pwiuhrnowr2mcfzachyna2rtvpqvc7xnljq7k6zocjsv6jehlrgrqfqky4w22wzxhcnvdjq"
+    private const val REST_API_KEY = "os_v2_app_acb55d34ubecjleitqbxe6bdp3bnllgiaqvuiivsii7qheuiteht3hi7ygtqui5x55aroyfp3bbzjzeh7hepo44ydcjdzusvl42nimi"
 
     /**
      * Проверка конфигурации OneSignal
@@ -137,6 +137,87 @@ object NotificationUtils {
             Log.e(TAG, "❌ OneSignal SDK not found", e)
         } catch (e: Exception) {
             Log.e(TAG, "❌ Unexpected error while getting OneSignal ID", e)
+        }
+    }
+
+    /**
+     * Отправляет уведомление о добавлении в друзья
+     */
+    fun sendFriendRequestNotification(context: Context, targetUserId: String, requesterName: String) {
+        if (!isOneSignalConfigured()) {
+            Log.e(TAG, "❌ OneSignal не настроен. Уведомление не отправлено.")
+            return
+        }
+
+        Log.d(TAG, "🤝 Отправка уведомления о добавлении в друзья пользователю: ${targetUserId.take(8)}...")
+
+        FirebaseDatabase.getInstance().reference
+            .child("users").child(targetUserId).child("oneSignalId")
+            .addListenerForSingleValueEvent(object : ValueEventListener {
+                override fun onDataChange(snapshot: DataSnapshot) {
+                    val oneSignalId = snapshot.getValue(String::class.java)
+                    if (!oneSignalId.isNullOrBlank()) {
+                        sendFriendNotificationInternal(oneSignalId, targetUserId, requesterName)
+                    } else {
+                        Log.e(TAG, "❌ OneSignal ID пуст для пользователя ${targetUserId.take(8)}...")
+                    }
+                }
+
+                override fun onCancelled(error: DatabaseError) {
+                    Log.e(TAG, "❌ Ошибка получения OneSignal ID: ${error.message}")
+                }
+            })
+    }
+
+    private fun sendFriendNotificationInternal(
+        oneSignalId: String,
+        targetUserId: String,
+        requesterName: String
+    ) {
+        try {
+            val authHeader = "Basic $REST_API_KEY"
+
+            val notification = mapOf(
+                "type" to "friend_request",
+                "requesterName" to requesterName,
+                "requesterId" to FirebaseAuth.getInstance().currentUser?.uid
+            )?.let {
+                NotificationRequest(
+                    app_id = ONESIGNAL_APP_ID,
+                    include_player_ids = listOf(oneSignalId),
+                    contents = mapOf("en" to "$requesterName добавил(а) вас в друзья!"),
+                    headings = mapOf("en" to "Новый друг"),
+                    android_channel_id = "292588fb-8a77-4b57-8566-b8bb9552ff68",
+                    small_icon = "ic_notification",
+                    data = it
+                )
+            }
+
+            Log.d(TAG, "📤 Отправка уведомления о дружбе пользователю ${targetUserId.take(8)}...")
+            Log.d(TAG, "   Player ID: ${oneSignalId.take(8)}...")
+            Log.d(TAG, "   App ID: ${ONESIGNAL_APP_ID.take(8)}...")
+
+            val call =
+                notification?.let { RetrofitInstance.oneSignalApi.sendNotification(authHeader, it) }
+            if (call != null) {
+                call.enqueue(object : Callback<ResponseBody> {
+                    override fun onResponse(call: Call<ResponseBody>, response: Response<ResponseBody>) {
+                        if (response.isSuccessful) {
+                            Log.d(TAG, "✅ Уведомление о дружбе успешно отправлено в OneSignal")
+                        } else {
+                            val errorBody = response.errorBody()?.string() ?: "Unknown error"
+                            Log.e(TAG, "❌ Ошибка отправки уведомления о дружбе: ${response.code()} - $errorBody")
+                        }
+                    }
+
+                    override fun onFailure(call: Call<ResponseBody>, t: Throwable) {
+                        Log.e(TAG, "🌐 Сетевая ошибка при отправке уведомления о дружбе: ${t.message}")
+                    }
+                })
+            }
+
+        } catch (e: Exception) {
+            Log.e(TAG, "❌ Ошибка создания уведомления о дружбе", e)
         }
     }
 

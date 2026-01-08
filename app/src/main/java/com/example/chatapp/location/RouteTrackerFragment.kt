@@ -4,6 +4,7 @@ import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -71,6 +72,7 @@ class RouteTrackerFragment : Fragment() {
     private var shouldShowFullHistory = true
 
     companion object {
+        private const val TAG = "RouteTrackerFragment"
         private const val STATS_UPDATE_INTERVAL = 3000L
         private const val MAX_REALISTIC_SPEED = 27.78 // 100 km/h → m/s
         private const val MAX_BIKE_SPEED = 16.67 // 60 km/h → m/s
@@ -126,6 +128,21 @@ class RouteTrackerFragment : Fragment() {
         )
     }
 
+    private fun setupLeftSheet() {
+        bottomSheet.post {
+            val sheetWidth = bottomSheet.width
+            bottomSheet.translationX = -sheetWidth.toFloat()
+
+            btnToggleSheet.setOnClickListener {
+                toggleLeftSheetWithAnimation(sheetWidth)
+            }
+
+            btnCloseSheet.setOnClickListener {
+                hideLeftSheetWithAnimation(sheetWidth)
+            }
+        }
+    }
+
     private fun toggleLeftSheetWithAnimation(sheetWidth: Int) {
         if (bottomSheet.translationX < 0) {
             bottomSheet.animate()
@@ -176,7 +193,6 @@ class RouteTrackerFragment : Fragment() {
             .setMessage("Текущий активный маршрут будет очищен. Исторические данные сохранятся.")
             .setPositiveButton("Очистить") { _, _ ->
                 clearCurrentSession()
-                Toast.makeText(context, "Текущий маршрут очищен", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Отмена", null)
             .show()
@@ -188,7 +204,6 @@ class RouteTrackerFragment : Fragment() {
             .setMessage("ВСЕ данные о маршрутах будут безвозвратно удалены. Это действие нельзя отменить. Вы уверены?")
             .setPositiveButton("Удалить всю историю") { _, _ ->
                 clearFullHistory()
-                Toast.makeText(context, "Вся история маршрутов очищена", Toast.LENGTH_SHORT).show()
             }
             .setNegativeButton("Отмена", null)
             .show()
@@ -201,9 +216,10 @@ class RouteTrackerFragment : Fragment() {
             .addOnSuccessListener {
                 resetState(keepHistory = true)
                 loadFullRouteHistory()
+                Toast.makeText(context, "Текущий маршрут очищен", Toast.LENGTH_SHORT).show()
             }
-            .addOnFailureListener {
-                Toast.makeText(context, "Ошибка очистки маршрута", Toast.LENGTH_SHORT).show()
+            .addOnFailureListener { e ->
+                Toast.makeText(context, "Ошибка очистки маршрута: ${e.message}", Toast.LENGTH_SHORT).show()
             }
     }
 
@@ -215,10 +231,14 @@ class RouteTrackerFragment : Fragment() {
                 database.child("user_locations").child(userId).removeValue()
                     .addOnSuccessListener {
                         resetState(keepHistory = false)
+                        Toast.makeText(context, "Вся история маршрутов очищена", Toast.LENGTH_SHORT).show()
+                    }
+                    .addOnFailureListener { e ->
+                        Toast.makeText(context, "Ошибка очистки сессии: ${e.message}", Toast.LENGTH_SHORT).show()
                     }
             }
-            .addOnFailureListener {
-                Toast.makeText(context, "Ошибка очистки истории", Toast.LENGTH_SHORT).show()
+            .addOnFailureListener { e ->
+                Toast.makeText(context, "Ошибка очистки истории: ${e.message}", Toast.LENGTH_SHORT).show()
             }
     }
 
@@ -255,7 +275,7 @@ class RouteTrackerFragment : Fragment() {
         try {
             LocationUpdateService.startService(requireContext())
         } catch (e: Exception) {
-            Toast.makeText(context, "Ошибка запуска отслеживания", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, "Ошибка запуска отслеживания: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -288,7 +308,7 @@ class RouteTrackerFragment : Fragment() {
                 }
 
                 override fun onCancelled(error: DatabaseError) {
-                    // ignore
+                    Log.e(TAG, "Ошибка статуса трекинга: ${error.message}")
                 }
             })
     }
@@ -296,15 +316,17 @@ class RouteTrackerFragment : Fragment() {
     private fun loadFullRouteHistory() {
         val userId = auth.currentUser?.uid ?: return
 
+        Log.d(TAG, "Загрузка полной истории маршрутов...")
         database.child("route_history").child(userId)
             .addListenerForSingleValueEvent(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     if (!isAdded) return
+                    Log.d(TAG, "Получена полная история: ${snapshot.childrenCount} записей")
                     processRouteData(snapshot, "history")
                 }
 
                 override fun onCancelled(error: DatabaseError) {
-                    // ignore
+                    Log.e(TAG, "Ошибка загрузки истории: ${error.message}")
                 }
             })
     }
@@ -312,36 +334,47 @@ class RouteTrackerFragment : Fragment() {
     private fun loadCurrentSession() {
         val userId = auth.currentUser?.uid ?: return
 
+        Log.d(TAG, "Загрузка текущей сессии...")
         database.child("user_locations").child(userId)
             .addListenerForSingleValueEvent(object : ValueEventListener {
                 override fun onDataChange(snapshot: DataSnapshot) {
                     if (!isAdded) return
+                    Log.d(TAG, "Получена текущая сессия: ${snapshot.childrenCount} записей")
                     processRouteData(snapshot, "session")
                 }
 
                 override fun onCancelled(error: DatabaseError) {
-                    // ignore
+                    Log.e(TAG, "Ошибка загрузки сессии: ${error.message}")
                 }
             })
     }
 
     private fun parseUserLocation(snapshot: DataSnapshot): UserLocation? {
         return try {
-            if (snapshot.key in setOf("accuracy", "color", "lat", "lng", "timestamp", "speed")) {
-                return null
-            }
+            // Проверяем, является ли это прямой записью с полями lat/lng/timestamp
+            if (snapshot.hasChild("lat") && snapshot.hasChild("lng") && snapshot.hasChild("timestamp")) {
+                val lat = snapshot.child("lat").getValue(Double::class.java) ?: 0.0
+                val lng = snapshot.child("lng").getValue(Double::class.java) ?: 0.0
+                val timestamp = snapshot.child("timestamp").getValue(Long::class.java) ?: System.currentTimeMillis()
 
-            val lat = snapshot.child("lat").getValue(Double::class.java) ?: 0.0
-            val lng = snapshot.child("lng").getValue(Double::class.java) ?: 0.0
-            val timestamp = snapshot.child("timestamp").getValue(Long::class.java) ?: System.currentTimeMillis()
-
-            if (isValidCoordinates(lat, lng) && timestamp !in processedTimestamps) {
-                processedTimestamps.add(timestamp)
-                UserLocation(lat, lng, timestamp)
-            } else {
-                null
+                if (isValidCoordinates(lat, lng) && timestamp !in processedTimestamps) {
+                    processedTimestamps.add(timestamp)
+                    return UserLocation(lat, lng, timestamp)
+                }
             }
+            // Иначе пытаемся получить UserLocation напрямую
+            else {
+                val userLocation = snapshot.getValue(UserLocation::class.java)
+                if (userLocation != null &&
+                    isValidCoordinates(userLocation.lat, userLocation.lng) &&
+                    userLocation.timestamp !in processedTimestamps) {
+                    processedTimestamps.add(userLocation.timestamp)
+                    return userLocation
+                }
+            }
+            null
         } catch (e: Exception) {
+            Log.e(TAG, "Ошибка парсинга локации: ${e.message}")
             null
         }
     }
@@ -349,7 +382,7 @@ class RouteTrackerFragment : Fragment() {
     private fun isValidCoordinates(lat: Double, lng: Double): Boolean {
         return lat != 0.0 && lng != 0.0 &&
                 abs(lat) <= 90 && abs(lng) <= 180 &&
-                lat in 1.0..89.9 && lng in 1.0..179.9
+                lat in -90.0..90.0 && lng in -180.0..180.0
     }
 
     private fun processRouteData(snapshot: DataSnapshot, source: String) {
@@ -358,6 +391,8 @@ class RouteTrackerFragment : Fragment() {
         for (child in snapshot.children) {
             parseUserLocation(child)?.let { newLocations.add(it) }
         }
+
+        Log.d(TAG, "Найдено новых локаций: ${newLocations.size}")
 
         if (newLocations.isNotEmpty()) {
             newLocations.sortBy { it.timestamp }
@@ -372,28 +407,18 @@ class RouteTrackerFragment : Fragment() {
                 newLocations.forEach { processedTimestamps.add(it.timestamp) }
                 isFirstLoad = false
 
-                // Обновляем карту и камеру
-                updatePolylineIncrementally()
-                adjustCameraToRoute()
-                calculateStats()
+                requireActivity().runOnUiThread {
+                    updatePolylineIncrementally()
+                    adjustCameraToRoute()
+                    calculateStats()
+                    Log.d(TAG, "История загружена: ${locationList.size} точек")
+                }
             } else if (source == "session") {
                 addNewLocationsToRoute(newLocations)
             }
         } else if (source == "history" && isFirstLoad) {
+            Log.d(TAG, "История пуста")
             clearUI()
-        }
-    }
-
-    private fun setupLeftSheet() {
-        val sheetWidth = (320 * resources.displayMetrics.density).toInt()
-        bottomSheet.translationX = -sheetWidth.toFloat()
-
-        btnToggleSheet.setOnClickListener {
-            toggleLeftSheetWithAnimation(sheetWidth)
-        }
-
-        btnCloseSheet.setOnClickListener {
-            hideLeftSheetWithAnimation(sheetWidth)
         }
     }
 
@@ -418,7 +443,7 @@ class RouteTrackerFragment : Fragment() {
                 }
 
                 override fun onCancelled(error: DatabaseError) {
-                    // ignore
+                    Log.e(TAG, "Ошибка слушателя локаций: ${error.message}")
                 }
             })
     }
@@ -450,54 +475,70 @@ class RouteTrackerFragment : Fragment() {
         locationList.addAll(trulyNew)
         routePoints.addAll(trulyNew.map { Point(it.lat, it.lng) })
 
-        updatePolylineIncrementally()
-        calculateStats()
+        requireActivity().runOnUiThread {
+            updatePolylineIncrementally()
+            calculateStats()
 
-        if (isTracking) {
-            mapView.map.move(
-                CameraPosition(routePoints.last(), 16f, 0f, 0f),
-                Animation(Animation.Type.SMOOTH, 0.5f),
-                null
-            )
+            if (isTracking) {
+                mapView.map.move(
+                    CameraPosition(routePoints.last(), 16f, 0f, 0f),
+                    Animation(Animation.Type.SMOOTH, 0.5f),
+                    null
+                )
+            }
+            Log.d(TAG, "Добавлено новых точек: ${trulyNew.size}, всего: ${locationList.size}")
         }
     }
 
     private fun updatePolylineIncrementally() {
         if (routePoints.size < 2) {
+            Log.d(TAG, "Недостаточно точек для полилинии: ${routePoints.size}")
             clearRoute()
             return
         }
 
-        if (polyline == null) {
-            polyline = mapView.map.mapObjects.addPolyline(Polyline(routePoints)).apply {
-                setStrokeColor(Color.parseColor("#1E88E5"))
-                setStrokeWidth(6f)
-                setOutlineColor(Color.WHITE)
-                setOutlineWidth(2f)
+        try {
+            if (polyline == null) {
+                polyline = mapView.map.mapObjects.addPolyline(Polyline(routePoints)).apply {
+                    setStrokeColor(Color.parseColor("#1E88E5"))
+                    setStrokeWidth(6f)
+                    setOutlineColor(Color.WHITE)
+                    setOutlineWidth(2f)
+                }
+                Log.d(TAG, "Создана новая полилиния из ${routePoints.size} точек")
+            } else {
+                polyline?.setGeometry(Polyline(routePoints))
+                Log.d(TAG, "Обновлена полилиния до ${routePoints.size} точек")
             }
-        } else {
-            polyline?.setGeometry(Polyline(routePoints))
-        }
 
-        if (startMarker == null) {
-            startMarker = mapView.map.mapObjects.addPlacemark(routePoints.first()).apply {
-                setIcon(ImageProvider.fromResource(requireContext(), R.drawable.ic_location))
-                setIconStyle(IconStyle().setScale(1.5f))
+            // Обновляем начальный маркер
+            if (startMarker == null && routePoints.isNotEmpty()) {
+                startMarker = mapView.map.mapObjects.addPlacemark(routePoints.first()).apply {
+                    setIcon(ImageProvider.fromResource(requireContext(), R.drawable.ic_location))
+                    setIconStyle(IconStyle().setScale(1.5f))
+                }
             }
-        }
 
-        if (endMarker == null) {
-            endMarker = mapView.map.mapObjects.addPlacemark(routePoints.last()).apply {
-                setIcon(ImageProvider.fromResource(requireContext(), R.drawable.ic_marker))
-                setIconStyle(IconStyle().setScale(1.5f))
+            // Обновляем конечный маркер
+            if (endMarker == null && routePoints.isNotEmpty()) {
+                endMarker = mapView.map.mapObjects.addPlacemark(routePoints.last()).apply {
+                    setIcon(ImageProvider.fromResource(requireContext(), R.drawable.ic_marker))
+                    setIconStyle(IconStyle().setScale(1.5f))
+                }
+            } else if (routePoints.isNotEmpty()) {
+                endMarker?.geometry = routePoints.last()
             }
-        } else {
-            endMarker?.geometry = routePoints.last()
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка обновления полилинии: ${e.message}")
         }
     }
 
     private fun adjustCameraToRoute() {
-        if (routePoints.isEmpty()) return
+        if (routePoints.isEmpty()) {
+            Log.d(TAG, "Нет точек для настройки камеры")
+            return
+        }
+
         val bbox = calculateBoundingBox(routePoints)
         val center = Point(
             (bbox.southWest.latitude + bbox.northEast.latitude) / 2,
@@ -522,6 +563,8 @@ class RouteTrackerFragment : Fragment() {
             Animation(Animation.Type.SMOOTH, 0.5f),
             null
         )
+
+        Log.d(TAG, "Камера настроена: центр ($center), zoom $zoom")
     }
 
     private fun calculateBoundingBox(points: List<Point>): BoundingBox {
@@ -585,6 +628,7 @@ class RouteTrackerFragment : Fragment() {
         if (maxSpeed * 3.6 > 80) maxSpeed = avgSpeed * 1.5
         if (maxSpeed * 3.6 > 60) maxSpeed = min(maxSpeed, MAX_BIKE_SPEED)
 
+        Log.d(TAG, "Статистика: дистанция ${totalDistance/1000} км, время $totalTime сек, средняя скорость $avgSpeed м/с")
         updateUI()
     }
 
@@ -646,6 +690,7 @@ class RouteTrackerFragment : Fragment() {
             startMarker = null
             endMarker = null
         }
+        Log.d(TAG, "Маршрут очищен")
     }
 
     private fun clearUI() {
