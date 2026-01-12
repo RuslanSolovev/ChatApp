@@ -7,7 +7,6 @@ import android.app.NotificationManager
 import android.content.Context
 import android.os.Build
 import android.util.Log
-import androidx.lifecycle.ViewModelProvider
 import androidx.work.*
 import com.example.chatapp.ForegroundServiceLauncher
 import com.example.chatapp.LocationWorker
@@ -18,7 +17,6 @@ import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.*
 import java.util.concurrent.TimeUnit
 
-// ⚠️ ОБНОВЛЕННЫЙ ПРАВИЛЬНЫЙ APP ID
 const val ONESIGNAL_APP_ID = "0083de8f-7ca0-4824-ac88-9c037278237e"
 
 @HiltAndroidApp
@@ -26,6 +24,8 @@ class StepCounterApp : Application() {
 
     companion object {
         private const val TAG = "StepCounterApp"
+        const val STEP_SERVICE_WORK_NAME = "step_counter_periodic_work"
+        const val STEP_SYNC_WORK_NAME = "step_sync_work"
     }
 
     private val appScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
@@ -40,38 +40,77 @@ class StepCounterApp : Application() {
 
     private fun initializeAppAsync() {
         appScope.launch {
-            val criticalJobs = listOf(
-                async { initializeMapKit() },
-                async { setupPeriodicStepSync() },
-                async { initializeOneSignalLite() }
-            )
-            criticalJobs.awaitAll()
+            try {
+                // Запускаем критические инициализации параллельно
+                val criticalJobs = listOf(
+                    async { initializeMapKit() },
+                    async { initializeOneSignalLite() }
+                )
+                criticalJobs.awaitAll()
 
-            delay(2000)
-            safeRestartServices()
+                // Пауза для стабильности системы
+                delay(3000)
 
-            Log.d(TAG, "Application initialization COMPLETED - все сервисы запущены")
+                // Запускаем сервисы
+                restartServicesAfterBoot()
+
+                // Настраиваем периодическую проверку сервиса
+                setupStepServiceMonitorWork()
+
+                Log.d(TAG, "Application initialization COMPLETED")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error during app initialization", e)
+                // Пробуем запустить сервисы даже при ошибках
+                safeRestartServices()
+            }
         }
     }
 
+    /**
+     * Запуск сервисов после перезагрузки устройства
+     */
+    private fun restartServicesAfterBoot() {
+        appScope.launch {
+            try {
+                Log.d(TAG, "=== RESTARTING SERVICES AFTER BOOT ===")
+
+                // Всегда запускаем шагомер после перезагрузки
+                startStepCounterService()
+
+                // Локацию запускаем только если она была активна
+                val prefs = getSharedPreferences("service_prefs", Context.MODE_PRIVATE)
+                val wasLocationActive = prefs.getBoolean("location_tracking_active", false)
+
+                if (wasLocationActive) {
+                    startLocationService()
+                }
+
+                Log.d(TAG, "=== SERVICES RESTARTED ===")
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error restarting services after boot", e)
+                // Планируем аварийный перезапуск через WorkManager
+                scheduleEmergencyRestart()
+            }
+        }
+    }
+
+    /**
+     * Безопасный запуск сервисов
+     */
     private fun safeRestartServices() {
         appScope.launch {
             try {
+                Log.d(TAG, "=== SAFE SERVICE RESTART ===")
+
+                startStepCounterService()
+
                 val prefs = getSharedPreferences("service_prefs", Context.MODE_PRIVATE)
-                val wasStepActive = prefs.getBoolean("step_service_active", false)
                 val wasLocationActive = prefs.getBoolean("location_tracking_active", false)
 
-                Log.d(TAG, "=== SAFE SERVICE RESTART ===")
-                Log.d(TAG, "Step was active: $wasStepActive, Location was active: $wasLocationActive")
-
-                if (wasStepActive) {
-                    Log.d(TAG, "Safely starting step service...")
-                    ForegroundServiceLauncher.startStepCounterService(this@StepCounterApp)
-                }
-
                 if (wasLocationActive) {
-                    Log.d(TAG, "Safely starting location service...")
-                    ForegroundServiceLauncher.startLocationService(this@StepCounterApp)
+                    startLocationService()
                 }
 
                 Log.d(TAG, "=== SAFE RESTART COMPLETED ===")
@@ -81,52 +120,134 @@ class StepCounterApp : Application() {
         }
     }
 
-    fun restartServicesAfterCrash() {
-        Log.d(TAG, "restartServicesAfterCrash: Перезапуск сервисов после краша")
+    /**
+     * Прямой запуск сервиса шагомера
+     */
+    private fun startStepCounterService() {
+        try {
+            Log.d(TAG, "Starting step counter service from Application")
+            StepCounterService.startService(this)
+            saveServiceState("step", true)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting step counter service", e)
+            saveServiceState("step", false)
+        }
+    }
 
+    /**
+     * Прямой запуск сервиса локации
+     */
+    private fun startLocationService() {
+        try {
+            Log.d(TAG, "Starting location service from Application")
+            // Используйте ваш класс для запуска локации
+            val locationServiceClass = Class.forName("com.example.chatapp.location.LocationServiceManager")
+            val method = locationServiceClass.getMethod("startLocationService", Context::class.java)
+            method.invoke(null, this)
+            saveServiceState("location", true)
+        } catch (e: Exception) {
+            Log.e(TAG, "Error starting location service", e)
+            saveServiceState("location", false)
+        }
+    }
+
+
+
+
+
+
+    /**
+     * Перезапуск сервисов после краша приложения
+     */
+    fun restartServicesAfterCrash() {
         appScope.launch {
             try {
+                Log.d(TAG, "=== RESTARTING SERVICES AFTER CRASH ===")
+
+                // Сохраняем флаг краша
                 val prefs = getSharedPreferences("service_prefs", Context.MODE_PRIVATE)
-                val wasStepActive = prefs.getBoolean("step_service_active", false)
+                prefs.edit().putBoolean("was_crash", true).apply()
+
+                // Ждем немного для стабильности
+                delay(2000)
+
+                // Запускаем шагомер
+                startStepCounterService()
+
+                // Проверяем, была ли активна локация
                 val wasLocationActive = prefs.getBoolean("location_tracking_active", false)
 
-                if (wasStepActive) {
-                    ForegroundServiceLauncher.startStepCounterService(this@StepCounterApp)
-                }
                 if (wasLocationActive) {
-                    ForegroundServiceLauncher.startLocationService(this@StepCounterApp)
+                    startLocationService()
                 }
 
-                Log.d(TAG, "Перезапуск сервисов после краша завершен")
+                // Очищаем флаг краша после успешного перезапуска
+                prefs.edit().putBoolean("was_crash", false).apply()
+
+                Log.d(TAG, "=== SERVICES RESTARTED AFTER CRASH ===")
+
             } catch (e: Exception) {
-                Log.e(TAG, "Критическая ошибка при перезапуске сервисов", e)
-                scheduleEmergencyWorkersAfterCrash()
+                Log.e(TAG, "Error restarting services after crash", e)
+                scheduleEmergencyRestart()
             }
         }
     }
 
-    private fun scheduleEmergencyWorkersAfterCrash() {
+
+
+
+
+
+
+    /**
+     * Настраивает периодическую проверку сервиса шагомера
+     */
+    private fun setupStepServiceMonitorWork() {
         try {
-            Log.w(TAG, "Scheduling emergency workers after crash")
+            Log.d(TAG, "Setting up StepServiceMonitorWorker")
+
+            val constraints = Constraints.Builder()
+                .setRequiresBatteryNotLow(false) // Работаем даже при низком заряде
+                .build()
+
+            val monitorWork = PeriodicWorkRequestBuilder<StepServiceMonitorWorker>(
+                15, TimeUnit.MINUTES, // Проверяем каждые 15 минут
+                5, TimeUnit.MINUTES // Гибкое окно
+            )
+                .setConstraints(constraints)
+                .setInitialDelay(5, TimeUnit.MINUTES)
+                .build()
+
+            WorkManager.getInstance(this).enqueueUniquePeriodicWork(
+                STEP_SERVICE_WORK_NAME,
+                ExistingPeriodicWorkPolicy.KEEP,
+                monitorWork
+            )
+
+            Log.d(TAG, "StepServiceMonitorWorker scheduled")
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Error setting up StepServiceMonitorWorker", e)
+        }
+    }
+
+    /**
+     * Аварийный перезапуск через WorkManager
+     */
+    private fun scheduleEmergencyRestart() {
+        try {
+            Log.w(TAG, "Scheduling emergency restart")
 
             val stepWorkRequest = OneTimeWorkRequestBuilder<StepCounterWorker>()
-                .setInitialDelay(1, TimeUnit.MINUTES)
-                .addTag("crash_recovery_step")
-                .build()
-
-            val locationWorkRequest = OneTimeWorkRequestBuilder<LocationWorker>()
                 .setInitialDelay(2, TimeUnit.MINUTES)
-                .addTag("crash_recovery_location")
+                .addTag("emergency_step_restart")
                 .build()
 
-            WorkManager.getInstance(this).apply {
-                enqueue(stepWorkRequest)
-                enqueue(locationWorkRequest)
-            }
+            WorkManager.getInstance(this).enqueue(stepWorkRequest)
+            Log.d(TAG, "Emergency restart scheduled")
 
-            Log.d(TAG, "Emergency workers scheduled after crash")
         } catch (e: Exception) {
-            Log.e(TAG, "Error scheduling emergency workers after crash", e)
+            Log.e(TAG, "Error scheduling emergency restart", e)
         }
     }
 
@@ -141,30 +262,11 @@ class StepCounterApp : Application() {
         }
     }
 
-    private fun setupPeriodicStepSync() {
-        try {
-            val syncRequest = PeriodicWorkRequestBuilder<StepSyncWorker>(
-                30, TimeUnit.MINUTES,
-                10, TimeUnit.MINUTES
-            ).setInitialDelay(5, TimeUnit.MINUTES).build()
-
-            WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-                "step_sync_work",
-                ExistingPeriodicWorkPolicy.KEEP,
-                syncRequest
-            )
-            Log.d(TAG, "Periodic step sync work enqueued")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error setting up periodic step sync", e)
-        }
-    }
-
     private fun initializeOneSignalLite() {
         try {
             Log.d(TAG, "Initializing OneSignal LITE...")
             Log.d(TAG, "OneSignal App ID: ${ONESIGNAL_APP_ID.take(8)}...")
 
-            // Правильная инициализация OneSignal
             OneSignal.initWithContext(this)
             OneSignal.setAppId(ONESIGNAL_APP_ID)
             OneSignal.setLocationShared(false)
@@ -214,7 +316,6 @@ class StepCounterApp : Application() {
                     }
             } else {
                 Log.w(TAG, "⚠️ No authenticated user, OneSignal ID will be saved later when user logs in")
-                // Сохраняем временно в SharedPreferences для последующего сохранения
                 val prefs = getSharedPreferences("oneSignal_prefs", Context.MODE_PRIVATE)
                 prefs.edit().putString("pending_oneSignal_id", playerId).apply()
             }
@@ -223,41 +324,9 @@ class StepCounterApp : Application() {
         }
     }
 
-    // Метод для сохранения отложенного OneSignal ID после логина пользователя
-    fun savePendingOneSignalId(userId: String) {
-        try {
-            val prefs = getSharedPreferences("oneSignal_prefs", Context.MODE_PRIVATE)
-            val pendingOneSignalId = prefs.getString("pending_oneSignal_id", null)
-
-            if (!pendingOneSignalId.isNullOrBlank()) {
-                com.google.firebase.database.FirebaseDatabase.getInstance().reference
-                    .child("users").child(userId).child("oneSignalId")
-                    .setValue(pendingOneSignalId)
-                    .addOnSuccessListener {
-                        Log.d(TAG, "✅ Pending OneSignal ID saved to Firebase for user: $userId")
-                        prefs.edit().remove("pending_oneSignal_id").apply()
-                    }
-                    .addOnFailureListener { e ->
-                        Log.e(TAG, "❌ Failed to save pending OneSignal ID", e)
-                    }
-            }
-
-            // Также сохраняем текущий OneSignal ID если есть
-            OneSignal.getDeviceState()?.userId?.let { currentPlayerId ->
-                if (currentPlayerId.isNotBlank()) {
-                    com.google.firebase.database.FirebaseDatabase.getInstance().reference
-                        .child("users").child(userId).child("oneSignalId")
-                        .setValue(currentPlayerId)
-                        .addOnSuccessListener {
-                            Log.d(TAG, "✅ Current OneSignal ID saved to Firebase: ${currentPlayerId.take(8)}...")
-                        }
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "❌ Error saving pending OneSignal ID", e)
-        }
-    }
-
+    /**
+     * Сохраняет состояние сервиса
+     */
     fun saveServiceState(serviceType: String, isActive: Boolean) {
         try {
             val prefs = getSharedPreferences("service_prefs", Context.MODE_PRIVATE)
@@ -275,6 +344,9 @@ class StepCounterApp : Application() {
         }
     }
 
+    /**
+     * Получает состояние сервиса
+     */
     fun getServiceState(serviceType: String): Boolean {
         return try {
             val prefs = getSharedPreferences("service_prefs", Context.MODE_PRIVATE)
@@ -289,51 +361,22 @@ class StepCounterApp : Application() {
         }
     }
 
-    fun updateStepsInViewModel(steps: Int) {
-        try {
-            val viewModel = ViewModelProvider.AndroidViewModelFactory.getInstance(this)
-                .create(StepCounterViewModel::class.java)
-            viewModel.updateTodaySteps(steps)
-            Log.d(TAG, "Steps updated in ViewModel: $steps")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error updating steps in ViewModel", e)
-        }
-    }
-
-    fun startServicesFromActivity() {
-        Log.d(TAG, "Starting services from activity...")
-        ForegroundServiceLauncher.startPendingServices(this)
-
-        appScope.launch {
-            if (!getServiceState("step")) {
-                ForegroundServiceLauncher.startStepCounterService(this@StepCounterApp)
-            }
-            if (!getServiceState("location")) {
-                ForegroundServiceLauncher.startLocationService(this@StepCounterApp)
-            }
-        }
-    }
-
-    fun hasPendingServices(): Boolean {
-        val prefs = getSharedPreferences("service_prefs", Context.MODE_PRIVATE)
-        return prefs.getBoolean("step_service_pending", false) ||
-                prefs.getBoolean("location_service_pending", false)
-    }
-
     private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // Основной канал для сервиса шагомера
             val stepServiceChannel = NotificationChannel(
                 "step_counter_channel",
                 "Счетчик шагов",
-                NotificationManager.IMPORTANCE_LOW
+                NotificationManager.IMPORTANCE_HIGH // ВАЖНО: HIGH для Huawei/Honor
             ).apply {
                 description = "Отслеживает ваши шаги в фоне"
-                setShowBadge(false)
+                setShowBadge(true)
                 enableVibration(false)
                 setSound(null, null)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
 
+            // Канал для достижений
             val milestoneChannel = NotificationChannel(
                 "step_milestone_channel",
                 "Достижения в ходьбе",
@@ -345,26 +388,14 @@ class StepCounterApp : Application() {
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
 
-            val locationServiceChannel = NotificationChannel(
-                "location_service_channel",
-                "Отслеживание маршрута",
-                NotificationManager.IMPORTANCE_LOW
+            // Канал для перезапуска сервиса
+            val restartChannel = NotificationChannel(
+                "service_restart_channel",
+                "Перезапуск сервисов",
+                NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Канал для сервиса отслеживания перемещений"
+                description = "Уведомления о перезапуске сервисов"
                 setShowBadge(false)
-                lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-                enableVibration(false)
-                enableLights(false)
-            }
-
-            // Канал для философских цитат
-            val philosophyChannel = NotificationChannel(
-                "292588fb-8a77-4b57-8566-b8bb9552ff68",
-                "Философские цитаты",
-                NotificationManager.IMPORTANCE_DEFAULT
-            ).apply {
-                description = "Ежечасные мудрые мысли"
-                setShowBadge(true)
                 enableVibration(true)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
@@ -372,15 +403,72 @@ class StepCounterApp : Application() {
             val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             notificationManager.createNotificationChannel(stepServiceChannel)
             notificationManager.createNotificationChannel(milestoneChannel)
-            notificationManager.createNotificationChannel(locationServiceChannel)
-            notificationManager.createNotificationChannel(philosophyChannel)
+            notificationManager.createNotificationChannel(restartChannel)
 
-            Log.d(TAG, "All notification channels created (including philosophy)")
+            Log.d(TAG, "Notification channels created")
+        }
+    }
+
+    /**
+     * Проверяет, запущен ли сервис шагомера
+     */
+    fun isStepServiceRunning(): Boolean {
+        return try {
+            val manager = getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+            manager.getRunningServices(Integer.MAX_VALUE)
+                .any { it.service.className == StepCounterService::class.java.name }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error checking service status", e)
+            false
+        }
+    }
+
+    /**
+     * Принудительный перезапуск шагомера
+     */
+    fun forceRestartStepCounter() {
+        appScope.launch {
+            try {
+                Log.w(TAG, "Force restarting step counter service")
+
+                // Останавливаем сервис если запущен
+                if (isStepServiceRunning()) {
+                    // Можно отправить broadcast для остановки или просто запустить новый
+                    Log.d(TAG, "Service is running, will be replaced")
+                }
+
+                // Запускаем заново
+                startStepCounterService()
+
+                // Показываем уведомление о перезапуске
+                showRestartNotification()
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Error in force restart", e)
+            }
+        }
+    }
+
+    /**
+     * Показывает уведомление о перезапуске
+     */
+    private fun showRestartNotification() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val notification = Notification.Builder(this, "service_restart_channel")
+                .setContentTitle("Шагомер перезапущен")
+                .setContentText("Сервис шагомера был перезапущен для стабильной работы")
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setAutoCancel(true)
+                .build()
+
+            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            notificationManager.notify(System.currentTimeMillis().toInt(), notification)
         }
     }
 
     override fun onTerminate() {
         super.onTerminate()
         appScope.cancel()
+        Log.d(TAG, "Application terminated")
     }
 }

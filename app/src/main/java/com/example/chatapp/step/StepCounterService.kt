@@ -13,7 +13,6 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.example.chatapp.R
 import com.example.chatapp.activities.MainActivity
-import com.example.chatapp.location.LocationUpdateService.Companion.ACTION_START
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.FirebaseDatabase
 import kotlinx.coroutines.*
@@ -39,6 +38,7 @@ class StepCounterService : Service(), SensorEventListener {
         private const val BOOT_TIME_THRESHOLD_MS = 5000L
         private const val WAKE_LOCK_TIMEOUT = 10 * 60 * 1000L
         private const val MILESTONE_STEP = 1000
+        const val ACTION_START = "com.example.chatapp.step.StepCounterService.START"
 
         fun startService(context: Context) {
             try {
@@ -75,14 +75,22 @@ class StepCounterService : Service(), SensorEventListener {
     private var lastMilestoneNotified = 0
     private val isRunning = AtomicBoolean(false)
     private val serviceScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+    private lateinit var stepDataManager: StepDataManager
     private var stepsToday = 0
     private var lastProcessedDate = ""
+    private var bootTimestamp = 0L
 
     override fun onCreate() {
         super.onCreate()
         Log.d(TAG, "onCreate: Создание сервиса шагомера")
 
         try {
+            // Инициализация StepDataManager
+            stepDataManager = StepDataManager.getInstance(this)
+
+            // Проверяем, была ли недавняя перезагрузка
+            checkIfBootRecently()
+
             // Инициализация WakeLock
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
             wakeLock = powerManager.newWakeLock(
@@ -120,12 +128,42 @@ class StepCounterService : Service(), SensorEventListener {
         }
     }
 
+    private fun checkIfBootRecently() {
+        val lastBootTime = System.currentTimeMillis() - SystemClock.elapsedRealtime()
+        val timeSinceBoot = System.currentTimeMillis() - lastBootTime
+        bootTimestamp = lastBootTime
+
+        Log.d(TAG, "Последняя перезагрузка: ${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(lastBootTime))}")
+        Log.d(TAG, "Прошло с перезагрузки: ${timeSinceBoot / 1000} секунд")
+
+        if (timeSinceBoot < BOOT_TIME_THRESHOLD_MS) {
+            Log.w(TAG, "Обнаружена недавняя перезагрузка, сбрасываем начальные значения датчика")
+        }
+    }
+
     private fun initializeStepSensor() {
         stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
 
         if (stepCounterSensor == null) {
-            Log.w(TAG, "Датчик TYPE_STEP_COUNTER недоступен, пробуем TYPE_STEP_DETECTOR")
-            stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR)
+            Log.w(TAG, "Датчик TYPE_STEP_COUNTER недоступен, пробуем другие датчики")
+
+            // Пробуем разные типы датчиков
+            val availableSensors = sensorManager.getSensorList(Sensor.TYPE_ALL)
+            for (sensor in availableSensors) {
+                Log.d(TAG, "Доступный датчик: ${sensor.name} (тип: ${sensor.type})")
+
+                // Ищем шагомер или детектор шагов
+                if (sensor.name.contains("step", ignoreCase = true) ||
+                    sensor.name.contains("pedometer", ignoreCase = true)) {
+                    stepCounterSensor = sensor
+                    Log.d(TAG, "Найден альтернативный датчик шагов: ${sensor.name}")
+                    break
+                }
+            }
+
+            if (stepCounterSensor == null) {
+                stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_DETECTOR)
+            }
         }
 
         if (stepCounterSensor != null) {
@@ -137,8 +175,12 @@ class StepCounterService : Service(), SensorEventListener {
 
             if (success) {
                 Log.d(TAG, "Датчик шагов успешно зарегистрирован: ${stepCounterSensor?.name}")
+                Log.d(TAG, "Максимальный диапазон: ${stepCounterSensor?.maximumRange}")
+                Log.d(TAG, "Разрешение: ${stepCounterSensor?.resolution}")
+                Log.d(TAG, "Мощность: ${stepCounterSensor?.power}")
             } else {
                 Log.e(TAG, "Не удалось зарегистрировать датчик шагов")
+                showSensorUnavailableNotification()
             }
         } else {
             Log.e(TAG, "На устройстве нет датчиков шагов")
@@ -149,14 +191,23 @@ class StepCounterService : Service(), SensorEventListener {
     private fun restoreServiceState() {
         val todayDate = getTodayDate()
 
-        // Восстанавливаем счетчики для текущего дня
+        // Восстанавливаем шаги через StepDataManager
+        stepsToday = stepDataManager.getSteps(todayDate)
+
+        Log.d(TAG, "Восстановлено шагов за сегодня: $stepsToday")
+
+        // Восстанавливаем состояние датчика из SharedPreferences
         initialStepsCount = sharedPreferences.getFloat("initial_steps_$todayDate", 0f)
         lastTotalStepsCount = sharedPreferences.getFloat("last_total_$todayDate", 0f)
         lastMilestoneNotified = sharedPreferences.getInt("last_milestone_$todayDate", 0)
-        stepsToday = sharedPreferences.getInt(todayDate, 0)
         lastProcessedDate = sharedPreferences.getString("last_processed_date", "") ?: ""
 
-        Log.d(TAG, "Состояние восстановлено: сегодня $stepsToday шагов, initial=$initialStepsCount")
+        Log.d(TAG, "Состояние датчика: initial=$initialStepsCount, lastTotal=$lastTotalStepsCount")
+
+        // Если это первый запуск сегодня или после перезагрузки
+        if (initialStepsCount == 0f) {
+            Log.d(TAG, "Новый день или первый запуск, инициализируем начальные значения")
+        }
 
         // Запускаем периодическую синхронизацию
         startPeriodicDataSync()
@@ -244,25 +295,57 @@ class StepCounterService : Service(), SensorEventListener {
         if (!isRunning.get()) return
 
         event?.let { sensorEvent ->
-            if (sensorEvent.sensor.type == Sensor.TYPE_STEP_COUNTER ||
-                sensorEvent.sensor.type == Sensor.TYPE_STEP_DETECTOR) {
+            val sensorType = sensorEvent.sensor.type
+            val isStepCounter = sensorType == Sensor.TYPE_STEP_COUNTER
+            val isStepDetector = sensorType == Sensor.TYPE_STEP_DETECTOR
 
+            if (isStepCounter || isStepDetector) {
                 val currentTime = System.currentTimeMillis()
-                if (currentTime - lastSensorTimestamp > MIN_TIME_BETWEEN_STEPS_MS) {
-                    serviceScope.launch {
-                        processSensorEvent(sensorEvent.values[0])
+
+                if (isStepCounter) {
+                    // TYPE_STEP_COUNTER: накопительный счетчик
+                    if (currentTime - lastSensorTimestamp > MIN_TIME_BETWEEN_STEPS_MS) {
+                        serviceScope.launch {
+                            processStepCounterEvent(sensorEvent.values[0])
+                        }
+                        lastSensorTimestamp = currentTime
                     }
-                    lastSensorTimestamp = currentTime
+                } else if (isStepDetector) {
+                    // TYPE_STEP_DETECTOR: детектор отдельных шагов
+                    if (sensorEvent.values[0] == 1.0f) {
+                        if (currentTime - lastSensorTimestamp > MIN_TIME_BETWEEN_STEPS_MS) {
+                            serviceScope.launch {
+                                processSingleStep()
+                            }
+                            lastSensorTimestamp = currentTime
+                        }
+                    }
                 }
+
+                Log.v(TAG, "Событие датчика: тип=$sensorType, значение=${sensorEvent.values[0]}")
             }
         }
     }
 
-    private suspend fun processSensorEvent(totalSteps: Float) {
+    private suspend fun processStepCounterEvent(totalSteps: Float) {
         withContext(Dispatchers.IO) {
             try {
                 // Проверяем новый день
                 checkForNewDay()
+
+                Log.d(TAG, "Обработка счетчика шагов: totalSteps=$totalSteps, initial=$initialStepsCount, lastTotal=$lastTotalStepsCount")
+
+                // Проверяем сброс датчика (перезагрузка устройства или новый день)
+                val timeSinceBoot = System.currentTimeMillis() - bootTimestamp
+                val isRecentBoot = timeSinceBoot < BOOT_TIME_THRESHOLD_MS
+
+                if (isRecentBoot || totalSteps < lastTotalStepsCount) {
+                    Log.d(TAG, "Обнаружен сброс датчика или перезагрузка. Было: $lastTotalStepsCount, стало: $totalSteps")
+                    initialStepsCount = totalSteps
+                    lastTotalStepsCount = totalSteps
+                    saveStepState()
+                    return@withContext
+                }
 
                 // Если это первый запуск сегодня
                 if (initialStepsCount == 0f) {
@@ -270,15 +353,6 @@ class StepCounterService : Service(), SensorEventListener {
                     lastTotalStepsCount = totalSteps
                     saveStepState()
                     Log.d(TAG, "Инициализирован счетчик шагов: $totalSteps")
-                    return@withContext
-                }
-
-                // Проверяем сброс датчика (перезагрузка устройства)
-                if (totalSteps < lastTotalStepsCount) {
-                    Log.d(TAG, "Обнаружен сброс датчика. Было: $lastTotalStepsCount, стало: $totalSteps")
-                    initialStepsCount = totalSteps
-                    lastTotalStepsCount = totalSteps
-                    saveStepState()
                     return@withContext
                 }
 
@@ -301,11 +375,34 @@ class StepCounterService : Service(), SensorEventListener {
         }
     }
 
+    private suspend fun processSingleStep() {
+        withContext(Dispatchers.IO) {
+            try {
+                checkForNewDay()
+
+                // TYPE_STEP_DETECTOR: каждый вызов = 1 шаг
+                Log.d(TAG, "Обнаружен один шаг (детектор)")
+                addStepsToStatistics(1)
+
+                // Обновляем уведомление
+                updateNotificationWithSteps(stepsToday)
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка обработки детектора шагов", e)
+            }
+        }
+    }
+
     private fun checkForNewDay() {
         val todayDate = getTodayDate()
 
         if (lastProcessedDate != todayDate) {
             Log.d(TAG, "Обнаружен новый день: $todayDate (было: $lastProcessedDate)")
+
+            // Сохраняем шаги предыдущего дня через StepDataManager
+            if (lastProcessedDate.isNotEmpty()) {
+                stepDataManager.saveSteps(lastProcessedDate, stepsToday)
+            }
 
             // Сбрасываем счетчики для нового дня
             initialStepsCount = 0f
@@ -323,6 +420,9 @@ class StepCounterService : Service(), SensorEventListener {
             }
 
             lastProcessedDate = todayDate
+
+            // Сообщаем о новом дне
+            sendStepsUpdateBroadcast()
         }
     }
 
@@ -336,10 +436,8 @@ class StepCounterService : Service(), SensorEventListener {
         // Обновляем шаги за сегодня
         stepsToday += newSteps
 
-        // Сохраняем в SharedPreferences
-        sharedPreferences.edit()
-            .putInt(todayDate, stepsToday)
-            .apply()
+        // Сохраняем через StepDataManager
+        stepDataManager.saveSteps(todayDate, stepsToday)
 
         // Проверяем достижение целей
         checkMilestoneAchievement(stepsToday)
@@ -473,7 +571,7 @@ class StepCounterService : Service(), SensorEventListener {
             try {
                 Log.d(TAG, "Принудительная синхронизация всех данных")
                 val todayDate = getTodayDate()
-                val todaySteps = sharedPreferences.getInt(todayDate, 0)
+                val todaySteps = stepDataManager.getSteps(todayDate)
 
                 if (todaySteps > 0) {
                     synchronizeWithFirebase(todayDate, todaySteps)
@@ -490,13 +588,13 @@ class StepCounterService : Service(), SensorEventListener {
 
     private suspend fun synchronizeHistoricalData() {
         FirebaseAuth.getInstance().currentUser?.let { user ->
-            val allEntries = sharedPreferences.all
+            // Получаем все даты и шаги через StepDataManager
+            val allDates = getLast30Days()
             val batchUpdates = hashMapOf<String, Any>()
 
-            allEntries.forEach { entry ->
-                if (entry.key is String && (entry.key as String).matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
-                    val date = entry.key as String
-                    val steps = entry.value as? Int ?: 0
+            allDates.forEach { date ->
+                val steps = stepDataManager.getSteps(date)
+                if (steps > 0) {
                     batchUpdates["users/${user.uid}/stepsData/$date"] = steps
                 }
             }
@@ -506,6 +604,19 @@ class StepCounterService : Service(), SensorEventListener {
                 Log.d(TAG, "Исторические данные синхронизированы: ${batchUpdates.size} записей")
             }
         }
+    }
+
+    private fun getLast30Days(): List<String> {
+        val calendar = Calendar.getInstance()
+        val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+        val dates = mutableListOf<String>()
+
+        repeat(30) {
+            dates.add(dateFormat.format(calendar.time))
+            calendar.add(Calendar.DATE, -1)
+        }
+
+        return dates
     }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) {
@@ -532,6 +643,10 @@ class StepCounterService : Service(), SensorEventListener {
 
             // Отменяем корутины
             serviceScope.cancel()
+
+            // Сохраняем последние данные
+            val todayDate = getTodayDate()
+            stepDataManager.saveSteps(todayDate, stepsToday)
 
             Log.d(TAG, "Ресурсы сервиса освобождены")
 

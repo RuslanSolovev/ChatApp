@@ -142,6 +142,8 @@ class StepCounterFragment : Fragment() {
 
         viewModel = ViewModelProvider(requireActivity()).get(StepCounterViewModel::class.java)
 
+        schedulePeriodicStepServiceWork()
+
         initializeViews(view)
         setupBarChart()
         setupTabLayout()
@@ -162,8 +164,29 @@ class StepCounterFragment : Fragment() {
         checkRequiredPermissions()
         setupObservers()
 
-        if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED) {
-            schedulePeriodicStepServiceWork()
+        // Запуск сервиса, даже если разрешений нет (для тестирования)
+        startStepService()
+
+        // Проверяем наличие датчика шагов
+        checkStepSensorAvailable()
+    }
+
+    private fun checkStepSensorAvailable() {
+        try {
+            val sensorManager = requireContext().getSystemService(Context.SENSOR_SERVICE) as android.hardware.SensorManager
+            val stepCounterSensor = sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_STEP_COUNTER)
+            val stepDetectorSensor = sensorManager.getDefaultSensor(android.hardware.Sensor.TYPE_STEP_DETECTOR)
+
+            if (stepCounterSensor == null && stepDetectorSensor == null) {
+                Log.w(TAG, "На устройстве нет датчиков шагов")
+                Toast.makeText(requireContext(),
+                    "На вашем устройстве нет датчика шагов. Подсчет может быть неточным.",
+                    Toast.LENGTH_LONG).show()
+            } else {
+                Log.d(TAG, "Датчик шагов доступен: $stepCounterSensor, $stepDetectorSensor")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка проверки датчика шагов", e)
         }
     }
 
@@ -245,9 +268,13 @@ class StepCounterFragment : Fragment() {
             setOnChartValueSelectedListener(object : OnChartValueSelectedListener {
                 override fun onValueSelected(e: Entry?, h: Highlight?) {
                     e?.let {
-                        val dayIndex = it.x.toInt()
-                        val steps = it.y.toInt()
-                        showDayDetails(dayIndex, steps)
+                        try {
+                            val dayIndex = it.x.toInt()
+                            val steps = it.y.toInt()
+                            showDayDetails(dayIndex, steps)
+                        } catch (ex: Exception) {
+                            Log.e(TAG, "Ошибка при выборе значения на графике", ex)
+                        }
                     }
                 }
 
@@ -285,94 +312,117 @@ class StepCounterFragment : Fragment() {
     }
 
     private fun updateChartForCurrentType() {
-        when (currentChartType) {
-            ChartType.WEEK -> {
-                viewModel.weeklyChartData.value?.let { data ->
-                    viewModel.weeklyChartLabels.value?.let { labels ->
-                        updateBarChart(data, labels, "Активность за неделю")
+        try {
+            when (currentChartType) {
+                ChartType.WEEK -> {
+                    viewModel.weeklyChartData.value?.let { data ->
+                        viewModel.weeklyChartLabels.value?.let { labels ->
+                            updateBarChart(data, labels, "Активность за неделю")
+                        }
+                    }
+                }
+                ChartType.MONTH -> {
+                    viewModel.monthlyChartData.value?.let { data ->
+                        viewModel.monthlyChartLabels.value?.let { labels ->
+                            updateBarChart(data, labels, "Активность за месяц")
+                        }
+                    }
+                }
+                ChartType.YEAR -> {
+                    viewModel.yearlyChartData.value?.let { data ->
+                        viewModel.yearlyChartLabels.value?.let { labels ->
+                            updateBarChart(data, labels, "Активность за год")
+                        }
                     }
                 }
             }
-            ChartType.MONTH -> {
-                viewModel.monthlyChartData.value?.let { data ->
-                    viewModel.monthlyChartLabels.value?.let { labels ->
-                        updateBarChart(data, labels, "Активность за месяц")
-                    }
-                }
-            }
-            ChartType.YEAR -> {
-                viewModel.yearlyChartData.value?.let { data ->
-                    viewModel.yearlyChartLabels.value?.let { labels ->
-                        updateBarChart(data, labels, "Активность за год")
-                    }
-                }
-            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка обновления графика", e)
         }
     }
 
     private fun updateBarChart(data: List<Int>, labels: List<String>, description: String) {
-        if (data.isEmpty() || data.all { it == 0 }) {
-            barChart.clear()
+        try {
+            if (data.isEmpty() || data.all { it == 0 }) {
+                barChart.clear()
+                barChart.invalidate()
+                barChart.setNoDataText("Нет данных за выбранный период")
+                return
+            }
+
+            val entries = data.mapIndexed { index, value ->
+                BarEntry(index.toFloat(), value.toFloat())
+            }
+
+            val dataSet = BarDataSet(entries, "Шаги").apply {
+                color = ContextCompat.getColor(requireContext(), R.color.alarm_primary)
+                valueTextColor = ContextCompat.getColor(requireContext(), R.color.black)
+                setDrawValues(true)
+                valueTextSize = 10f
+                valueFormatter = LargeValueFormatter()
+            }
+
+            barChart.xAxis.valueFormatter = IndexAxisValueFormatter(labels)
+            barChart.xAxis.labelCount = labels.size
+
+            barChart.data = BarData(dataSet).apply {
+                barWidth = 0.6f
+                setValueTextSize(10f)
+            }
+
+            barChart.description.text = description
+
+            // Настраиваем ось Y в зависимости от максимального значения
+            val maxValue = data.maxOrNull() ?: 0
+            barChart.axisLeft.axisMaximum = maxValue.toFloat() * 1.2f
+
             barChart.invalidate()
-            barChart.setNoDataText("Нет данных за выбранный период")
-            return
+            barChart.animateY(800, Easing.EaseInOutQuad)
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка обновления графика", e)
+            barChart.clear()
+            barChart.setNoDataText("Ошибка загрузки данных")
+            barChart.invalidate()
         }
-
-        val entries = data.mapIndexed { index, value ->
-            BarEntry(index.toFloat(), value.toFloat())
-        }
-
-        val dataSet = BarDataSet(entries, "Шаги").apply {
-            color = ContextCompat.getColor(requireContext(), R.color.alarm_primary)
-            valueTextColor = ContextCompat.getColor(requireContext(), R.color.black)
-            setDrawValues(true)
-            valueTextSize = 10f
-            valueFormatter = LargeValueFormatter()
-        }
-
-        barChart.xAxis.valueFormatter = IndexAxisValueFormatter(labels)
-        barChart.xAxis.labelCount = labels.size
-
-        barChart.data = BarData(dataSet).apply {
-            barWidth = 0.6f
-            setValueTextSize(10f)
-        }
-
-        barChart.description.text = description
-
-        // Настраиваем ось Y в зависимости от максимального значения
-        val maxValue = data.maxOrNull() ?: 0
-        barChart.axisLeft.axisMaximum = maxValue.toFloat() * 1.2f
-
-        barChart.invalidate()
-        barChart.animateY(800, Easing.EaseInOutQuad)
     }
 
     private fun setupButtons(view: View) {
         btnShowTop.setOnClickListener {
-            startActivity(Intent(requireContext(), TopUsersActivity::class.java))
+            try {
+                startActivity(Intent(requireContext(), TopUsersActivity::class.java))
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка открытия TopUsersActivity", e)
+            }
         }
 
         btnSettings.setOnClickListener {
-            // Открываем активность настроек целей
-            val intent = Intent(requireContext(), GoalSettingsActivity::class.java)
-            startActivity(intent)
+            try {
+                // Открываем активность настроек целей
+                val intent = Intent(requireContext(), GoalSettingsActivity::class.java)
+                startActivity(intent)
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка открытия GoalSettingsActivity", e)
+            }
         }
     }
 
     private fun setupCardAnimations() {
-        val cards = listOf(cardComparison, cardForecast, cardJourney, cardStreak)
-        cards.forEachIndexed { index, card ->
-            if (card.visibility == View.VISIBLE) {
-                card.alpha = 0f
-                card.translationY = 50f
-                card.animate()
-                    .alpha(1f)
-                    .translationY(0f)
-                    .setStartDelay(200L * index)
-                    .setDuration(500)
-                    .start()
+        try {
+            val cards = listOf(cardComparison, cardForecast, cardJourney, cardStreak)
+            cards.forEachIndexed { index, card ->
+                if (card.visibility == View.VISIBLE) {
+                    card.alpha = 0f
+                    card.translationY = 50f
+                    card.animate()
+                        .alpha(1f)
+                        .translationY(0f)
+                        .setStartDelay(200L * index)
+                        .setDuration(500)
+                        .start()
+                }
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка анимации карточек", e)
         }
     }
 
@@ -408,16 +458,24 @@ class StepCounterFragment : Fragment() {
 
         // Сравнение с прошлой неделей
         viewModel.comparisonText.observe(viewLifecycleOwner) { text ->
-            if (text.isNotEmpty()) {
-                tvComparison.text = text
-                cardComparison.visibility = View.VISIBLE
-            } else {
-                cardComparison.visibility = View.GONE
+            try {
+                if (text.isNotEmpty()) {
+                    tvComparison.text = text
+                    cardComparison.visibility = View.VISIBLE
+                } else {
+                    cardComparison.visibility = View.GONE
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка обновления сравнения", e)
             }
         }
 
         viewModel.comparisonColor.observe(viewLifecycleOwner) { colorRes ->
-            tvComparison.setTextColor(ContextCompat.getColor(requireContext(), colorRes))
+            try {
+                tvComparison.setTextColor(ContextCompat.getColor(requireContext(), colorRes))
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка установки цвета сравнения", e)
+            }
         }
 
         // Быстрые карточки
@@ -460,11 +518,15 @@ class StepCounterFragment : Fragment() {
 
         // Прогноз
         viewModel.forecastText.observe(viewLifecycleOwner) { text ->
-            if (text.isNotEmpty()) {
-                tvForecast.text = text
-                cardForecast.visibility = View.VISIBLE
-            } else {
-                cardForecast.visibility = View.GONE
+            try {
+                if (text.isNotEmpty()) {
+                    tvForecast.text = text
+                    cardForecast.visibility = View.VISIBLE
+                } else {
+                    cardForecast.visibility = View.GONE
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка обновления прогноза", e)
             }
         }
 
@@ -475,21 +537,25 @@ class StepCounterFragment : Fragment() {
         }
 
         viewModel.journeyText.observe(viewLifecycleOwner) { text ->
-            if (text.isNotEmpty()) {
-                val lines = text.split("\n")
-                if (lines.size >= 3) {
-                    // Первая строка - название маршрута
-                    val journeyTitle = view?.findViewById<TextView>(R.id.tv_journey_route)
-                    journeyTitle?.text = lines[0]
+            try {
+                if (text.isNotEmpty()) {
+                    val lines = text.split("\n")
+                    if (lines.size >= 3) {
+                        // Первая строка - название маршрута
+                        val journeyTitle = view?.findViewById<TextView>(R.id.tv_journey_route)
+                        journeyTitle?.text = lines[0]
 
-                    // Вторая и третья строки - прогресс и описание
-                    tvJourneyDistance.text = lines[1] + "\n" + lines[2]
+                        // Вторая и третья строки - прогресс и описание
+                        tvJourneyDistance.text = lines[1] + "\n" + lines[2]
+                    } else {
+                        tvJourneyDistance.text = text
+                    }
+                    cardJourney.visibility = View.VISIBLE
                 } else {
-                    tvJourneyDistance.text = text
+                    cardJourney.visibility = View.GONE
                 }
-                cardJourney.visibility = View.VISIBLE
-            } else {
-                cardJourney.visibility = View.GONE
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка обновления путешествия", e)
             }
         }
 
@@ -499,92 +565,135 @@ class StepCounterFragment : Fragment() {
             cardStreak.visibility = if (streak > 0) View.VISIBLE else View.GONE
 
             // Изменяем цвет карточки в зависимости от серии
-            when {
-                streak >= 30 -> {
-                    cardStreak.setCardBackgroundColor(ContextCompat.getColor(requireContext(), R.color.gold))
+            try {
+                when {
+                    streak >= 30 -> {
+                        cardStreak.setCardBackgroundColor(ContextCompat.getColor(requireContext(), R.color.gold))
+                    }
+                    streak >= 7 -> {
+                        cardStreak.setCardBackgroundColor(ContextCompat.getColor(requireContext(), R.color.silver))
+                    }
+                    else -> {
+                        cardStreak.setCardBackgroundColor(ContextCompat.getColor(requireContext(), R.color.bronze))
+                    }
                 }
-                streak >= 7 -> {
-                    cardStreak.setCardBackgroundColor(ContextCompat.getColor(requireContext(), R.color.silver))
-                }
-                else -> {
-                    cardStreak.setCardBackgroundColor(ContextCompat.getColor(requireContext(), R.color.bronze))
-                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка установки цвета карточки streak", e)
             }
         }
     }
 
     private fun showDayDetails(dayIndex: Int, steps: Int) {
-        val dayNames = viewModel.getWeekDaysRussian()
-        val dayName = if (dayIndex in dayNames.indices) dayNames[dayIndex] else "День ${dayIndex + 1}"
+        try {
+            val dayNames = viewModel.getWeekDaysRussian()
+            val dayName = if (dayIndex in dayNames.indices) dayNames[dayIndex] else "День ${dayIndex + 1}"
 
-        val distance = steps * 0.00075
-        val calories = steps * 0.04
-        val activeTime = steps / 100
+            val distance = steps * 0.00075
+            val calories = steps * 0.04
+            val activeTime = steps / 100
 
-        // ИСПРАВЛЕНИЕ: Используем обычный AlertDialog.Builder вместо MaterialAlertDialogBuilder
-        AlertDialog.Builder(requireContext())
-            .setTitle("$dayName - ${formatNumber(steps)} шагов")
-            .setMessage(
-                "📏 Дистанция: ${String.format("%.2f", distance)} км\n" +
-                        "🔥 Сожжено калорий: ${String.format("%.0f", calories)}\n" +
-                        "⏱️ Активное время: ${String.format("%.0f", activeTime)} мин"
-            )
-            .setPositiveButton("OK", null)
-            .show()
+            // ИСПРАВЛЕНИЕ ОШИБКИ: Правильное форматирование чисел
+            AlertDialog.Builder(requireContext())
+                .setTitle("$dayName - ${formatNumber(steps)} шагов")
+                .setMessage(
+                    "📏 Дистанция: ${String.format("%.2f", distance)} км\n" +
+                            "🔥 Сожжено калорий: ${String.format("%.0f", calories)}\n" +
+                            "⏱️ Активное время: ${activeTime} мин"
+                )
+                .setPositiveButton("OK", null)
+                .show()
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка показа деталей дня", e)
+            // Безопасная версия без форматирования
+            AlertDialog.Builder(requireContext())
+                .setTitle("Информация о дне")
+                .setMessage("Шагов: $steps\nДистанция: ${steps * 0.00075} км")
+                .setPositiveButton("OK", null)
+                .show()
+        }
     }
 
     private fun animateCircularProgress(targetProgress: Int) {
-        ObjectAnimator.ofFloat(circularProgressBar, "progress", targetProgress.toFloat())
-            .setDuration(1000)
-            .apply {
-                interpolator = DecelerateInterpolator()
-                start()
-            }
+        try {
+            ObjectAnimator.ofFloat(circularProgressBar, "progress", targetProgress.toFloat())
+                .setDuration(1000)
+                .apply {
+                    interpolator = DecelerateInterpolator()
+                    start()
+                }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка анимации прогресс-бара", e)
+        }
     }
 
     private fun formatNumber(number: Int): String {
-        return when {
-            number >= 1_000_000 -> String.format("%.1fM", number / 1_000_000f)
-            number >= 10_000 -> String.format("%.0fK", number / 1_000f)
-            number >= 1_000 -> String.format("%.1fK", number / 1_000f)
-            else -> number.toString()
+        return try {
+            when {
+                number >= 1_000_000 -> String.format("%.1fM", number / 1_000_000f)
+                number >= 10_000 -> String.format("%.0fK", number / 1_000f)
+                number >= 1_000 -> String.format("%.1fK", number / 1_000f)
+                else -> number.toString()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка форматирования числа", e)
+            number.toString()
         }
     }
 
     private fun checkRequiredPermissions() {
-        val requiredPermissions = mutableListOf<String>().apply {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                add(Manifest.permission.ACTIVITY_RECOGNITION)
-            } else {
-                add("com.google.android.gms.permission.ACTIVITY_RECOGNITION")
+        try {
+            val requiredPermissions = mutableListOf<String>().apply {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    add(Manifest.permission.ACTIVITY_RECOGNITION)
+                } else {
+                    // Для Android ниже 10
+                    add("com.google.android.gms.permission.ACTIVITY_RECOGNITION")
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    add(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }.filter {
+                ContextCompat.checkSelfPermission(requireContext(), it) != PackageManager.PERMISSION_GRANTED
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                add(Manifest.permission.POST_NOTIFICATIONS)
-            }
-        }.filter {
-            ContextCompat.checkSelfPermission(requireContext(), it) != PackageManager.PERMISSION_GRANTED
-        }
 
-        if (requiredPermissions.isNotEmpty()) {
-            permissionLauncher.launch(requiredPermissions.toTypedArray())
-        } else {
-            startStepService()
+            if (requiredPermissions.isNotEmpty()) {
+                permissionLauncher.launch(requiredPermissions.toTypedArray())
+            } else {
+                startStepService()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка проверки разрешений", e)
+            startStepService() // Пробуем запустить сервис даже без разрешений
         }
     }
 
     private fun startStepService() {
-        if (!isServiceRunning(StepCounterService::class.java)) {
-            StepCounterService.startService(requireContext())
-            Log.d(TAG, "Сервис шагомера запущен")
-        } else {
-            Log.d(TAG, "Сервис шагомера уже запущен")
+        try {
+            if (!isServiceRunning(StepCounterService::class.java)) {
+                StepCounterService.startService(requireContext())
+                Log.d(TAG, "Сервис шагомера запущен")
+            } else {
+                Log.d(TAG, "Сервис шагомера уже запущен")
+            }
+
+            // Запускаем WorkManager для надежности
+            if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED) {
+                schedulePeriodicStepServiceWork()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка запуска сервиса шагомера", e)
         }
     }
 
     private fun isServiceRunning(serviceClass: Class<*>): Boolean {
-        val manager = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        return manager.getRunningServices(Integer.MAX_VALUE)
-            .any { it.service.className == serviceClass.name }
+        return try {
+            val manager = requireContext().getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            manager.getRunningServices(Integer.MAX_VALUE)
+                .any { it.service.className == serviceClass.name }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка проверки работы сервиса", e)
+            false
+        }
     }
 
     private fun schedulePeriodicStepServiceWork() {
@@ -614,23 +723,37 @@ class StepCounterFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        registerReceiver()
-        viewModel.loadStatistics()
+        try {
+            registerReceiver()
+            viewModel.loadStatistics()
 
-        // Проверяем корректировку целей (раз в неделю)
-        checkGoalAdjustment()
+            // Проверяем корректировку целей (раз в неделю)
+            checkGoalAdjustment()
+
+            // Проверяем статус сервиса
+            if (!isServiceRunning(StepCounterService::class.java)) {
+                Log.w(TAG, "Сервис шагомера не запущен, пробуем перезапустить")
+                startStepService()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка в onResume", e)
+        }
     }
 
     private fun checkGoalAdjustment() {
         lifecycleScope.launch {
-            val prefs = requireContext().getSharedPreferences("step_prefs", Context.MODE_PRIVATE)
-            val lastAdjustment = prefs.getLong("last_goal_adjustment", 0)
-            val currentTime = System.currentTimeMillis()
-            val oneWeek = 7 * 24 * 60 * 60 * 1000L
+            try {
+                val prefs = requireContext().getSharedPreferences("step_prefs", Context.MODE_PRIVATE)
+                val lastAdjustment = prefs.getLong("last_goal_adjustment", 0)
+                val currentTime = System.currentTimeMillis()
+                val oneWeek = 7 * 24 * 60 * 60 * 1000L
 
-            if (currentTime - lastAdjustment > oneWeek) {
-                // Здесь можно вызвать метод для анализа и корректировки целей
-                Log.d(TAG, "Проверка корректировки целей")
+                if (currentTime - lastAdjustment > oneWeek) {
+                    // Здесь можно вызвать метод для анализа и корректировки целей
+                    Log.d(TAG, "Проверка корректировки целей")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка проверки корректировки целей", e)
             }
         }
     }
@@ -663,7 +786,11 @@ class StepCounterFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
-        executor.shutdown()
-        Log.d(TAG, "Executor завершен")
+        try {
+            executor.shutdown()
+            Log.d(TAG, "Executor завершен")
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка завершения executor", e)
+        }
     }
 }

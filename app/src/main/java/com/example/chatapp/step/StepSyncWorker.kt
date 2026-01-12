@@ -1,37 +1,56 @@
 package com.example.chatapp.step
 
 import android.content.Context
+import android.util.Log
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.database.FirebaseDatabase
+import com.google.firebase.database.ktx.database
+import com.google.firebase.ktx.Firebase
 import kotlinx.coroutines.tasks.await
 import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.util.*
 
-class StepSyncWorker(context: Context, workerParams: WorkerParameters) :
-    CoroutineWorker(context, workerParams) {
+class StepSyncWorker(
+    context: Context,
+    workerParams: WorkerParameters
+) : CoroutineWorker(context, workerParams) {
 
     override suspend fun doWork(): Result {
-        try {
-            val todayKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-            val prefs = applicationContext.getSharedPreferences("step_prefs", Context.MODE_PRIVATE)
-            val steps = prefs.getInt(todayKey, 0)
+        return try {
+            val stepDataManager = StepDataManager.getInstance(applicationContext)
+            val database = Firebase.database
+            val userId = com.google.firebase.auth.FirebaseAuth.getInstance().currentUser?.uid
 
-            FirebaseAuth.getInstance().currentUser?.let { user ->
-                FirebaseDatabase.getInstance().reference
-                    .child("users")
-                    .child(user.uid)
-                    .child("stepsData")
-                    .child(todayKey)
-                    .setValue(steps)
-                    .await()
+            if (userId != null) {
+                // Синхронизируем последние 7 дней
+                val calendar = Calendar.getInstance()
+                val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+
+                repeat(7) {
+                    val dateKey = dateFormat.format(calendar.time)
+                    val steps = stepDataManager.getSteps(dateKey)
+
+                    if (steps > 0) {
+                        database.reference
+                            .child("users")
+                            .child(userId)
+                            .child("stepsData")
+                            .child(dateKey)
+                            .setValue(steps)
+                            .await()
+                    }
+
+                    calendar.add(Calendar.DATE, -1)
+                }
+
+                Log.d("StepSyncWorker", "Синхронизация завершена")
+                Result.success()
+            } else {
+                Result.failure()
             }
-
-            return Result.success()
         } catch (e: Exception) {
-            return Result.retry()
+            Log.e("StepSyncWorker", "Ошибка синхронизации", e)
+            Result.retry()
         }
     }
 }

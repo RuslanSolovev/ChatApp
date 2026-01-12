@@ -10,6 +10,43 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent" />
 
+    <!-- Индикатор загрузки -->
+    <RelativeLayout
+        android:id="@+id/loadingOverlay"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#80000000"
+        android:visibility="gone">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerInParent="true"
+            android:orientation="vertical"
+            android:gravity="center_horizontal"
+            android:background="@drawable/bg_gradient"
+            android:padding="24dp">
+
+            <ProgressBar
+                android:id="@+id/progressBar"
+                style="?android:attr/progressBarStyleLarge"
+                android:layout_width="48dp"
+                android:layout_height="48dp"
+                android:indeterminateTint="@android:color/white" />
+
+            <TextView
+                android:id="@+id/tvLoading"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="Загрузка..."
+                android:textColor="@android:color/white"
+                android:textSize="16sp" />
+
+        </LinearLayout>
+
+    </RelativeLayout>
+
     <!-- Выдвижная шторка слева -->
     <LinearLayout
         android:id="@+id/bottomSheet"
@@ -18,7 +55,9 @@
         android:orientation="vertical"
         android:background="@drawable/left_sheet_background"
         android:elevation="24dp"
-        android:outlineProvider="bounds">
+        android:layout_marginBottom="110dp"
+        android:outlineProvider="bounds"
+        android:layout_gravity="start">
 
         <!-- Заголовок шторки -->
         <LinearLayout
@@ -39,18 +78,35 @@
                 android:layout_marginEnd="12dp"
                 android:background="@drawable/drag_handle_gradient" />
 
-            <TextView
+            <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:text="Статистика маршрута"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:textColor="@android:color/white"
-                android:shadowColor="#80000000"
-                android:shadowDx="1"
-                android:shadowDy="1"
-                android:shadowRadius="2" />
+                android:orientation="vertical">
+
+                <TextView
+                    android:id="@+id/tvRouteName"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Статистика маршрута"
+                    android:textSize="18sp"
+                    android:textStyle="bold"
+                    android:textColor="@android:color/white"
+                    android:shadowColor="#80000000"
+                    android:shadowDx="1"
+                    android:shadowDy="1"
+                    android:shadowRadius="2" />
+
+                <TextView
+                    android:id="@+id/tvRouteDate"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Сегодня"
+                    android:textSize="12sp"
+                    android:textColor="#CCFFFFFF"
+                    android:layout_marginTop="2dp" />
+
+            </LinearLayout>
 
             <!-- Кнопка закрытия -->
             <ImageButton
@@ -293,10 +349,55 @@
                     </LinearLayout>
                 </LinearLayout>
 
+                <!-- Дополнительная статистика -->
+                <LinearLayout
+                    android:id="@+id/paceContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="20dp"
+                    android:visibility="gone">
+
+                    <TextView
+                        android:layout_width="32dp"
+                        android:layout_height="32dp"
+                        android:text="🏃"
+                        android:textSize="16sp"
+                        android:gravity="center" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical"
+                        android:paddingStart="12dp">
+
+                        <TextView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="Темп"
+                            android:textSize="12sp"
+                            android:textColor="#666666"
+                            android:textAllCaps="true"
+                            android:letterSpacing="0.05" />
+
+                        <TextView
+                            android:id="@+id/tvPace"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:text="0:00 мин/км"
+                            android:textSize="16sp"
+                            android:textStyle="bold"
+                            android:textColor="#333333" />
+
+                    </LinearLayout>
+                </LinearLayout>
+
             </LinearLayout>
         </ScrollView>
 
-        <!-- Кнопки управления с отступом снизу -->
+        <!-- Кнопки управления -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -304,7 +405,7 @@
             android:paddingStart="20dp"
             android:paddingTop="16dp"
             android:paddingEnd="20dp"
-            android:paddingBottom="150dp"
+            android:paddingBottom="20dp"
             android:background="@android:color/transparent">
 
             <Button
@@ -324,17 +425,69 @@
 
     </LinearLayout>
 
-    <!-- Кнопка для управления шторкой -->
-    <ImageButton
-        android:id="@+id/btnToggleSheet"
-        android:layout_width="56dp"
-        android:layout_height="56dp"
+    <!-- Верхние FAB кнопки -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
         android:layout_gravity="top|end"
-        android:layout_margin="20dp"
-        android:background="@drawable/fab_background"
-        android:src="@drawable/ic_create_new_playlist"
-        android:contentDescription="Показать статистику"
-        android:elevation="8dp"
-        android:translationZ="8dp" />
+        android:orientation="vertical"
+        android:layout_marginTop="20dp"
+        android:layout_marginEnd="20dp"
+        android:gravity="end">
+
+        <!-- Кнопка для управления шторкой -->
+        <ImageButton
+            android:id="@+id/btnToggleSheet"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:background="@drawable/fab_background"
+            android:src="@drawable/ic_create_new_playlist"
+            android:contentDescription="Показать статистику"
+            android:elevation="8dp"
+            android:translationZ="8dp"
+            android:layout_marginBottom="12dp" />
+
+        <!-- FAB для центрирования карты -->
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/fabCenterMap"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:src="@drawable/ic_location_off"
+            android:contentDescription="Центрировать карту"
+            app:backgroundTint="@color/colorPrimary"
+            app:elevation="8dp"
+            app:maxImageSize="28dp"
+            app:rippleColor="@color/colorPrimaryDark"
+            android:layout_marginBottom="12dp" />
+
+        <!-- FAB для экспорта -->
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/fabExport"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:src="@drawable/ic_sawmill"
+            android:contentDescription="Экспорт маршрута"
+            app:backgroundTint="@color/colorPrimary"
+            app:elevation="8dp"
+            app:maxImageSize="28dp"
+            app:rippleColor="@color/colorPrimaryDark"
+            android:visibility="gone"/>
+
+        <!-- FAB для управления трекингом -->
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/fabStartStop"
+            android:layout_width="50dp"
+            android:layout_height="50dp"
+            android:layout_gravity="bottom|end"
+           android:layout_marginTop="10dp"
+            android:src="@drawable/ic_play"
+            android:contentDescription="Начать/остановить трекинг"
+            app:backgroundTint="@color/colorAccent"
+            app:elevation="12dp"
+            app:maxImageSize="32dp"
+            app:rippleColor="@color/colorAccentDark"
+            app:fabSize="normal" />
+
+    </LinearLayout>
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

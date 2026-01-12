@@ -107,6 +107,7 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
     val motivationEnabled: LiveData<Boolean> = _motivationEnabled
 
     // Данные
+    private val stepDataManager = StepDataManager.getInstance(application)
     private val sharedPreferences = application.getSharedPreferences("step_prefs", Context.MODE_PRIVATE)
     private val firebaseDatabase = FirebaseDatabase.getInstance()
     private val currentUserId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
@@ -114,7 +115,7 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
     private var hasCustomGoalsFlag = false
     private val dailyGoalsMap = mutableMapOf<Int, Int>()
 
-    // Виртуальные маршруты (обновленные по вашему запросу)
+    // Виртуальные маршруты
     private val journeys = listOf(
         JourneyRoute("Фрязино → Щелково", "Фрязино", "Щелково", 12.5f, "Первая остановка - соседний город"),
         JourneyRoute("Фрязино → Ивантеевка", "Фрязино", "Ивантеевка", 10.3f, "Вдоль реки Учи"),
@@ -129,7 +130,12 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
     init {
         setupFirebaseListeners()
         loadUserGoals()
-        loadStatistics()
+
+        // Миграция старых данных при первом запуске
+        viewModelScope.launch(Dispatchers.IO) {
+            stepDataManager.migrateOldData()
+            loadStatistics()
+        }
     }
 
     private fun setupFirebaseListeners() {
@@ -146,7 +152,12 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
         userRef.child("stepsData").addValueEventListener(object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
                 Log.d(TAG, "Данные шагов обновлены из Firebase")
-                loadStatistics()
+
+                // Синхронизируем данные из Firebase с локальным хранилищем
+                viewModelScope.launch(Dispatchers.IO) {
+                    syncFromFirebase(snapshot)
+                    loadStatistics()
+                }
             }
 
             override fun onCancelled(error: DatabaseError) {
@@ -183,6 +194,26 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
         })
     }
 
+    private suspend fun syncFromFirebase(snapshot: DataSnapshot) {
+        withContext(Dispatchers.IO) {
+            try {
+                snapshot.children.forEach { daySnapshot ->
+                    val date = daySnapshot.key ?: return@forEach
+                    val steps = daySnapshot.getValue(Int::class.java) ?: 0
+
+                    // Сохраняем в локальное хранилище через StepDataManager
+                    stepDataManager.saveSteps(date, steps)
+
+                    // Также сохраняем в SharedPreferences для обратной совместимости
+                    sharedPreferences.edit().putInt(date, steps).apply()
+                }
+                Log.d(TAG, "Данные синхронизированы из Firebase")
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка синхронизации из Firebase", e)
+            }
+        }
+    }
+
     private fun loadCustomGoals(snapshot: DataSnapshot) {
         dailyGoalsMap.clear()
         val goals = snapshot.child("dailyGoals")
@@ -213,12 +244,16 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
     fun loadStatistics() {
         viewModelScope.launch {
             try {
+                Log.d(TAG, "Загрузка статистики...")
+
                 // Основные расчеты
                 val today = calculateTodaySteps()
                 val week = calculateWeeklySteps()
                 val month = calculateMonthlySteps()
                 val record = calculateMaxSteps()
                 val avg = calculateAverageSteps()
+
+                Log.d(TAG, "Рассчитано: today=$today, week=$week, month=$month, record=$record, avg=$avg")
 
                 // Детализированная статистика
                 val distance = calculateDistance(today)
@@ -271,6 +306,8 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
                 // Серия дней
                 calculateStreak()
 
+                Log.d(TAG, "Статистика успешно загружена")
+
             } catch (e: Exception) {
                 Log.e(TAG, "Ошибка загрузки статистики: ${e.message}")
                 e.printStackTrace()
@@ -280,9 +317,7 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
 
     // Основные расчеты
     private fun calculateTodaySteps(): Int {
-        val todayKey = getDateKey(Date())
-        return sharedPreferences.getInt("${currentUserId}_$todayKey",
-            sharedPreferences.getInt(todayKey, 0))
+        return stepDataManager.getTodaySteps()
     }
 
     private fun calculateWeeklySteps(): Int {
@@ -384,8 +419,7 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private fun getStepsForDate(dateKey: String): Int {
-        return sharedPreferences.getInt("${currentUserId}_$dateKey",
-            sharedPreferences.getInt(dateKey, 0))
+        return stepDataManager.getSteps(dateKey)
     }
 
     // Вспомогательные методы

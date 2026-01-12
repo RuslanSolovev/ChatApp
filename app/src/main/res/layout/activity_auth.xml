@@ -141,11 +141,11 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Зарегистрироваться"
-                android:textSize="18sp"
+                android:textSize="23sp"
                 android:textColor="@color/white"
                 android:drawableStart="@drawable/ic_create_account"
                 android:drawableTint="@color/white"
-                android:backgroundTint="@color/colorPrimary"
+                android:backgroundTint="@color/alarm_primary"
                 android:paddingVertical="12dp"
                 android:layout_marginBottom="16dp"/>
 
@@ -155,11 +155,11 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:text="Войти"
-                android:textSize="18sp"
+                android:textSize="28sp"
                 android:textColor="@color/white"
                 android:drawableStart="@drawable/ic_login"
                 android:drawableTint="@color/white"
-                android:backgroundTint="@color/colorPrimary"
+                android:backgroundTint="@color/alarm_primary"
                 android:paddingVertical="12dp"
                 android:layout_marginBottom="16dp"/>
         </LinearLayout>
