@@ -16,6 +16,7 @@ import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.database.*
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.Executors
 
 class TopUsersActivity : AppCompatActivity() {
@@ -25,7 +26,7 @@ class TopUsersActivity : AppCompatActivity() {
     private val database = FirebaseDatabase.getInstance().reference
     private val auth = FirebaseAuth.getInstance()
     private var currentPeriod = PERIOD_DAY
-    private val usersList = mutableListOf<User>()
+    private val usersList = CopyOnWriteArrayList<User>() // Изменяем на потокобезопасную коллекцию
     private var valueEventListener: ValueEventListener? = null
     private val executor = Executors.newSingleThreadExecutor()
     private val weeklyCache = mutableMapOf<String, Int>()
@@ -53,7 +54,7 @@ class TopUsersActivity : AppCompatActivity() {
     private fun setupToolbar() {
         setSupportActionBar(binding.toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        supportActionBar?.title = "Top Users"
+        supportActionBar?.title = "Лучшие ходуны"
     }
 
     private fun setupRecyclerView() {
@@ -93,7 +94,9 @@ class TopUsersActivity : AppCompatActivity() {
         removeListener()
         valueEventListener = object : ValueEventListener {
             override fun onDataChange(snapshot: DataSnapshot) {
-                usersList.clear()
+                // Создаем временный список
+                val tempUsersList = mutableListOf<User>()
+
                 for (userSnapshot in snapshot.children) {
                     try {
                         val user = User(
@@ -103,11 +106,16 @@ class TopUsersActivity : AppCompatActivity() {
                             stepsData = userSnapshot.child("stepsData").getValue(object :
                                 GenericTypeIndicator<Map<String, Any>>() {}) ?: emptyMap()
                         )
-                        usersList.add(user)
+                        tempUsersList.add(user)
                     } catch (e: Exception) {
                         Log.e("TopUsersActivity", "Error parsing user data", e)
                     }
                 }
+
+                // Заменяем весь список атомарно
+                usersList.clear()
+                usersList.addAll(tempUsersList)
+
                 updateUsersList()
             }
 
@@ -124,19 +132,35 @@ class TopUsersActivity : AppCompatActivity() {
 
     private fun updateUsersList() {
         executor.execute {
-            val sortedUsers = usersList.map { user ->
-                user.totalSteps = calculateSteps(user, currentPeriod)
-                user
-            }.filter { it.totalSteps > 0 }
-                .sortedByDescending { it.totalSteps }
-                .mapIndexed { index, user ->
-                    user.position = index + 1
-                    user
-                }
+            try {
+                // Создаем копию списка для безопасной обработки
+                val usersCopy = ArrayList<User>(usersList)
 
-            runOnUiThread {
-                adapter.submitList(sortedUsers, currentPeriod)
-                updateCurrentUserCard(sortedUsers)
+                val sortedUsers = usersCopy.map { user ->
+                    // Создаем копию пользователя для изменения
+                    val userCopy = user.copy()
+                    userCopy.totalSteps = calculateSteps(user, currentPeriod)
+                    userCopy
+                }.filter { it.totalSteps > 0 }
+                    .sortedByDescending { it.totalSteps }
+                    .mapIndexed { index, user ->
+                        user.position = index + 1
+                        user
+                    }
+
+                runOnUiThread {
+                    adapter.submitList(sortedUsers, currentPeriod)
+                    updateCurrentUserCard(sortedUsers)
+                }
+            } catch (e: Exception) {
+                Log.e("TopUsersActivity", "Error updating users list", e)
+                runOnUiThread {
+                    Toast.makeText(
+                        this@TopUsersActivity,
+                        "Error updating list: ${e.message}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             }
         }
     }
@@ -150,10 +174,10 @@ class TopUsersActivity : AppCompatActivity() {
                 tvUserPosition.text = currentUserData.position.toString()
                 tvUserName.text = currentUserData.name
                 tvUserSteps.text = when (currentPeriod) {
-                    PERIOD_DAY -> "${currentUserData.totalSteps} steps today"
-                    PERIOD_WEEK -> "${currentUserData.totalSteps} steps this week"
-                    PERIOD_MONTH -> "${currentUserData.totalSteps} steps this month"
-                    else -> "${currentUserData.totalSteps} steps"
+                    PERIOD_DAY -> "${currentUserData.totalSteps} шагов сегодня"
+                    PERIOD_WEEK -> "${currentUserData.totalSteps} шагов за неделю"
+                    PERIOD_MONTH -> "${currentUserData.totalSteps} шагов за месяц"
+                    else -> "${currentUserData.totalSteps} шаги"
                 }
                 currentUserData.profileImageUrl?.let { url ->
                     Glide.with(this@TopUsersActivity)
@@ -174,7 +198,7 @@ class TopUsersActivity : AppCompatActivity() {
     private fun syncLocalSteps() {
         val todayKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
         val viewModel = ViewModelProvider(this).get(StepCounterViewModel::class.java)
-        val currentUser = auth.currentUser ?: return // Добавляем проверку на null
+        val currentUser = auth.currentUser ?: return
 
         viewModel.todaySteps.value?.let { steps ->
             database.child("users").child(currentUser.uid).child("stepsData").child(todayKey)

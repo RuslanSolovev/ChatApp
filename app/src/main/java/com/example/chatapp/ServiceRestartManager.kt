@@ -6,8 +6,6 @@ import android.util.Log
 import com.example.chatapp.location.LocationServiceManager
 import com.example.chatapp.step.StepCounterService
 import kotlinx.coroutines.*
-import kotlin.coroutines.resume
-import kotlin.coroutines.suspendCoroutine
 
 object ServiceRestartManager {
 
@@ -22,12 +20,8 @@ object ServiceRestartManager {
             try {
                 Log.d(TAG, "Restarting all services...")
 
-                // Проверяем статус трекинга и перезапускаем сервисы
-                val isTrackingActive = checkTrackingStatus(context)
-
-                if (isTrackingActive) {
-                    restartLocationService(context)
-                }
+                // Всегда перезапускаем сервис локации (трекинг всегда активен)
+                restartLocationService(context)
 
                 // Всегда перезапускаем сервис шагомера
                 restartStepService(context)
@@ -40,35 +34,37 @@ object ServiceRestartManager {
     }
 
     /**
-     * Остановка только сервиса локации (шагомер не останавливаем)
+     * Перезапуск только сервиса локации
      */
-    fun stopLocationService(context: Context) {
+    fun restartLocationServiceOnly(context: Context) {
         scope.launch {
             try {
-                LocationServiceManager.stopLocationService(context)
-                Log.d(TAG, "Location service stopped")
+                restartLocationService(context)
+                Log.d(TAG, "Location service restarted")
             } catch (e: Exception) {
-                Log.e(TAG, "Error stopping location service", e)
+                Log.e(TAG, "Error restarting location service", e)
             }
         }
     }
 
-    // Остальные методы без изменений...
-    private suspend fun checkTrackingStatus(context: Context): Boolean {
-        return withContext(Dispatchers.IO) {
+    /**
+     * Перезапуск только сервиса шагомера
+     */
+    fun restartStepServiceOnly(context: Context) {
+        scope.launch {
             try {
-                suspendCoroutine { continuation ->
-                    com.example.chatapp.location.LocationServiceManager
-                        .isTrackingActive(context) { isTracking ->
-                            continuation.resume(isTracking)
-                        }
-                }
+                restartStepService(context)
+                Log.d(TAG, "Step service restarted")
             } catch (e: Exception) {
-                Log.e(TAG, "Error checking tracking status", e)
-                false
+                Log.e(TAG, "Error restarting step service", e)
             }
         }
     }
+
+    /**
+     * Удаляем методы остановки сервисов, так как они теперь всегда должны работать
+     * Оставьте только перезапуск
+     */
 
     private fun restartLocationService(context: Context) {
         try {
@@ -85,6 +81,53 @@ object ServiceRestartManager {
             Log.d(TAG, "Step service restarted")
         } catch (e: Exception) {
             Log.e(TAG, "Failed to restart step service", e)
+        }
+    }
+
+    /**
+     * Упрощенная версия - просто запускаем все сервисы
+     */
+    fun ensureAllServicesRunning(context: Context) {
+        scope.launch {
+            try {
+                // Всегда запускаем оба сервиса
+                restartLocationService(context)
+                restartStepService(context)
+                Log.d(TAG, "All services ensured to be running")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error ensuring services running", e)
+            }
+        }
+    }
+
+    /**
+     * Универсальный метод для перезапуска сервисов
+     */
+    fun restartServices(context: Context, includeLocation: Boolean = true, includeStep: Boolean = true) {
+        scope.launch {
+            try {
+                if (includeLocation) {
+                    restartLocationService(context)
+                }
+                if (includeStep) {
+                    restartStepService(context)
+                }
+                Log.d(TAG, "Services restarted: location=$includeLocation, step=$includeStep")
+            } catch (e: Exception) {
+                Log.e(TAG, "Error restarting services", e)
+            }
+        }
+    }
+
+    /**
+     * Метод для очистки ресурсов при завершении работы приложения
+     */
+    fun cleanup() {
+        try {
+            scope.coroutineContext.cancelChildren()
+            Log.d(TAG, "ServiceRestartManager cleaned up")
+        } catch (e: Exception) {
+            Log.e(TAG, "Error cleaning up ServiceRestartManager", e)
         }
     }
 }

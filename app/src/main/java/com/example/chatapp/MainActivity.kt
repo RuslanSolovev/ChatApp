@@ -76,6 +76,7 @@ import com.example.chatapp.step.StepCounterApp
 import com.example.chatapp.step.StepCounterFragment
 import com.example.chatapp.step.StepCounterService
 import com.example.chatapp.step.StepCounterServiceWorker
+import com.example.chatapp.step.StepDataManager
 import com.example.chatapp.utils.PhilosophyQuoteWorker
 import com.example.chatapp.utils.TTSManager
 import com.example.chatapp.zametki.ui.main.NotesActivity
@@ -91,6 +92,7 @@ import kotlinx.coroutines.tasks.await
 import retrofit2.Call
 import retrofit2.Callback
 import retrofit2.Response
+import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -670,21 +672,6 @@ class MainActivity : AppCompatActivity() {
 
 
 
-    /**
-     * Быстрая загрузка начального фрагмента
-     */
-    private fun loadInitialFragmentFast() {
-        try {
-            supportFragmentManager.commitNow {
-                add(R.id.fragment_container, HomeFragment(), HOME_FRAGMENT_TAG)
-            }
-            binding.bottomNavigation.selectedItemId = R.id.nav_home
-            currentFragmentTag = HOME_FRAGMENT_TAG
-            Log.d(TAG, "Initial fragment loaded fast")
-        } catch (e: Exception) {
-            Log.e(TAG, "Error loading initial fragment fast", e)
-        }
-    }
 
     /**
      * Проверяет доступность сети
@@ -1353,6 +1340,28 @@ class MainActivity : AppCompatActivity() {
         })
 
         fadeOut.start()
+    }
+
+    private fun loadInitialFragmentFast() {
+        try {
+            supportFragmentManager.commitNow {
+                add(R.id.fragment_container, HomeFragment(), HOME_FRAGMENT_TAG)
+            }
+            binding.bottomNavigation.selectedItemId = R.id.nav_home
+            currentFragmentTag = HOME_FRAGMENT_TAG
+            Log.d(TAG, "Initial fragment loaded fast")
+
+            // ➕ ДОБАВЬТЕ ЭТО:
+            // Запрашиваем шаги немедленно, чтобы StepCounterFragment получил актуальные данные
+            lifecycleScope.launch(Dispatchers.IO) {
+                val today = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                val steps = StepDataManager.getInstance(this@MainActivity).getSteps(today)
+                // Ничего не делаем с данными здесь — просто "прогреваем" кэш
+                Log.d(TAG, "Preloaded steps for today: $steps")
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error loading initial fragment fast", e)
+        }
     }
 
     fun restoreUIAfterChat() {
@@ -2867,9 +2876,6 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /**
-     * Асинхронная проверка статуса трекинга с таймаутом
-     */
     private fun checkTrackingStatusAsync() {
         if (isLocationServiceStarting.get()) {
             Log.d(TAG, "checkTrackingStatusAsync: Сервис уже запускается, пропускаем проверку")
@@ -2879,24 +2885,14 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch(Dispatchers.IO) {
             try {
                 withTimeout(TRACKING_CHECK_TIMEOUT) {
-                    val isTracking = withContext(Dispatchers.IO) {
-                        try {
-                            suspendCoroutine<Boolean> { continuation ->
-                                LocationServiceManager.isTrackingActive(this@MainActivity) { isTracking ->
-                                    continuation.resume(isTracking)
-                                }
-                            }
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Ошибка проверки трекинга", e)
-                            false
-                        }
-                    }
+                    // Теперь всегда считаем, что трекинг должен быть активен
+                    val isTracking = true
 
                     if (isTracking && !isLocationServiceStarting.get()) {
-                        Log.d(TAG, "Трекинг активен, запускаем сервис")
+                        Log.d(TAG, "Трекинг всегда активен, запускаем сервис")
                         startLocationUpdateService()
                     } else {
-                        Log.d(TAG, "Трекинг не активен или сервис уже запускается")
+                        Log.d(TAG, "Сервис уже запускается или не требуется")
                     }
                 }
             } catch (e: TimeoutCancellationException) {

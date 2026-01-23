@@ -16,9 +16,8 @@ object LocationServiceManager {
     fun startLocationService(context: Context) {
         try {
             Log.d(TAG, "Starting location service...")
-            val intent = Intent(context, LocationUpdateService::class.java).apply {
-                action = LocationUpdateService.ACTION_START
-            }
+            // Сервис теперь всегда запускается с одним действием
+            val intent = Intent(context, LocationUpdateService::class.java)
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
@@ -31,38 +30,23 @@ object LocationServiceManager {
         }
     }
 
-    fun stopLocationService(context: Context) {
-        try {
-            Log.d(TAG, "Stopping location service...")
-            val intent = Intent(context, LocationUpdateService::class.java).apply {
-                action = LocationUpdateService.ACTION_STOP
-            }
-            context.startService(intent) // Отправляем команду STOP через startService
-            Log.d(TAG, "Location service stop command sent")
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to stop location service", e)
-        }
-    }
+    // Удаляем функцию stopLocationService, так как сервис теперь всегда активен
+    // fun stopLocationService(context: Context) {...}
 
-    fun isTrackingActive(context: Context, callback: (Boolean) -> Unit) {
-        val userId = FirebaseAuth.getInstance().currentUser?.uid ?: return callback(false)
-
-        FirebaseDatabase.getInstance().reference
-            .child("tracking_status")
-            .child(userId)
-            .addListenerForSingleValueEvent(object : ValueEventListener {
-                override fun onDataChange(snapshot: DataSnapshot) {
-                    callback(snapshot.getValue(Boolean::class.java) ?: false)
-                }
-                override fun onCancelled(error: DatabaseError) {
-                    Log.e(TAG, "Error checking tracking status", error.toException())
-                    callback(false)
-                }
-            })
+    // Эта функция теперь всегда возвращает true, так как трекинг всегда активен
+    fun isTrackingActive(callback: (Boolean) -> Unit) {
+        // Так как трекинг теперь всегда активен, возвращаем true
+        callback(true)
     }
 
     fun isServiceRunning(context: Context): Boolean {
         return (context.applicationContext as? com.example.chatapp.step.StepCounterApp)
             ?.getServiceState("location") ?: false
+    }
+
+    // Дополнительная функция для проверки, запущен ли сервис в данный момент
+    fun checkServiceStatus(context: Context, callback: (Boolean) -> Unit) {
+        // Проверяем, запущен ли сервис
+        callback(isServiceRunning(context))
     }
 }

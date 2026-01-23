@@ -35,7 +35,7 @@ class StepCounterService : Service(), SensorEventListener {
         const val ACTION_STEPS_UPDATED = "com.example.chatapp.ACTION_STEPS_UPDATED"
         private const val SYNC_INTERVAL_MINUTES = 5L
         private const val MIN_TIME_BETWEEN_STEPS_MS = 300L
-        private const val BOOT_TIME_THRESHOLD_MS = 5000L
+        private const val BOOT_TIME_THRESHOLD_MS = 60_000L // 60 секунд
         private const val WAKE_LOCK_TIMEOUT = 10 * 60 * 1000L
         private const val MILESTONE_STEP = 1000
         const val ACTION_START = "com.example.chatapp.step.StepCounterService.START"
@@ -204,36 +204,140 @@ class StepCounterService : Service(), SensorEventListener {
 
         Log.d(TAG, "Состояние датчика: initial=$initialStepsCount, lastTotal=$lastTotalStepsCount")
 
-        // Если это первый запуск сегодня или после перезагрузки
-        if (initialStepsCount == 0f) {
-            Log.d(TAG, "Новый день или первый запуск, инициализируем начальные значения")
-        }
 
         // Запускаем периодическую синхронизацию
         startPeriodicDataSync()
     }
 
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        Log.d(TAG, "onStartCommand: Получена команда запуска")
 
-        if (isRunning.compareAndSet(false, true)) {
-            Log.d(TAG, "Сервис переходит в активное состояние")
 
-            // Обновляем уведомление с текущими шагами
-            updateNotificationWithSteps(stepsToday)
 
-            // Проверяем новый день
-            checkForNewDay()
 
-            // Запускаем синхронизацию с Firebase
-            serviceScope.launch {
-                delay(2000) // Небольшая задержка для стабилизации
-                forceFullDataSync()
+
+
+
+
+
+
+
+
+    private suspend fun processStepCounterEvent(totalSteps: Float) {
+        withContext(Dispatchers.IO) {
+            try {
+                checkForNewDay()
+
+                Log.d(TAG, "Обработка счетчика шагов: totalSteps=$totalSteps, initial=$initialStepsCount, lastTotal=$lastTotalStepsCount")
+
+                // Проверяем сброс датчика
+                val timeSinceBoot = System.currentTimeMillis() - bootTimestamp
+                val isRecentBoot = timeSinceBoot < BOOT_TIME_THRESHOLD_MS
+
+                if (isRecentBoot || totalSteps < lastTotalStepsCount || totalSteps < initialStepsCount) {
+                    Log.d(TAG, "Сброс датчика: total=$totalSteps, initial=$initialStepsCount, lastTotal=$lastTotalStepsCount")
+                    initialStepsCount = totalSteps
+                    lastTotalStepsCount = totalSteps
+                    saveStepState()
+                    return@withContext
+                }
+
+                // Если это первый запуск сегодня
+                if (initialStepsCount == 0f) {
+                    initialStepsCount = totalSteps
+                    lastTotalStepsCount = totalSteps
+                    saveStepState()
+                    Log.d(TAG, "Инициализирован счетчик шагов: $totalSteps")
+                    return@withContext
+                }
+
+                // Рассчитываем новые шаги
+                val newSteps = (totalSteps - lastTotalStepsCount).toInt()
+
+                if (newSteps > 0) {
+                    Log.d(TAG, "Обнаружены новые шаги: $newSteps")
+
+                    // Используем StepDataManager для сохранения
+                    addStepsToStatistics(newSteps)
+                    lastTotalStepsCount = totalSteps
+                    saveStepState()
+
+                    // Обновляем уведомление
+                    updateNotificationWithSteps(stepsToday)
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "Ошибка обработки данных датчика", e)
             }
         }
-
-        return START_STICKY
     }
+
+    private fun addStepsToStatistics(newSteps: Int) {
+        val todayDate = getTodayDate()
+
+        // Обновляем шаги за сегодня
+        stepsToday += newSteps
+
+        Log.d(TAG, "Добавляем шаги: $newSteps, всего: $stepsToday")
+
+        // Сохраняем через StepDataManager с проверкой
+        val success = stepDataManager.saveStepsWithRetry(todayDate, stepsToday)
+
+        if (success) {
+            Log.d(TAG, "Шаги успешно сохранены в StepDataManager")
+        } else {
+            Log.e(TAG, "Не удалось сохранить шаги в StepDataManager")
+            // Пробуем сохранить в старый SharedPreferences как fallback
+
+        }
+
+        // Проверяем достижение целей
+        checkMilestoneAchievement(stepsToday)
+
+        // Отправляем broadcast для обновления UI
+        sendStepsUpdateBroadcast()
+
+        // Синхронизируем с Firebase
+        serviceScope.launch {
+            synchronizeWithFirebase(todayDate, stepsToday)
+        }
+    }
+
+    private fun checkForNewDay() {
+        val todayDate = getTodayDate()
+
+        if (lastProcessedDate != todayDate) {
+            Log.d(TAG, "Обнаружен новый день: $todayDate (было: $lastProcessedDate)")
+
+            // 🔴 УДАЛЕНО: не сохраняем stepsToday за вчерашний день
+            // Это приводило к искажению статистики
+
+            // Получаем сохранённые шаги за сегодня из надёжного источника
+            stepsToday = stepDataManager.getSteps(todayDate)
+            Log.d(TAG, "Восстановлено шагов за сегодня из StepDataManager: $stepsToday")
+
+            // Сбрасываем счётчики датчика для нового дня
+            initialStepsCount = 0f
+            lastTotalStepsCount = 0f
+            lastMilestoneNotified = 0
+
+            // Сохраняем состояние нового дня
+            sharedPreferences.edit().apply {
+                putString("last_processed_date", todayDate)
+                putFloat("initial_steps_$todayDate", 0f)
+                putFloat("last_total_$todayDate", 0f)
+                putInt("last_milestone_$todayDate", 0)
+                apply()
+            }
+
+            lastProcessedDate = todayDate
+
+            // Сообщаем о новом дне
+            sendStepsUpdateBroadcast()
+        }
+    }
+
+
+
+
 
     private fun createNotificationChannels() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -327,53 +431,9 @@ class StepCounterService : Service(), SensorEventListener {
         }
     }
 
-    private suspend fun processStepCounterEvent(totalSteps: Float) {
-        withContext(Dispatchers.IO) {
-            try {
-                // Проверяем новый день
-                checkForNewDay()
 
-                Log.d(TAG, "Обработка счетчика шагов: totalSteps=$totalSteps, initial=$initialStepsCount, lastTotal=$lastTotalStepsCount")
 
-                // Проверяем сброс датчика (перезагрузка устройства или новый день)
-                val timeSinceBoot = System.currentTimeMillis() - bootTimestamp
-                val isRecentBoot = timeSinceBoot < BOOT_TIME_THRESHOLD_MS
 
-                if (isRecentBoot || totalSteps < lastTotalStepsCount) {
-                    Log.d(TAG, "Обнаружен сброс датчика или перезагрузка. Было: $lastTotalStepsCount, стало: $totalSteps")
-                    initialStepsCount = totalSteps
-                    lastTotalStepsCount = totalSteps
-                    saveStepState()
-                    return@withContext
-                }
-
-                // Если это первый запуск сегодня
-                if (initialStepsCount == 0f) {
-                    initialStepsCount = totalSteps
-                    lastTotalStepsCount = totalSteps
-                    saveStepState()
-                    Log.d(TAG, "Инициализирован счетчик шагов: $totalSteps")
-                    return@withContext
-                }
-
-                // Рассчитываем новые шаги
-                val newSteps = (totalSteps - lastTotalStepsCount).toInt()
-
-                if (newSteps > 0) {
-                    Log.d(TAG, "Обнаружены новые шаги: $newSteps")
-                    addStepsToStatistics(newSteps)
-                    lastTotalStepsCount = totalSteps
-                    saveStepState()
-
-                    // Обновляем уведомление
-                    updateNotificationWithSteps(stepsToday)
-                }
-
-            } catch (e: Exception) {
-                Log.e(TAG, "Ошибка обработки данных датчика", e)
-            }
-        }
-    }
 
     private suspend fun processSingleStep() {
         withContext(Dispatchers.IO) {
@@ -393,63 +453,13 @@ class StepCounterService : Service(), SensorEventListener {
         }
     }
 
-    private fun checkForNewDay() {
-        val todayDate = getTodayDate()
 
-        if (lastProcessedDate != todayDate) {
-            Log.d(TAG, "Обнаружен новый день: $todayDate (было: $lastProcessedDate)")
-
-            // Сохраняем шаги предыдущего дня через StepDataManager
-            if (lastProcessedDate.isNotEmpty()) {
-                stepDataManager.saveSteps(lastProcessedDate, stepsToday)
-            }
-
-            // Сбрасываем счетчики для нового дня
-            initialStepsCount = 0f
-            lastTotalStepsCount = 0f
-            lastMilestoneNotified = 0
-            stepsToday = 0
-
-            // Сохраняем состояние
-            sharedPreferences.edit().apply {
-                putString("last_processed_date", todayDate)
-                putFloat("initial_steps_$todayDate", 0f)
-                putFloat("last_total_$todayDate", 0f)
-                putInt("last_milestone_$todayDate", 0)
-                apply()
-            }
-
-            lastProcessedDate = todayDate
-
-            // Сообщаем о новом дне
-            sendStepsUpdateBroadcast()
-        }
-    }
 
     private fun getTodayDate(): String {
         return SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
     }
 
-    private fun addStepsToStatistics(newSteps: Int) {
-        val todayDate = getTodayDate()
 
-        // Обновляем шаги за сегодня
-        stepsToday += newSteps
-
-        // Сохраняем через StepDataManager
-        stepDataManager.saveSteps(todayDate, stepsToday)
-
-        // Проверяем достижение целей
-        checkMilestoneAchievement(stepsToday)
-
-        // Отправляем broadcast для обновления UI
-        sendStepsUpdateBroadcast()
-
-        // Синхронизируем с Firebase
-        serviceScope.launch {
-            synchronizeWithFirebase(todayDate, stepsToday)
-        }
-    }
 
     private fun checkMilestoneAchievement(currentSteps: Int) {
         val currentMilestone = (currentSteps / MILESTONE_STEP) * MILESTONE_STEP
@@ -523,6 +533,34 @@ class StepCounterService : Service(), SensorEventListener {
         val intent = Intent(ACTION_STEPS_UPDATED)
         sendBroadcast(intent)
         Log.d(TAG, "Broadcast отправлен: $ACTION_STEPS_UPDATED")
+    }
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.d(TAG, "onStartCommand: Получена команда запуска")
+
+        if (isRunning.compareAndSet(false, true)) {
+            Log.d(TAG, "Сервис переходит в активное состояние")
+
+            // 🔹 Сразу обновляем уведомление с актуальными шагами
+            updateNotificationWithSteps(stepsToday)
+
+            // 🔹 Проверяем, не наступил ли новый день
+            checkForNewDay()
+
+            // 🔹 Немедленно отправляем текущие шаги в UI (даже если новых шагов нет)
+            sendStepsUpdateBroadcast()
+
+            // 🔹 Принудительно синхронизируем с Firebase
+            serviceScope.launch {
+                delay(1000) // небольшая задержка для стабилизации
+                val todayDate = getTodayDate()
+                val currentSteps = stepDataManager.getSteps(todayDate)
+                synchronizeWithFirebase(todayDate, currentSteps)
+                forceFullDataSync() // также синхронизируем историю
+            }
+        }
+
+        return START_STICKY
     }
 
     private fun saveStepState() {

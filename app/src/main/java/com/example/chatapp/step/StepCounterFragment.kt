@@ -406,6 +406,53 @@ class StepCounterFragment : Fragment() {
         }
     }
 
+
+
+
+
+
+
+
+    private fun checkRequiredPermissions() {
+        try {
+            val requiredPermissions = mutableListOf<String>().apply {
+                // Для доступа к датчикам шагов
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.KITKAT_WATCH) {
+                    if (Build.VERSION.SDK_INT >= 34) { // Android 14+
+                        add("android.permission.BODY_SENSORS_APPROXIMATE")
+                    } else {
+                        add("android.permission.BODY_SENSORS")
+                    }
+                }
+
+                // Для распознавания активности
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    add("android.permission.ACTIVITY_RECOGNITION")
+                } else {
+                    add("com.google.android.gms.permission.ACTIVITY_RECOGNITION")
+                }
+
+                // Для уведомлений (Android 13+)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    add("android.permission.POST_NOTIFICATIONS")
+                }
+            }.filter {
+                ContextCompat.checkSelfPermission(requireContext(), it) != PackageManager.PERMISSION_GRANTED
+            }
+
+            if (requiredPermissions.isNotEmpty()) {
+                permissionLauncher.launch(requiredPermissions.toTypedArray())
+            } else {
+                startStepService()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Ошибка проверки разрешений", e)
+            startStepService()
+        }
+    }
+
+
+
     private fun setupCardAnimations() {
         try {
             val cards = listOf(cardComparison, cardForecast, cardJourney, cardStreak)
@@ -640,32 +687,7 @@ class StepCounterFragment : Fragment() {
         }
     }
 
-    private fun checkRequiredPermissions() {
-        try {
-            val requiredPermissions = mutableListOf<String>().apply {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                    add(Manifest.permission.ACTIVITY_RECOGNITION)
-                } else {
-                    // Для Android ниже 10
-                    add("com.google.android.gms.permission.ACTIVITY_RECOGNITION")
-                }
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    add(Manifest.permission.POST_NOTIFICATIONS)
-                }
-            }.filter {
-                ContextCompat.checkSelfPermission(requireContext(), it) != PackageManager.PERMISSION_GRANTED
-            }
 
-            if (requiredPermissions.isNotEmpty()) {
-                permissionLauncher.launch(requiredPermissions.toTypedArray())
-            } else {
-                startStepService()
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Ошибка проверки разрешений", e)
-            startStepService() // Пробуем запустить сервис даже без разрешений
-        }
-    }
 
     private fun startStepService() {
         try {

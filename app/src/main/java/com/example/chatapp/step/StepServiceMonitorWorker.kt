@@ -55,6 +55,7 @@ class StepServiceMonitorWorker(
     }
 
     private suspend fun restartStepService() {
+
         withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 Log.d(TAG, "Restarting step counter service...")

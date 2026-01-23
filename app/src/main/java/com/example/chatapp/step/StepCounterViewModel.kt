@@ -29,6 +29,8 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
         private const val STEPS_PER_MINUTE = 100f // Средняя скорость
     }
 
+    private var isSyncingFromFirebase = false
+
     // Основные LiveData
     private val _todaySteps = MutableLiveData<Int>()
     val todaySteps: LiveData<Int> = _todaySteps
@@ -157,6 +159,7 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
                 viewModelScope.launch(Dispatchers.IO) {
                     syncFromFirebase(snapshot)
                     loadStatistics()
+                    isSyncingFromFirebase = false
                 }
             }
 
@@ -205,7 +208,7 @@ class StepCounterViewModel(application: Application) : AndroidViewModel(applicat
                     stepDataManager.saveSteps(date, steps)
 
                     // Также сохраняем в SharedPreferences для обратной совместимости
-                    sharedPreferences.edit().putInt(date, steps).apply()
+
                 }
                 Log.d(TAG, "Данные синхронизированы из Firebase")
             } catch (e: Exception) {
