@@ -58,7 +58,6 @@
 
 ## 🛠 **Технологический стек**
 *   **Язык**: Kotlin 100%
-*   **Архитектура**: MVVM, Clean Architecture
 *   **База данных**: Firebase (Firestore, Realtime DB, Auth)
 *   **Хранилище**: Yandex Cloud Storage (для изображений)
 *   **Карты**: Yandex Maps SDK
@@ -69,20 +68,41 @@
 *   **Асинхронность**: Kotlin Coroutines, Flow
 *   **DI**: Dagger Hilt / Koin
 
-
-
 ## 📸 **Скриншоты**
-| Главный экран | Чат с ассистентом | Карта | Игры |
-| :---: | :---: | :---: | :---: |
-| <img src="screenshots/main.jpg" width="200"> | <img src="screenshots/chat.jpg" width="200"> | <img src="screenshots/map.jpg" width="200"> | <img src="screenshots/games.jpg" width="200"> |
 
+### **Основные экраны**
+| | | | |
+|:---:|:---:|:---:|:---:|
+| **Главный экран** | **Приветствие AI** | **Чат с ассистентом** | **Голосовой режим** |
+| <img src="screenshots/main.jpg" width="200"> | <img src="screenshots/2_welcome.jpg" width="200"> | <img src="screenshots/3_chat.jpg" width="200"> | <img src="screenshots/4_voice.jpg" width="200"> |
+| **Лента новостей** | **Чат с пользователями** | **Форум (Дискуссии)** | **Карта с пользователями** |
+| <img src="screenshots/5_news.jpg" width="200"> | <img src="screenshots/6_users_chat.jpg" width="200"> | <img src="screenshots/7_forum.jpg" width="200"> | <img src="screenshots/8_map.jpg" width="200"> |
+| **Профиль пользователя** | **Трекер перемещения** | **Шагомер (прогресс)** | **Меню инструментов** |
+| <img src="screenshots/9_profile.jpg" width="200"> | <img src="screenshots/10_tracker.jpg" width="200"> | <img src="screenshots/11_steps.jpg" width="200"> | <img src="screenshots/12_menu.jpg" width="200"> |
 
+### **Игры**
+| | | | |
+|:---:|:---:|:---:|:---:|
+| **Шахматы Online** | **Тренировка памяти** | **Быстрое сложение** | **Арканоид** |
+| <img src="screenshots/13_chess.jpg" width="200"> | <img src="screenshots/14_memory.jpg" width="200"> | <img src="screenshots/15_math.jpg" width="200"> | <img src="screenshots/16_arkanoid.jpg" width="200"> |
+| **Пошаговая стратегия** | **Игра ПВО** | **Угадай число** | **Тесты на эрудицию** |
+| <img src="screenshots/17_strategy.jpg" width="200"> | <img src="screenshots/18_pvo.jpg" width="200"> | <img src="screenshots/19_guess.jpg" width="200"> | <img src="screenshots/20_quiz.jpg" width="200"> |
+
+*Для просмотра в полном размере кликните на изображение*
+
+## 🧭 **Планы по развитию**
+*   Добавить поддержку iOS (KMM)
+*   Внедрить систему достижений и наград
+*   Расширить библиотеку игр (кроссворды, головоломки)
+*   Реализовать "Философский дневник" с AI-анализом настроения
+*   Добавить режим "Цифровой детокс" с полезными ограничениями
 
 ## 👨‍💻 **Контакты**
 Идея и разработка — [Ваше Имя/Никнейм].
 
 *   Telegram: [@ваш_ник]
 *   Email: ваш.email@example.com
+*   GitHub: [Ваш профиль GitHub](https://github.com/your_username)
 
 ---
 <p align="center">
